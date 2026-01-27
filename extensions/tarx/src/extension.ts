@@ -1059,6 +1059,9 @@ export function activate(context: vscode.ExtensionContext) {
 				analytics.track('project_created', { project_id: newProject.id });
 				console.log('[TARX] Created project:', newProject.id, projectName, folderPath);
 				vscode.window.showInformationMessage(`Project "${projectName}" created in ~/TARX/`);
+
+				// Trigger sidebar refresh
+				await vscode.commands.executeCommand('tarx.projects.refresh');
 			} catch (e) {
 				console.error('[TARX] Failed to create project:', e);
 				vscode.window.showErrorMessage('Failed to create project');
@@ -1142,6 +1145,9 @@ export function activate(context: vscode.ExtensionContext) {
 					activeProject = undefined;
 				}
 				vscode.window.showInformationMessage(`Project "${project.name}" removed`);
+
+				// Trigger sidebar refresh
+				await vscode.commands.executeCommand('tarx.projects.refresh');
 				return true;
 			}
 			return false;
@@ -1149,6 +1155,13 @@ export function activate(context: vscode.ExtensionContext) {
 			console.error('[TARX] Failed to delete project:', e);
 			return false;
 		}
+	});
+
+	// Projects Refresh - Signal sidebar to reload projects list
+	safeRegisterCommand(context, 'tarx.projects.refresh', async () => {
+		console.log('[TARX] Projects refresh command triggered');
+		// This is a signal command - the sidebar Part listens for this
+		// and calls loadProjects() when it fires
 	});
 
 	console.log('[TARX] Sidebar nav commands registered');

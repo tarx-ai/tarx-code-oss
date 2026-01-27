@@ -232,6 +232,7 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 		}, 500);
 
 		// Apply collapsed state if it was saved
+		console.log('[TARX Sidebar] Sidebar container isCollapsed:', this.isCollapsed);
 		if (this.isCollapsed) {
 			if (this.tarxContainer) {
 				this.tarxContainer.classList.add('collapsed');
@@ -616,7 +617,7 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 	 * Register command handlers for upload progress
 	 */
 	private registerUploadProgressCommands(): void {
-		// Override the tarx.showUploadProgress command handler
+		// Override command handlers for sidebar integration
 		this.navDisposables.add(
 			this.commandService.onWillExecuteCommand(e => {
 				if (e.commandId === 'tarx.showUploadProgress') {
@@ -628,6 +629,10 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 					}
 				} else if (e.commandId === 'tarx.hideUploadProgress') {
 					this.hideUploadProgress();
+				} else if (e.commandId === 'tarx.projects.refresh') {
+					// Refresh projects list when command is executed
+					console.log('[TARX Sidebar] Projects refresh triggered');
+					this.loadProjects();
 				}
 			})
 		);
@@ -782,11 +787,15 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 	private createSection(id: string, title: string, icon: ThemeIcon, items: TarxNavItem[]): void {
 		if (!this.sectionsContainer) { return; }
 
+		console.log('[TARX Sidebar] Creating section:', id, 'with', items.length, 'items');
+
 		const section = append(this.sectionsContainer, $('.tarx-section'));
 		section.dataset.sectionId = id;
 
 		// Default to expanded (false = not collapsed)
-		if (this.sectionState.get(id) ?? false) {
+		const isCollapsed = this.sectionState.get(id) ?? false;
+		console.log('[TARX Sidebar] Section', id, 'collapsed state:', isCollapsed);
+		if (isCollapsed) {
 			section.classList.add('collapsed');
 		}
 
@@ -815,10 +824,14 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 			label.textContent = item.label;
 
 			if (item.command) {
+				console.log('[TARX Sidebar] Attaching click handler for:', item.label, '->', item.command);
 				this.navDisposables.add(addDisposableListener(itemEl, EventType.CLICK, (e) => {
 					e.stopPropagation(); // Prevent header collapse toggle
 					console.log('[TARX Sidebar] Item clicked:', item.label, '-> executing:', item.command);
-					this.commandService.executeCommand(item.command!);
+					this.commandService.executeCommand(item.command!).then(
+						() => console.log('[TARX Sidebar] Command executed successfully:', item.command),
+						(err) => console.error('[TARX Sidebar] Command failed:', item.command, err)
+					);
 				}));
 			}
 		}
@@ -876,8 +889,10 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 	 * Load projects from the TARX extension database
 	 */
 	private async loadProjects(): Promise<void> {
+		console.log('[TARX Sidebar] loadProjects called');
 		try {
 			const projects = await this.commandService.executeCommand<TarxProject[]>('tarx.projects.list');
+			console.log('[TARX Sidebar] Got projects:', projects?.length || 0, projects);
 			this.projects = projects || [];
 			this.renderProjects();
 		} catch (e) {
