@@ -769,7 +769,8 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 		const section = append(this.sectionsContainer, $('.tarx-section'));
 		section.dataset.sectionId = id;
 
-		if (this.sectionState.get(id) ?? true) {
+		// Default to expanded (false = not collapsed)
+		if (this.sectionState.get(id) ?? false) {
 			section.classList.add('collapsed');
 		}
 
@@ -798,7 +799,9 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 			label.textContent = item.label;
 
 			if (item.command) {
-				this.navDisposables.add(addDisposableListener(itemEl, EventType.CLICK, () => {
+				this.navDisposables.add(addDisposableListener(itemEl, EventType.CLICK, (e) => {
+					e.stopPropagation(); // Prevent header collapse toggle
+					console.log('[TARX Sidebar] Item clicked:', item.label, '-> executing:', item.command);
 					this.commandService.executeCommand(item.command!);
 				}));
 			}
@@ -1080,6 +1083,7 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 		const extLabel = append(extRow, $('span.tarx-footer-label'));
 		extLabel.textContent = 'Extensions';
 		this.navDisposables.add(addDisposableListener(extRow, EventType.CLICK, () => {
+			console.log('[TARX Sidebar] Extensions clicked');
 			this.commandService.executeCommand('workbench.view.extensions');
 		}));
 
