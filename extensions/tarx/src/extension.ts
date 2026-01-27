@@ -8,6 +8,8 @@ console.log('[TARX] ========== EXTENSION MODULE LOADING ==========');
 
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 import { TarxCompletionProvider } from './completionProvider';
 import { TarxStatusBar } from './statusBar';
 import { TarxClient, ChatMessage } from './tarxClient';
@@ -36,6 +38,27 @@ import {
 } from './codeAnalysis';
 import { registerSidebarProvider, TarxSidebarProvider } from './sidebarProvider';
 import { HealthService, ConnectionStatus } from './healthService';
+
+// ========================================
+// Command Registration Guard
+// Prevents duplicate command registration on hot-reload
+// ========================================
+const registeredCommands = new Set<string>();
+
+function safeRegisterCommand(
+	context: vscode.ExtensionContext,
+	commandId: string,
+	handler: (...args: any[]) => any
+): void {
+	if (registeredCommands.has(commandId)) {
+		console.log(`[TARX] Command ${commandId} already registered, skipping`);
+		return;
+	}
+	registeredCommands.add(commandId);
+	context.subscriptions.push(
+		vscode.commands.registerCommand(commandId, handler)
+	);
+}
 
 // ========================================
 // TARX Analytics - Lightweight event tracking
@@ -638,538 +661,495 @@ export function activate(context: vscode.ExtensionContext) {
 	// ========================================
 
 	// Open Chat - opens the native chat panel
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.openChat', () => {
-			vscode.commands.executeCommand('workbench.action.chat.open', { query: '@tarx ' });
-		})
-	);
+	safeRegisterCommand(context, 'tarx.openChat', () => {
+		vscode.commands.executeCommand('workbench.action.chat.open', { query: '@tarx ' });
+	});
 
 	// Explain Selection - sends to @tarx /explain
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.explainSelection', async () => {
-			const editor = vscode.window.activeTextEditor;
-			if (!editor) {
-				vscode.window.showWarningMessage('No active editor');
-				return;
-			}
+	safeRegisterCommand(context, 'tarx.explainSelection', async () => {
+		const editor = vscode.window.activeTextEditor;
+		if (!editor) {
+			vscode.window.showWarningMessage('No active editor');
+			return;
+		}
 
-			const selection = editor.document.getText(editor.selection);
-			if (!selection) {
-				vscode.window.showWarningMessage('No text selected');
-				return;
-			}
+		const selection = editor.document.getText(editor.selection);
+		if (!selection) {
+			vscode.window.showWarningMessage('No text selected');
+			return;
+		}
 
-			const language = editor.document.languageId;
-			const code = `\`\`\`${language}\n${selection}\n\`\`\``;
-			vscode.commands.executeCommand('workbench.action.chat.open', {
-				query: `@tarx /explain ${code}`
-			});
-		})
-	);
+		const language = editor.document.languageId;
+		const code = `\`\`\`${language}\n${selection}\n\`\`\``;
+		vscode.commands.executeCommand('workbench.action.chat.open', {
+			query: `@tarx /explain ${code}`
+		});
+	});
 
 	// Refactor Selection - sends to @tarx /refactor
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.refactorSelection', async () => {
-			const editor = vscode.window.activeTextEditor;
-			if (!editor) {
-				vscode.window.showWarningMessage('No active editor');
-				return;
-			}
+	safeRegisterCommand(context, 'tarx.refactorSelection', async () => {
+		const editor = vscode.window.activeTextEditor;
+		if (!editor) {
+			vscode.window.showWarningMessage('No active editor');
+			return;
+		}
 
-			const selection = editor.document.getText(editor.selection);
-			if (!selection) {
-				vscode.window.showWarningMessage('No text selected');
-				return;
-			}
+		const selection = editor.document.getText(editor.selection);
+		if (!selection) {
+			vscode.window.showWarningMessage('No text selected');
+			return;
+		}
 
-			const language = editor.document.languageId;
-			const code = `\`\`\`${language}\n${selection}\n\`\`\``;
-			vscode.commands.executeCommand('workbench.action.chat.open', {
-				query: `@tarx /refactor ${code}`
-			});
-		})
-	);
+		const language = editor.document.languageId;
+		const code = `\`\`\`${language}\n${selection}\n\`\`\``;
+		vscode.commands.executeCommand('workbench.action.chat.open', {
+			query: `@tarx /refactor ${code}`
+		});
+	});
 
 	// Generate Tests - sends to @tarx /tests
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.generateTests', async () => {
-			const editor = vscode.window.activeTextEditor;
-			if (!editor) {
-				vscode.window.showWarningMessage('No active editor');
-				return;
-			}
+	safeRegisterCommand(context, 'tarx.generateTests', async () => {
+		const editor = vscode.window.activeTextEditor;
+		if (!editor) {
+			vscode.window.showWarningMessage('No active editor');
+			return;
+		}
 
-			const selection = editor.document.getText(editor.selection);
-			if (!selection) {
-				vscode.window.showWarningMessage('No text selected');
-				return;
-			}
+		const selection = editor.document.getText(editor.selection);
+		if (!selection) {
+			vscode.window.showWarningMessage('No text selected');
+			return;
+		}
 
-			const language = editor.document.languageId;
-			const code = `\`\`\`${language}\n${selection}\n\`\`\``;
-			vscode.commands.executeCommand('workbench.action.chat.open', {
-				query: `@tarx /tests ${code}`
-			});
-		})
-	);
+		const language = editor.document.languageId;
+		const code = `\`\`\`${language}\n${selection}\n\`\`\``;
+		vscode.commands.executeCommand('workbench.action.chat.open', {
+			query: `@tarx /tests ${code}`
+		});
+	});
 
 	// Fix Code - sends to @tarx /fix
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.fixCode', async () => {
-			const editor = vscode.window.activeTextEditor;
-			if (!editor) {
-				vscode.window.showWarningMessage('No active editor');
-				return;
-			}
+	safeRegisterCommand(context, 'tarx.fixCode', async () => {
+		const editor = vscode.window.activeTextEditor;
+		if (!editor) {
+			vscode.window.showWarningMessage('No active editor');
+			return;
+		}
 
-			const selection = editor.document.getText(editor.selection);
-			if (!selection) {
-				vscode.window.showWarningMessage('No text selected');
-				return;
-			}
+		const selection = editor.document.getText(editor.selection);
+		if (!selection) {
+			vscode.window.showWarningMessage('No text selected');
+			return;
+		}
 
-			const language = editor.document.languageId;
-			const code = `\`\`\`${language}\n${selection}\n\`\`\``;
-			vscode.commands.executeCommand('workbench.action.chat.open', {
-				query: `@tarx /fix ${code}`
-			});
-		})
-	);
+		const language = editor.document.languageId;
+		const code = `\`\`\`${language}\n${selection}\n\`\`\``;
+		vscode.commands.executeCommand('workbench.action.chat.open', {
+			query: `@tarx /fix ${code}`
+		});
+	});
 
 	// Add to Context
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.addToContext', (uri?: vscode.Uri) => {
-			const targetUri = uri || vscode.window.activeTextEditor?.document.uri;
-			if (targetUri && !contextFiles.some(f => f.toString() === targetUri.toString())) {
-				contextFiles.push(targetUri);
-				vscode.window.showInformationMessage(`Added ${vscode.workspace.asRelativePath(targetUri)} to TARX context`);
-			}
-		})
-	);
+	safeRegisterCommand(context, 'tarx.addToContext', (uri?: vscode.Uri) => {
+		const targetUri = uri || vscode.window.activeTextEditor?.document.uri;
+		if (targetUri && !contextFiles.some(f => f.toString() === targetUri.toString())) {
+			contextFiles.push(targetUri);
+			vscode.window.showInformationMessage(`Added ${vscode.workspace.asRelativePath(targetUri)} to TARX context`);
+		}
+	});
 
 	// Clear Context
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.clearContext', () => {
-			contextFiles.length = 0;
-			vscode.window.showInformationMessage('TARX context cleared');
-		})
-	);
+	safeRegisterCommand(context, 'tarx.clearContext', () => {
+		contextFiles.length = 0;
+		vscode.window.showInformationMessage('TARX context cleared');
+	});
 
 	// Show Status
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.showStatus', async () => {
-			const health = await tarxClient.checkHealth();
-			if (health.healthy) {
-				vscode.window.showInformationMessage(
-					`TARX: Connected to ${health.model || 'server'} (${health.latencyMs}ms)`
-				);
-			} else {
-				vscode.window.showWarningMessage(
-					'TARX: Not connected. Is llama-server running on port 11435?'
-				);
-			}
-		})
-	);
+	safeRegisterCommand(context, 'tarx.showStatus', async () => {
+		const health = await tarxClient.checkHealth();
+		if (health.healthy) {
+			vscode.window.showInformationMessage(
+				`TARX: Connected to ${health.model || 'server'} (${health.latencyMs}ms)`
+			);
+		} else {
+			vscode.window.showWarningMessage(
+				'TARX: Not connected. Is llama-server running on port 11435?'
+			);
+		}
+	});
 
 	// Reconnect - Force reconnection attempt
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.reconnect', async () => {
-			if (!healthService) {
-				vscode.window.showErrorMessage('Health service not initialized');
-				return;
-			}
+	safeRegisterCommand(context, 'tarx.reconnect', async () => {
+		if (!healthService) {
+			vscode.window.showErrorMessage('Health service not initialized');
+			return;
+		}
 
-			vscode.window.showInformationMessage('Attempting to reconnect...');
-			const success = await healthService.forceReconnect();
+		vscode.window.showInformationMessage('Attempting to reconnect...');
+		const success = await healthService.forceReconnect();
 
-			if (success) {
-				vscode.window.showInformationMessage(
-					`TARX: Reconnected to ${healthService.healthStatus.model || 'server'}`
-				);
-			} else {
-				vscode.window.showWarningMessage(
-					'TARX: Reconnection failed. Is llama-server running?'
-				);
-			}
-		})
-	);
+		if (success) {
+			vscode.window.showInformationMessage(
+				`TARX: Reconnected to ${healthService.healthStatus.model || 'server'}`
+			);
+		} else {
+			vscode.window.showWarningMessage(
+				'TARX: Reconnection failed. Is llama-server running?'
+			);
+		}
+	});
 
 	// Get Connection Status - For programmatic access
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.getConnectionStatus', () => {
-			if (!healthService) {
-				return { status: 'unknown', isOnline: false, queueLength: 0 };
-			}
-			const health = healthService.healthStatus;
-			return {
-				status: health.status,
-				isOnline: healthService.isOnline,
-				queueLength: healthService.queueLength,
-				latencyMs: health.latencyMs,
-				model: health.model,
-				lastCheck: health.lastCheck,
-				consecutiveFailures: health.consecutiveFailures
-			};
-		})
-	);
+	safeRegisterCommand(context, 'tarx.getConnectionStatus', () => {
+		if (!healthService) {
+			return { status: 'unknown', isOnline: false, queueLength: 0 };
+		}
+		const health = healthService.healthStatus;
+		return {
+			status: health.status,
+			isOnline: healthService.isOnline,
+			queueLength: healthService.queueLength,
+			latencyMs: health.latencyMs,
+			model: health.model,
+			lastCheck: health.lastCheck,
+			consecutiveFailures: health.consecutiveFailures
+		};
+	});
 
 	// ========================================
 	// 4b. SIDEBAR NAV COMMANDS
 	// ========================================
 
 	// Voice Start - Start voice input
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.voice.start', async () => {
-			analytics.track('voice_used');
-			try {
-				// Try native VS Code voice chat first
-				await vscode.commands.executeCommand('workbench.action.chat.startVoiceChat');
-				console.log('[TARX] Voice started via native VS Code');
-			} catch (e) {
-				// Fallback notification
-				vscode.window.showInformationMessage('Voice input starting...');
-				console.log('[TARX] Voice start (fallback)');
-			}
-		})
-	);
+	safeRegisterCommand(context, 'tarx.voice.start', async () => {
+		analytics.track('voice_used');
+		try {
+			// Try native VS Code voice chat first
+			await vscode.commands.executeCommand('workbench.action.chat.startVoiceChat');
+			console.log('[TARX] Voice started via native VS Code');
+		} catch (e) {
+			// Fallback notification
+			vscode.window.showInformationMessage('Voice input starting...');
+			console.log('[TARX] Voice start (fallback)');
+		}
+	});
 
 	// Voice Stop - Stop voice input
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.voice.stop', async () => {
-			try {
-				await vscode.commands.executeCommand('workbench.action.chat.stopVoiceChat');
-				console.log('[TARX] Voice stopped');
-			} catch (e) {
-				console.log('[TARX] Voice stop (fallback)');
-			}
-		})
-	);
+	safeRegisterCommand(context, 'tarx.voice.stop', async () => {
+		try {
+			await vscode.commands.executeCommand('workbench.action.chat.stopVoiceChat');
+			console.log('[TARX] Voice stopped');
+		} catch (e) {
+			console.log('[TARX] Voice stop (fallback)');
+		}
+	});
 
 	// Chat New - Start a new chat conversation
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.chat.new', async () => {
-			// Clear current conversation state
-			activeConversation = undefined;
+	safeRegisterCommand(context, 'tarx.chat.new', async () => {
+		// Clear current conversation state
+		activeConversation = undefined;
 
-			// Create a new conversation in the database
-			if (db) {
-				try {
-					const projectId = activeProject?.id || null;
-					activeConversation = await db.createConversation(projectId);
-					console.log('[TARX] Created new conversation:', activeConversation.id);
-				} catch (e) {
-					console.warn('[TARX] Failed to create new conversation:', e);
-				}
+		// Create a new conversation in the database
+		if (db) {
+			try {
+				const projectId = activeProject?.id || null;
+				activeConversation = await db.createConversation(projectId);
+				console.log('[TARX] Created new conversation:', activeConversation.id);
+			} catch (e) {
+				console.warn('[TARX] Failed to create new conversation:', e);
 			}
+		}
 
-			// Open chat panel with @tarx
-			await vscode.commands.executeCommand('workbench.action.chat.open', { query: '@tarx ' });
-			console.log('[TARX] New chat started');
-		})
-	);
+		// Open chat panel with @tarx
+		await vscode.commands.executeCommand('workbench.action.chat.open', { query: '@tarx ' });
+		console.log('[TARX] New chat started');
+	});
 
 	// History Show All - Show conversation history panel
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.history.showAll', async () => {
-			if (!db) {
-				vscode.window.showInformationMessage('No conversation history available');
+	safeRegisterCommand(context, 'tarx.history.showAll', async () => {
+		if (!db) {
+			vscode.window.showInformationMessage('No conversation history available');
+			return;
+		}
+
+		try {
+			const projectId = activeProject?.id || null;
+			const conversations = await db.getRecentConversations(projectId, 50);
+
+			if (conversations.length === 0) {
+				vscode.window.showInformationMessage('No conversations yet. Start chatting with @tarx!');
 				return;
 			}
 
-			try {
-				const projectId = activeProject?.id || null;
-				const conversations = await db.getRecentConversations(projectId, 50);
+			// Show quick pick with conversations
+			const items = conversations.map(conv => ({
+				label: conv.title || 'Untitled conversation',
+				description: new Date(conv.updatedAt).toLocaleString(),
+				id: conv.id
+			}));
 
-				if (conversations.length === 0) {
-					vscode.window.showInformationMessage('No conversations yet. Start chatting with @tarx!');
-					return;
-				}
+			const selected = await vscode.window.showQuickPick(items, {
+				placeHolder: 'Select a conversation to open',
+				title: 'TARX Conversation History'
+			});
 
-				// Show quick pick with conversations
-				const items = conversations.map(conv => ({
-					label: conv.title || 'Untitled conversation',
-					description: new Date(conv.updatedAt).toLocaleString(),
-					id: conv.id
-				}));
-
-				const selected = await vscode.window.showQuickPick(items, {
-					placeHolder: 'Select a conversation to open',
-					title: 'TARX Conversation History'
-				});
-
-				if (selected) {
-					// Load the selected conversation
-					await vscode.commands.executeCommand('tarx.openConversation', selected.id);
-				}
-			} catch (e) {
-				console.error('[TARX] Failed to show history:', e);
-				vscode.window.showErrorMessage('Failed to load conversation history');
+			if (selected) {
+				// Load the selected conversation
+				await vscode.commands.executeCommand('tarx.openConversation', selected.id);
 			}
-		})
-	);
+		} catch (e) {
+			console.error('[TARX] Failed to show history:', e);
+			vscode.window.showErrorMessage('Failed to load conversation history');
+		}
+	});
 
 	// Open Conversation - Load a specific conversation with full context
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.openConversation', async (conversationId: string) => {
-			if (!db || !conversationId) {
+	safeRegisterCommand(context, 'tarx.openConversation', async (conversationId: string) => {
+		if (!db || !conversationId) {
+			return;
+		}
+
+		try {
+			// Get conversation metadata
+			const projectId = activeProject?.id || null;
+			const conversations = await db.getRecentConversations(projectId, 100);
+			const conversation = conversations.find(c => c.id === conversationId);
+
+			if (!conversation) {
+				vscode.window.showErrorMessage('Conversation not found');
 				return;
 			}
 
-			try {
-				// Get conversation metadata
-				const projectId = activeProject?.id || null;
-				const conversations = await db.getRecentConversations(projectId, 100);
-				const conversation = conversations.find(c => c.id === conversationId);
+			// Load ALL turns for this conversation
+			const turns = await db.getConversationTurns(conversationId);
+			console.log(`[TARX] Loading conversation "${conversation.title}" with ${turns.length} turns`);
 
-				if (!conversation) {
-					vscode.window.showErrorMessage('Conversation not found');
-					return;
-				}
+			// Store turns in pre-loaded history map
+			conversationHistory.set(conversationId, turns);
 
-				// Load ALL turns for this conversation
-				const turns = await db.getConversationTurns(conversationId);
-				console.log(`[TARX] Loading conversation "${conversation.title}" with ${turns.length} turns`);
+			// Set as active conversation
+			activeConversation = conversation;
 
-				// Store turns in pre-loaded history map
-				conversationHistory.set(conversationId, turns);
+			// Open chat panel
+			await vscode.commands.executeCommand('workbench.action.chat.open', {
+				query: '@tarx '
+			});
 
-				// Set as active conversation
-				activeConversation = conversation;
+			// Show notification with conversation context
+			const turnCount = turns.length;
+			const title = conversation.title || 'Conversation';
+			vscode.window.showInformationMessage(
+				`Resumed: ${title} (${turnCount} messages)`
+			);
 
-				// Open chat panel
-				await vscode.commands.executeCommand('workbench.action.chat.open', {
-					query: '@tarx '
-				});
-
-				// Show notification with conversation context
-				const turnCount = turns.length;
-				const title = conversation.title || 'Conversation';
-				vscode.window.showInformationMessage(
-					`Resumed: ${title} (${turnCount} messages)`
-				);
-
-				console.log(`[TARX] Conversation ${conversationId} loaded and ready`);
-			} catch (e) {
-				console.error('[TARX] Failed to open conversation:', e);
-				vscode.window.showErrorMessage('Failed to load conversation');
-			}
-		})
-	);
+			console.log(`[TARX] Conversation ${conversationId} loaded and ready`);
+		} catch (e) {
+			console.error('[TARX] Failed to open conversation:', e);
+			vscode.window.showErrorMessage('Failed to load conversation');
+		}
+	});
 
 	// SuperComputer Mesh Connect
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.mesh.connect', async () => {
-			vscode.window.showInformationMessage('Connecting to SuperComputer mesh...');
-			console.log('[TARX] Mesh connect initiated');
+	safeRegisterCommand(context, 'tarx.mesh.connect', async () => {
+		vscode.window.showInformationMessage('Connecting to SuperComputer mesh...');
+		console.log('[TARX] Mesh connect initiated');
 
-			// TODO: Actual mesh connection via localhost:11436
-			// Simulating async connection
-			return new Promise<boolean>((resolve) => {
-				setTimeout(() => {
-					analytics.track('mesh_connected', { peer_count: 0 });
-					console.log('[TARX] Mesh connected');
-					resolve(true);
-				}, 1000);
-			});
-		})
-	);
+		// TODO: Actual mesh connection via localhost:11436
+		// Simulating async connection
+		return new Promise<boolean>((resolve) => {
+			setTimeout(() => {
+				analytics.track('mesh_connected', { peer_count: 0 });
+				console.log('[TARX] Mesh connected');
+				resolve(true);
+			}, 1000);
+		});
+	});
 
 	// SuperComputer Mesh Disconnect
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.mesh.disconnect', async () => {
-			vscode.window.showInformationMessage('Disconnected from SuperComputer');
-			console.log('[TARX] Mesh disconnected');
-			return true;
-		})
-	);
+	safeRegisterCommand(context, 'tarx.mesh.disconnect', async () => {
+		vscode.window.showInformationMessage('Disconnected from SuperComputer');
+		console.log('[TARX] Mesh disconnected');
+		return true;
+	});
 
 	// Private Compute Join
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.privateCompute.join', async () => {
-			const poolId = await vscode.window.showInputBox({
-				prompt: 'Enter Private Compute Pool ID',
-				placeHolder: 'pool-xxxx-xxxx',
-				title: 'Join Private Compute'
-			});
+	safeRegisterCommand(context, 'tarx.privateCompute.join', async () => {
+		const poolId = await vscode.window.showInputBox({
+			prompt: 'Enter Private Compute Pool ID',
+			placeHolder: 'pool-xxxx-xxxx',
+			title: 'Join Private Compute'
+		});
 
-			if (poolId) {
-				vscode.window.showInformationMessage(`Joining private pool: ${poolId}`);
-				console.log('[TARX] Join private compute:', poolId);
-				// TODO: Actual pool join logic
-			}
-		})
-	);
+		if (poolId) {
+			vscode.window.showInformationMessage(`Joining private pool: ${poolId}`);
+			console.log('[TARX] Join private compute:', poolId);
+			// TODO: Actual pool join logic
+		}
+	});
 
 	// Create Design - Placeholder for design tools
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.create.design', async () => {
-			vscode.window.showInformationMessage('Design tools coming soon! Stay tuned.');
-			console.log('[TARX] Create design (placeholder)');
-		})
-	);
+	safeRegisterCommand(context, 'tarx.create.design', async () => {
+		vscode.window.showInformationMessage('Design tools coming soon! Stay tuned.');
+		console.log('[TARX] Create design (placeholder)');
+	});
 
 	// Create Imagine - Placeholder for AI image generation
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.create.imagine', async () => {
-			vscode.window.showInformationMessage('AI image generation coming soon! Stay tuned.');
-			console.log('[TARX] Create imagine (placeholder)');
-		})
-	);
+	safeRegisterCommand(context, 'tarx.create.imagine', async () => {
+		vscode.window.showInformationMessage('AI image generation coming soon! Stay tuned.');
+		console.log('[TARX] Create imagine (placeholder)');
+	});
 
 	// Projects New - Create a new TARX project
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.projects.new', async () => {
-			// Open folder dialog first
-			const folderUri = await vscode.window.showOpenDialog({
-				canSelectFolders: true,
-				canSelectFiles: false,
-				canSelectMany: false,
-				title: 'Select project folder'
-			});
-
-			if (!folderUri || !folderUri[0]) {
-				return;
-			}
-
-			const folderPath = folderUri[0].fsPath;
-			const folderName = path.basename(folderPath);
-
-			// Ask for project name (default to folder name)
-			const projectName = await vscode.window.showInputBox({
-				prompt: 'Enter project name',
-				value: folderName,
-				placeHolder: 'My Project',
-				title: 'Create New Project'
-			});
-
-			if (!projectName) {
-				return;
-			}
-
-			// Save project to database
-			if (db) {
-				try {
-					// Check if project already exists for this path
-					const existing = await db.getProjectByRoot(folderPath);
-					if (existing) {
-						vscode.window.showInformationMessage(`Project "${existing.name}" already exists for this folder`);
-						await db.setActiveProject(existing.id);
-						activeProject = existing;
-					} else {
-						// Create new project
-						const projectType = detectProjectType(folderPath);
-
-						const newProject = await db.createProject({
-							name: projectName,
-							root: folderPath,
-							type: projectType,
-							isActive: true
-						});
-
-						activeProject = newProject;
-						await db.setActiveProject(newProject.id);
-						analytics.track('project_created', { project_id: newProject.id });
-						console.log('[TARX] Created project:', newProject.id, projectName, folderPath);
-						vscode.window.showInformationMessage(`Project "${projectName}" created`);
-					}
-				} catch (e) {
-					console.error('[TARX] Failed to create project:', e);
-					vscode.window.showErrorMessage('Failed to create project');
+	safeRegisterCommand(context, 'tarx.projects.new', async () => {
+		// Ask for project name first (better UX - no folder picker)
+		const projectName = await vscode.window.showInputBox({
+			prompt: 'Project name',
+			placeHolder: 'my-awesome-project',
+			title: 'Create New TARX Project',
+			validateInput: (value) => {
+				if (!value || value.trim().length === 0) {
+					return 'Project name is required';
 				}
+				if (!/^[a-zA-Z0-9-_]+$/.test(value)) {
+					return 'Use only letters, numbers, hyphens and underscores';
+				}
+				return null;
 			}
+		});
 
-			// Open the folder as workspace
-			await vscode.commands.executeCommand('vscode.openFolder', folderUri[0]);
-		})
-	);
+		if (!projectName) {
+			return;
+		}
+
+		// Create in ~/TARX/ folder by default
+		const tarxHome = path.join(os.homedir(), 'TARX');
+		const folderPath = path.join(tarxHome, projectName);
+
+		// Create directories if needed
+		if (!fs.existsSync(tarxHome)) {
+			fs.mkdirSync(tarxHome, { recursive: true });
+		}
+
+		if (fs.existsSync(folderPath)) {
+			vscode.window.showErrorMessage(`Project "${projectName}" already exists at ${folderPath}`);
+			return;
+		}
+
+		// Create project folder and basic structure
+		fs.mkdirSync(folderPath, { recursive: true });
+		fs.writeFileSync(
+			path.join(folderPath, 'README.md'),
+			`# ${projectName}\n\nCreated with TARX\n`
+		);
+
+		// Save project to database
+		if (db) {
+			try {
+				const projectType = 'general';
+
+				const newProject = await db.createProject({
+					name: projectName,
+					root: folderPath,
+					type: projectType,
+					isActive: true
+				});
+
+				activeProject = newProject;
+				await db.setActiveProject(newProject.id);
+				analytics.track('project_created', { project_id: newProject.id });
+				console.log('[TARX] Created project:', newProject.id, projectName, folderPath);
+				vscode.window.showInformationMessage(`Project "${projectName}" created in ~/TARX/`);
+			} catch (e) {
+				console.error('[TARX] Failed to create project:', e);
+				vscode.window.showErrorMessage('Failed to create project');
+			}
+		}
+
+		// Open the folder as workspace
+		await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(folderPath));
+	});
 
 	// Projects List - Get all projects (for sidebar)
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.projects.list', async () => {
-			if (!db) {
-				return [];
-			}
+	safeRegisterCommand(context, 'tarx.projects.list', async () => {
+		if (!db) {
+			return [];
+		}
 
-			try {
-				const projects = await db.listProjects();
-				return projects.map(p => ({
-					id: p.id,
-					name: p.name,
-					path: p.root,
-					type: p.type,
-					isActive: p.isActive,
-					createdAt: p.createdAt
-				}));
-			} catch (e) {
-				console.error('[TARX] Failed to list projects:', e);
-				return [];
-			}
-		})
-	);
+		try {
+			const projects = await db.listProjects();
+			return projects.map(p => ({
+				id: p.id,
+				name: p.name,
+				path: p.root,
+				type: p.type,
+				isActive: p.isActive,
+				createdAt: p.createdAt
+			}));
+		} catch (e) {
+			console.error('[TARX] Failed to list projects:', e);
+			return [];
+		}
+	});
 
 	// Projects Open - Open a specific project
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.projects.open', async (projectId: string) => {
-			if (!db) {
+	safeRegisterCommand(context, 'tarx.projects.open', async (projectId: string) => {
+		if (!db) {
+			return false;
+		}
+
+		try {
+			const project = await db.getProject(projectId);
+			if (!project) {
+				vscode.window.showErrorMessage('Project not found');
 				return false;
 			}
 
-			try {
-				const project = await db.getProject(projectId);
-				if (!project) {
-					vscode.window.showErrorMessage('Project not found');
-					return false;
-				}
+			// Set as active project
+			await db.setActiveProject(projectId);
+			activeProject = project;
 
-				// Set as active project
-				await db.setActiveProject(projectId);
-				activeProject = project;
-
-				// Open the folder
-				const uri = vscode.Uri.file(project.root);
-				await vscode.commands.executeCommand('vscode.openFolder', uri);
-				return true;
-			} catch (e) {
-				console.error('[TARX] Failed to open project:', e);
-				return false;
-			}
-		})
-	);
+			// Open the folder
+			const uri = vscode.Uri.file(project.root);
+			await vscode.commands.executeCommand('vscode.openFolder', uri);
+			return true;
+		} catch (e) {
+			console.error('[TARX] Failed to open project:', e);
+			return false;
+		}
+	});
 
 	// Projects Delete - Delete a project from database
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.projects.delete', async (projectId: string) => {
-			if (!db) {
+	safeRegisterCommand(context, 'tarx.projects.delete', async (projectId: string) => {
+		if (!db) {
+			return false;
+		}
+
+		try {
+			const project = await db.getProject(projectId);
+			if (!project) {
 				return false;
 			}
 
-			try {
-				const project = await db.getProject(projectId);
-				if (!project) {
-					return false;
-				}
+			const confirm = await vscode.window.showWarningMessage(
+				`Delete project "${project.name}"? This only removes it from TARX, not the actual files.`,
+				'Delete',
+				'Cancel'
+			);
 
-				const confirm = await vscode.window.showWarningMessage(
-					`Delete project "${project.name}"? This only removes it from TARX, not the actual files.`,
-					'Delete',
-					'Cancel'
-				);
-
-				if (confirm === 'Delete') {
-					await db.deleteProject(projectId);
-					if (activeProject?.id === projectId) {
-						activeProject = undefined;
-					}
-					vscode.window.showInformationMessage(`Project "${project.name}" removed`);
-					return true;
+			if (confirm === 'Delete') {
+				await db.deleteProject(projectId);
+				if (activeProject?.id === projectId) {
+					activeProject = undefined;
 				}
-				return false;
-			} catch (e) {
-				console.error('[TARX] Failed to delete project:', e);
-				return false;
+				vscode.window.showInformationMessage(`Project "${project.name}" removed`);
+				return true;
 			}
-		})
-	);
+			return false;
+		} catch (e) {
+			console.error('[TARX] Failed to delete project:', e);
+			return false;
+		}
+	});
 
 	console.log('[TARX] Sidebar nav commands registered');
 
@@ -1196,132 +1176,120 @@ export function activate(context: vscode.ExtensionContext) {
 	// ========================================
 	// 6. Apply Artifact command
 	// ========================================
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.applyArtifact', async (artifact: any, projectRoot: string) => {
-			if (!artifact || !projectRoot) {
-				vscode.window.showErrorMessage('Invalid artifact data');
-				return;
-			}
+	safeRegisterCommand(context, 'tarx.applyArtifact', async (artifact: any, projectRoot: string) => {
+		if (!artifact || !projectRoot) {
+			vscode.window.showErrorMessage('Invalid artifact data');
+			return;
+		}
 
-			const result = await applyArtifact(artifact, projectRoot);
-			if (result.success) {
-				vscode.window.showInformationMessage(`TARX: ${result.message}`);
+		const result = await applyArtifact(artifact, projectRoot);
+		if (result.success) {
+			vscode.window.showInformationMessage(`TARX: ${result.message}`);
 
-				// Refresh the file in the editor if it's open
-				if (artifact.filePath) {
-					const fullPath = path.join(projectRoot, artifact.filePath);
-					const uri = vscode.Uri.file(fullPath);
-					const doc = vscode.workspace.textDocuments.find(d => d.uri.fsPath === fullPath);
-					if (doc) {
-						// Revert to reload from disk
-						await vscode.commands.executeCommand('workbench.action.files.revert', uri);
-					}
+			// Refresh the file in the editor if it's open
+			if (artifact.filePath) {
+				const fullPath = path.join(projectRoot, artifact.filePath);
+				const uri = vscode.Uri.file(fullPath);
+				const doc = vscode.workspace.textDocuments.find(d => d.uri.fsPath === fullPath);
+				if (doc) {
+					// Revert to reload from disk
+					await vscode.commands.executeCommand('workbench.action.files.revert', uri);
 				}
-			} else {
-				vscode.window.showErrorMessage(`TARX: ${result.message}`);
 			}
-		})
-	);
+		} else {
+			vscode.window.showErrorMessage(`TARX: ${result.message}`);
+		}
+	});
 
 	// ========================================
 	// 7. Project Management Commands
 	// ========================================
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.indexProject', async () => {
-			const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-			if (!workspaceFolder) {
-				vscode.window.showWarningMessage('No workspace folder open');
-				return;
-			}
+	safeRegisterCommand(context, 'tarx.indexProject', async () => {
+		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+		if (!workspaceFolder) {
+			vscode.window.showWarningMessage('No workspace folder open');
+			return;
+		}
 
-			if (!projectIndexer || !db) {
-				vscode.window.showErrorMessage('TARX not fully initialized');
-				return;
-			}
+		if (!projectIndexer || !db) {
+			vscode.window.showErrorMessage('TARX not fully initialized');
+			return;
+		}
 
-			try {
-				const project = await projectIndexer.ensureProject(workspaceFolder.uri);
-				activeProject = project;
-				await projectIndexer.startIndexing(project);
-			} catch (e) {
-				const error = e instanceof Error ? e.message : 'Unknown error';
-				vscode.window.showErrorMessage(`Failed to index: ${error}`);
-			}
-		})
-	);
+		try {
+			const project = await projectIndexer.ensureProject(workspaceFolder.uri);
+			activeProject = project;
+			await projectIndexer.startIndexing(project);
+		} catch (e) {
+			const error = e instanceof Error ? e.message : 'Unknown error';
+			vscode.window.showErrorMessage(`Failed to index: ${error}`);
+		}
+	});
 
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.showIndexingProgress', () => {
-			if (!activeProject || !projectIndexer) {
-				vscode.window.showInformationMessage('No project being indexed');
-				return;
-			}
+	safeRegisterCommand(context, 'tarx.showIndexingProgress', () => {
+		if (!activeProject || !projectIndexer) {
+			vscode.window.showInformationMessage('No project being indexed');
+			return;
+		}
 
-			const progress = projectIndexer.getProgress(activeProject.id);
-			if (progress) {
-				vscode.window.showInformationMessage(
-					`TARX Indexing: ${progress.status} - ${progress.filesIndexed}/${progress.totalFiles} files`
-				);
-			}
-		})
-	);
+		const progress = projectIndexer.getProgress(activeProject.id);
+		if (progress) {
+			vscode.window.showInformationMessage(
+				`TARX Indexing: ${progress.status} - ${progress.filesIndexed}/${progress.totalFiles} files`
+			);
+		}
+	});
 
 	// ========================================
 	// 7a. Upload Progress Commands (for sidebar integration)
 	// ========================================
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.showUploadProgress', (text: string, percent: number) => {
-			// This command is handled by the TarxSidebarPart in the workbench
-			// The command just needs to be registered here
-			console.log(`[TARX] Upload progress: ${text} (${percent}%)`);
-		})
-	);
+	safeRegisterCommand(context, 'tarx.showUploadProgress', (text: string, percent: number) => {
+		// This command is handled by the TarxSidebarPart in the workbench
+		// The command just needs to be registered here
+		console.log(`[TARX] Upload progress: ${text} (${percent}%)`);
+	});
 
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.hideUploadProgress', () => {
-			// This command is handled by the TarxSidebarPart in the workbench
-			console.log('[TARX] Upload progress hidden');
-		})
-	);
+	safeRegisterCommand(context, 'tarx.hideUploadProgress', () => {
+		// This command is handled by the TarxSidebarPart in the workbench
+		console.log('[TARX] Upload progress hidden');
+	});
 
 	// ========================================
 	// 7b. Conversation History Command (for sidebar integration)
 	// ========================================
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.getConversationHistory', async (limit: number = 10) => {
-			if (!db) {
-				return { conversations: [], turns: [] };
-			}
+	safeRegisterCommand(context, 'tarx.getConversationHistory', async (limit: number = 10) => {
+		if (!db) {
+			return { conversations: [], turns: [] };
+		}
 
-			try {
-				const projectId = activeProject?.id || null;
-				const conversations = await db.getRecentConversations(projectId, limit);
-				const turns = await db.getRecentTurns(projectId, limit * 2);
+		try {
+			const projectId = activeProject?.id || null;
+			const conversations = await db.getRecentConversations(projectId, limit);
+			const turns = await db.getRecentTurns(projectId, limit * 2);
 
-				// Format for sidebar display
-				const historyItems = conversations.map(conv => ({
-					id: conv.id,
-					title: conv.title || 'Untitled conversation',
-					timestamp: conv.updatedAt,
-					type: 'chat' as const
-				}));
+			// Format for sidebar display
+			const historyItems = conversations.map(conv => ({
+				id: conv.id,
+				title: conv.title || 'Untitled conversation',
+				timestamp: conv.updatedAt,
+				type: 'chat' as const
+			}));
 
-				return {
-					conversations: historyItems,
-					turns: turns.map(t => ({
-						id: t.id,
-						conversationId: t.conversationId,
-						role: t.role,
-						content: t.content.substring(0, 100) + (t.content.length > 100 ? '...' : ''),
-						timestamp: t.createdAt
-					}))
-				};
-			} catch (e) {
-				console.error('[TARX] Failed to get conversation history:', e);
-				return { conversations: [], turns: [] };
-			}
-		})
-	);
+			return {
+				conversations: historyItems,
+				turns: turns.map(t => ({
+					id: t.id,
+					conversationId: t.conversationId,
+					role: t.role,
+					content: t.content.substring(0, 100) + (t.content.length > 100 ? '...' : ''),
+					timestamp: t.createdAt
+				}))
+			};
+		} catch (e) {
+			console.error('[TARX] Failed to get conversation history:', e);
+			return { conversations: [], turns: [] };
+		}
+	});
 
 	// ========================================
 	// 8. Workspace change listeners

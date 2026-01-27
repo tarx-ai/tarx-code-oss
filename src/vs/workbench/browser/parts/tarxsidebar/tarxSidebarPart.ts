@@ -225,6 +225,12 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 		// Listen for upload progress commands
 		this.registerUploadProgressCommands();
 
+		// Load history and projects from database (async, runs after UI is ready)
+		setTimeout(() => {
+			this.loadHistory();
+			this.loadProjects();
+		}, 500);
+
 		// Apply collapsed state if it was saved
 		if (this.isCollapsed) {
 			if (this.tarxContainer) {
@@ -681,12 +687,18 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 		chatAction.title = 'New Chat';
 
 		// Row click opens existing chat, [+] button creates NEW chat
-		const openChat = () => this.commandService.executeCommand('workbench.action.chat.open');
-		const newChat = () => this.commandService.executeCommand('tarx.chat.new');
+		const openChat = () => {
+			console.log('[TARX Sidebar] Chat row clicked - opening existing chat');
+			this.commandService.executeCommand('workbench.action.chat.open');
+		};
+		const newChat = () => {
+			console.log('[TARX Sidebar] New Chat button clicked - creating new conversation');
+			this.commandService.executeCommand('tarx.chat.new');
+		};
 		this.navDisposables.add(addDisposableListener(chatRow, EventType.CLICK, openChat));
 		this.navDisposables.add(addDisposableListener(chatAction, EventType.CLICK, (e) => {
 			e.stopPropagation();
-			newChat(); // [+] creates a NEW conversation
+			newChat();
 		}));
 
 		// Voice row
@@ -718,11 +730,15 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 		btn.className = 'tarx-action-btn tarx-voice-btn';
 
 		if (this.isVoiceActive) {
+			console.log('[TARX Sidebar] Voice starting...');
 			btn.classList.add(...ThemeIcon.asClassNameArray(Codicon.debugPause));
-			btn.title = 'Pause Voice';
+			btn.classList.add('recording'); // Visual feedback
+			btn.title = 'Stop Voice';
 			this.commandService.executeCommand('tarx.voice.start');
 		} else {
+			console.log('[TARX Sidebar] Voice stopping...');
 			btn.classList.add(...ThemeIcon.asClassNameArray(Codicon.play));
+			btn.classList.remove('recording');
 			btn.title = 'Start Voice';
 			this.commandService.executeCommand('tarx.voice.stop');
 		}
@@ -1064,6 +1080,36 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 		if (this.historyElement) {
 			const content = this.historyElement.querySelector('.tarx-history-content');
 			if (content) { this.renderHistoryItems(content as HTMLElement); }
+		}
+	}
+
+	/**
+	 * Load history from the TARX extension database
+	 */
+	private async loadHistory(): Promise<void> {
+		try {
+			const result = await this.commandService.executeCommand<{
+				conversations: Array<{
+					id: string;
+					title: string;
+					timestamp: number;
+				}>;
+				turns: unknown[];
+			}>('tarx.getConversationHistory', 20);
+
+			if (result && result.conversations && result.conversations.length > 0) {
+				const items: TarxHistoryItem[] = result.conversations.map(c => ({
+					id: c.id,
+					title: c.title || 'Untitled',
+					timestamp: c.timestamp
+				}));
+				console.log('[TARX Sidebar] Loaded history:', items.length, 'conversations');
+				this.updateHistory(items);
+			} else {
+				console.log('[TARX Sidebar] No history found');
+			}
+		} catch (e) {
+			console.log('[TARX Sidebar] Failed to load history:', e);
 		}
 	}
 
