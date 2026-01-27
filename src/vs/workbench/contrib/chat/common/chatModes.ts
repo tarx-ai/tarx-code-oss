@@ -517,9 +517,10 @@ export class BuiltinChatMode implements IChatMode {
 }
 
 export namespace ChatMode {
-	export const Ask = new BuiltinChatMode(ChatModeKind.Ask, 'Ask', localize('chatDescription', "Explore and understand your code"), Codicon.question);
-	export const Edit = new BuiltinChatMode(ChatModeKind.Edit, 'Edit', localize('editsDescription', "Edit or refactor selected code"), Codicon.edit);
-	export const Agent = new BuiltinChatMode(ChatModeKind.Agent, 'Agent', localize('agentDescription', "Describe what to build next"), Codicon.agent);
+	// TARX: Updated placeholders for local-first AI
+	export const Ask = new BuiltinChatMode(ChatModeKind.Ask, 'Ask', localize('chatDescription', "Ask TARX anything..."), Codicon.question);
+	export const Edit = new BuiltinChatMode(ChatModeKind.Edit, 'Edit', localize('editsDescription', "Edit code with TARX"), Codicon.edit);
+	export const Agent = new BuiltinChatMode(ChatModeKind.Agent, 'Agent', localize('agentDescription', "Let TARX build for you"), Codicon.agent);
 }
 
 export function isBuiltinChatMode(mode: IChatMode): boolean {

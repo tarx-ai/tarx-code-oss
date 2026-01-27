@@ -5,6 +5,10 @@
 
 import '../../platform/update/common/update.config.contribution.js';
 
+// DISABLED: Sentry causes black screen crash - re-enable post-V1
+// import * as Sentry from '@sentry/electron/main';
+// import { TARX_SENTRY_DSN } from '../../platform/sentry/common/sentry.js';
+
 import { app, dialog } from 'electron';
 import { unlinkSync, promises } from 'fs';
 import { URI } from '../../base/common/uri.js';
@@ -74,6 +78,8 @@ import { FileUserDataProvider } from '../../platform/userData/common/fileUserDat
 import { addUNCHostToAllowlist, getUNCHost } from '../../base/node/unc.js';
 import { ThemeMainService } from '../../platform/theme/electron-main/themeMainServiceImpl.js';
 import { LINUX_SYSTEM_POLICY_FILE_PATH } from '../../base/common/policy.js';
+import { ITarxSidecarService } from '../../platform/tarx/common/tarx.js';
+import { TarxSidecarService } from '../../platform/tarx/electron-main/tarxSidecarService.js';
 
 /**
  * The main VS Code entry point.
@@ -89,6 +95,7 @@ class CodeMain {
 		try {
 			this.startup();
 		} catch (error) {
+			// Sentry disabled - just log to console
 			console.error(error.message);
 			app.exit(1);
 		}
@@ -98,7 +105,10 @@ class CodeMain {
 
 		// Set the error handler early enough so that we are not getting the
 		// default electron error dialog popping up
-		setUnexpectedErrorHandler(err => console.error(err));
+		setUnexpectedErrorHandler(err => {
+			// Sentry disabled - just log to console
+			console.error(err);
+		});
 
 		// Create services
 		const [instantiationService, instanceEnvironment, environmentMainService, configurationService, stateMainService, bufferLogger, productService, userDataProfilesMainService] = this.createServices();
@@ -240,6 +250,9 @@ class CodeMain {
 
 		// Tunnel
 		services.set(ITunnelService, new SyncDescriptor(TunnelService));
+
+		// TARX Sidecar Service
+		services.set(ITarxSidecarService, new SyncDescriptor(TarxSidecarService));
 
 		// Protocol (instantiated early and not using sync descriptor for security reasons)
 		services.set(IProtocolMainService, new ProtocolMainService(environmentMainService, userDataProfilesMainService, logService));

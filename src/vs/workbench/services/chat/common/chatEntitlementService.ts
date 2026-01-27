@@ -255,6 +255,14 @@ export class ChatEntitlementService extends Disposable implements IChatEntitleme
 	) {
 		super();
 
+		// TARX: CRITICAL - Set hidden context key IMMEDIATELY before anything else
+		// This prevents Welcome page and other UI from showing Copilot setup
+		if (!productService.defaultChatAgent) {
+			ChatEntitlementContextKeys.Setup.hidden.bindTo(this.contextKeyService).set(true);
+			ChatEntitlementContextKeys.Setup.disabled.bindTo(this.contextKeyService).set(true);
+			// Don't return yet - still need to set up minimal state for other services
+		}
+
 		this.chatQuotaExceededContextKey = ChatEntitlementContextKeys.chatQuotaExceeded.bindTo(this.contextKeyService);
 		this.completionsQuotaExceededContextKey = ChatEntitlementContextKeys.completionsQuotaExceeded.bindTo(this.contextKeyService);
 
@@ -299,6 +307,8 @@ export class ChatEntitlementService extends Disposable implements IChatEntitleme
 		}
 
 		if (!productService.defaultChatAgent) {
+			// TARX: No Copilot configured - hide all Copilot UI
+			ChatEntitlementContextKeys.Setup.hidden.bindTo(this.contextKeyService).set(true);
 			return; // we need a default chat agent configured going forward from here
 		}
 

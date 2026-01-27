@@ -5,6 +5,10 @@
 
 import minimist from 'minimist';
 import * as nativeWatchdog from '@vscode/native-watchdog';
+// DISABLED: Sentry integration temporarily disabled to fix EPIPE crash on shutdown
+// TODO: Re-enable with safe config after V1 (no console instrumentation)
+// import * as Sentry from '@sentry/electron/main';
+// import { TARX_SENTRY_DSN } from '../../../platform/sentry/common/sentry.js';
 import * as net from 'net';
 import { ProcessTimeRunOnceScheduler } from '../../../base/common/async.js';
 import { VSBuffer } from '../../../base/common/buffer.js';

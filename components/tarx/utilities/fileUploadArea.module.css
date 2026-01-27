@@ -1,0 +1,153 @@
+/* FileUploadArea - VS Code Input Styling */
+
+.container {
+  background: var(--vscode-input-background, #3c3c3c);
+  border: 2px dashed var(--vscode-editor-group-border, #3e3e42);
+  border-radius: var(--vscode-radius-md, 4px);
+  padding: var(--vscode-space-xxl, 32px) var(--vscode-space-lg, 16px);
+  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  text-align: center;
+  cursor: pointer;
+  transition: var(--vscode-transition-normal, 200ms ease);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--vscode-space-sm, 8px);
+}
+
+.container:hover {
+  border-color: var(--vscode-accent-blue, #007acc);
+  background: rgba(0, 122, 204, 0.05);
+}
+
+.container:focus-visible {
+  outline: 2px solid var(--vscode-accent-blue, #007acc);
+  outline-offset: 2px;
+}
+
+.container.dragging {
+  border-color: var(--vscode-accent-blue, #007acc);
+  background: rgba(0, 122, 204, 0.1);
+}
+
+.icon {
+  color: var(--vscode-editor-line-number, #858585);
+}
+
+.text {
+  color: var(--vscode-editor-line-number, #858585);
+  font-size: var(--vscode-font-size, 13px);
+}
+
+.hiddenInput {
+  display: none;
+}
+
+/* Uploading state */
+.uploadingContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--vscode-space-sm, 8px);
+  width: 100%;
+}
+
+.filename {
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  font-weight: 500;
+}
+
+.progressBar {
+  width: 100%;
+  height: 4px;
+  background: var(--vscode-editor-group-border, #3e3e42);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--vscode-accent-blue, #007acc);
+  transition: width 300ms ease;
+}
+
+.progressText {
+  font-size: 12px;
+  color: var(--vscode-editor-line-number, #858585);
+}
+
+/* Success state */
+.container.success {
+  border-style: solid;
+  border-color: var(--vscode-success-green, #4ec9b0);
+  background: rgba(78, 201, 176, 0.1);
+  cursor: default;
+}
+
+.container.success:hover {
+  border-color: var(--vscode-success-green, #4ec9b0);
+  background: rgba(78, 201, 176, 0.1);
+}
+
+.successIcon {
+  color: var(--vscode-success-green, #4ec9b0);
+}
+
+.successText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vscode-space-xs, 4px);
+}
+
+.status {
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-success-green, #4ec9b0);
+  font-weight: 600;
+}
+
+/* Error state */
+.container.error {
+  border-style: solid;
+  border-color: var(--vscode-error-red, #f48771);
+  background: rgba(244, 135, 113, 0.1);
+  cursor: default;
+}
+
+.container.error:hover {
+  border-color: var(--vscode-error-red, #f48771);
+  background: rgba(244, 135, 113, 0.1);
+}
+
+.errorIcon {
+  color: var(--vscode-error-red, #f48771);
+}
+
+.errorText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vscode-space-sm, 8px);
+}
+
+.retryButton {
+  background: transparent;
+  border: 1px solid var(--vscode-editor-group-border, #3e3e42);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  cursor: pointer;
+  padding: var(--vscode-space-xs, 4px) var(--vscode-space-md, 12px);
+  border-radius: var(--vscode-radius-sm, 2px);
+  font-size: 12px;
+  transition: var(--vscode-transition-fast, 100ms ease);
+}
+
+.retryButton:hover {
+  background: rgba(62, 62, 66, 0.3);
+  border-color: var(--vscode-editor-line-number, #858585);
+}
+
+.retryButton:focus-visible {
+  outline: 2px solid var(--vscode-accent-blue, #007acc);
+  outline-offset: 2px;
+}

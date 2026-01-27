@@ -125,7 +125,7 @@ import { IWorkspaceContextService, WorkbenchState } from '../../../../../../plat
 
 const $ = dom.$;
 
-const INPUT_EDITOR_MAX_HEIGHT = 250;
+const INPUT_EDITOR_MAX_HEIGHT = 312; // TARX: Increased by 25% (was 250)
 const CachedLanguageModelsKey = 'chat.cachedLanguageModels.v2';
 
 export interface IChatInputStyles {

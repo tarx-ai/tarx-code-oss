@@ -5,7 +5,19 @@
 
 /* eslint-disable no-restricted-globals */
 
+// TARX DEBUG: Ultra-early crash detection
+console.error('[TARX WORKBENCH] workbench.ts LOADING - this is the EARLIEST possible log');
+window.addEventListener('error', (e) => {
+	console.error('[TARX EARLY CRASH]', e.message, e.filename, e.lineno, e.colno);
+	document.body.innerHTML = `<pre style="color:red;padding:20px;">EARLY CRASH: ${e.message}\nFile: ${e.filename}\nLine: ${e.lineno}</pre>`;
+});
+window.addEventListener('unhandledrejection', (e) => {
+	console.error('[TARX UNHANDLED REJECTION]', e.reason);
+});
+
 (async function () {
+
+	console.error('[TARX WORKBENCH] Inside async IIFE - renderer starting...');
 
 	// Add a perf entry right from the top
 	performance.mark('code/didStartRenderer');

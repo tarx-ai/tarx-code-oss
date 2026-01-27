@@ -1,0 +1,153 @@
+/* PerformanceMetricsCard - VS Code Metrics Styling */
+
+.container {
+  background: var(--vscode-editor-group-border, #3e3e42);
+  border: 1px solid var(--vscode-editor-group-border, #3e3e42);
+  border-radius: var(--vscode-radius-md, 4px);
+  padding: var(--vscode-space-md, 12px);
+  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--vscode-space-sm, 8px);
+  margin-bottom: var(--vscode-space-md, 12px);
+}
+
+.icon {
+  color: var(--vscode-success-green, #4ec9b0);
+  flex-shrink: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--vscode-font-size, 13px);
+  font-weight: 600;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--vscode-space-lg, 16px);
+  margin-bottom: var(--vscode-space-md, 12px);
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vscode-space-xs, 4px);
+}
+
+.metricLabel {
+  font-size: 12px;
+  color: var(--vscode-editor-line-number, #858585);
+  font-weight: 500;
+}
+
+.metricValues {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.before,
+.after {
+  display: flex;
+  gap: var(--vscode-space-xs, 4px);
+  font-size: var(--vscode-font-size, 13px);
+}
+
+.valueLabel {
+  font-size: 12px;
+  color: var(--vscode-editor-line-number, #858585);
+  min-width: 50px;
+}
+
+.value {
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+
+.valueAfter {
+  color: var(--vscode-success-green, #4ec9b0);
+  font-weight: 600;
+}
+
+.improvement {
+  font-size: var(--vscode-font-size, 13px);
+  font-weight: 600;
+  color: var(--vscode-success-green, #4ec9b0);
+  margin-top: var(--vscode-space-xs, 4px);
+}
+
+.footer {
+  margin-bottom: var(--vscode-space-md, 12px);
+  padding-top: var(--vscode-space-sm, 8px);
+  border-top: 1px solid rgba(62, 62, 66, 0.5);
+}
+
+.confidence {
+  display: flex;
+  align-items: center;
+  gap: var(--vscode-space-xs, 4px);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.actions {
+  display: flex;
+  gap: var(--vscode-space-sm, 8px);
+}
+
+.primaryButton {
+  background: var(--vscode-accent-blue, #007acc);
+  border: 1px solid var(--vscode-accent-blue, #007acc);
+  color: #ffffff;
+  cursor: pointer;
+  padding: var(--vscode-space-xs, 4px) var(--vscode-space-md, 12px);
+  border-radius: var(--vscode-radius-sm, 2px);
+  font-size: var(--vscode-font-size, 13px);
+  font-weight: 500;
+  transition: var(--vscode-transition-fast, 100ms ease);
+}
+
+.primaryButton:hover {
+  background: #005a9e;
+  border-color: #005a9e;
+}
+
+.primaryButton:focus-visible {
+  outline: 2px solid var(--vscode-accent-blue, #007acc);
+  outline-offset: 2px;
+}
+
+.secondaryButton {
+  background: transparent;
+  border: 1px solid var(--vscode-editor-group-border, #3e3e42);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  cursor: pointer;
+  padding: var(--vscode-space-xs, 4px) var(--vscode-space-md, 12px);
+  border-radius: var(--vscode-radius-sm, 2px);
+  font-size: var(--vscode-font-size, 13px);
+  transition: var(--vscode-transition-fast, 100ms ease);
+}
+
+.secondaryButton:hover {
+  background: rgba(30, 30, 30, 0.5);
+  border-color: var(--vscode-editor-line-number, #858585);
+}
+
+.secondaryButton:focus-visible {
+  outline: 2px solid var(--vscode-accent-blue, #007acc);
+  outline-offset: 2px;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .metrics {
+    grid-template-columns: 1fr;
+  }
+}

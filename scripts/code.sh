@@ -42,13 +42,22 @@ function code() {
 	export ELECTRON_ENABLE_STACK_DUMPING=1
 	export ELECTRON_ENABLE_LOGGING=1
 
+	# Ensure Electron runs as Electron, not Node.js (important when launched from VS Code)
+	unset ELECTRON_RUN_AS_NODE
+
 	DISABLE_TEST_EXTENSION="--disable-extension=vscode.vscode-api-tests"
 	if [[ "$@" == *"--extensionTestsPath"* ]]; then
 		DISABLE_TEST_EXTENSION=""
 	fi
 
+	# macOS Apple Silicon GPU workaround (fixes black screen on M1/M2/M3/M4)
+	MACOS_GPU_FLAGS=""
+	if [[ "$OSTYPE" == "darwin"* ]] && [[ $(uname -m) == "arm64" ]]; then
+		MACOS_GPU_FLAGS="--disable-gpu --disable-features=UseSkiaRenderer,Vulkan --enable-features=Metal --use-gl=angle --angle-backend=metal"
+	fi
+
 	# Launch Code
-	exec "$CODE" . $DISABLE_TEST_EXTENSION "$@"
+	exec "$CODE" . $DISABLE_TEST_EXTENSION $MACOS_GPU_FLAGS "$@"
 }
 
 function code-wsl()

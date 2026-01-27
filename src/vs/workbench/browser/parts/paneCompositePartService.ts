@@ -11,7 +11,7 @@ import { IProgressIndicator } from '../../../platform/progress/common/progress.j
 import { PaneCompositeDescriptor } from '../panecomposite.js';
 import { AuxiliaryBarPart } from './auxiliarybar/auxiliaryBarPart.js';
 import { PanelPart } from './panel/panelPart.js';
-import { SidebarPart } from './sidebar/sidebarPart.js';
+import { TarxSidebarPart } from './tarxsidebar/tarxSidebarPart.js';
 import { IPaneComposite } from '../../common/panecomposite.js';
 import { ViewContainerLocation, ViewContainerLocations } from '../../common/views.js';
 import { IPaneCompositePartService } from '../../services/panecomposite/browser/panecomposite.js';
@@ -33,7 +33,7 @@ export class PaneCompositePartService extends Disposable implements IPaneComposi
 		super();
 
 		const panelPart = instantiationService.createInstance(PanelPart);
-		const sideBarPart = instantiationService.createInstance(SidebarPart);
+		const sideBarPart = instantiationService.createInstance(TarxSidebarPart);
 		const auxiliaryBarPart = instantiationService.createInstance(AuxiliaryBarPart);
 
 		this.paneCompositeParts.set(ViewContainerLocation.Panel, panelPart);

@@ -4,6 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import './style.js';
+// TARX: Sentry temporarily disabled - module resolution issue in browser context
+// import * as Sentry from '@sentry/electron/renderer';
 import { runWhenWindowIdle } from '../../base/browser/dom.js';
 import { Event, Emitter, setGlobalLeakWarningThreshold } from '../../base/common/event.js';
 import { RunOnceScheduler, timeout } from '../../base/common/async.js';
@@ -118,6 +120,17 @@ export class Workbench extends Layout {
 
 		this.previousUnexpectedError.time = now;
 		this.previousUnexpectedError.message = message;
+
+		// TARX: Sentry temporarily disabled
+		// try {
+		// 	if (error instanceof Error) {
+		// 		Sentry.captureException(error);
+		// 	} else {
+		// 		Sentry.captureMessage(message, 'error');
+		// 	}
+		// } catch {
+		// 	// Ignore Sentry errors
+		// }
 
 		// Log it
 		logService.error(message);

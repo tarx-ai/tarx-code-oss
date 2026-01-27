@@ -124,6 +124,8 @@ import { NativeMcpDiscoveryHelperService } from '../../platform/mcp/node/nativeM
 import { IWebContentExtractorService } from '../../platform/webContentExtractor/common/webContentExtractor.js';
 import { NativeWebContentExtractorService } from '../../platform/webContentExtractor/electron-main/webContentExtractorService.js';
 import ErrorTelemetry from '../../platform/telemetry/electron-main/errorTelemetry.js';
+import { ITarxSidecarService } from '../../platform/tarx/common/tarx.js';
+import { TarxSidecarChannel, TARX_SIDECAR_CHANNEL_NAME } from '../../platform/tarx/common/tarxIpc.js';
 
 /**
  * The main VS Code application. There will only ever be one instance,
@@ -1198,6 +1200,10 @@ export class CodeApplication extends Disposable {
 		// Web Content Extractor
 		const webContentExtractorChannel = ProxyChannel.fromService(accessor.get(IWebContentExtractorService), disposables);
 		mainProcessElectronServer.registerChannel('webContentExtractor', webContentExtractorChannel);
+
+		// TARX Sidecar Service
+		const tarxSidecarChannel = new TarxSidecarChannel(accessor.get(ITarxSidecarService));
+		mainProcessElectronServer.registerChannel(TARX_SIDECAR_CHANNEL_NAME, tarxSidecarChannel);
 
 		// Workspaces
 		const workspacesChannel = ProxyChannel.fromService(accessor.get(IWorkspacesService), disposables);

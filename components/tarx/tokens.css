@@ -1,0 +1,92 @@
+/**
+ * VS Code Native CSS Tokens
+ * 
+ * These tokens match VS Code's native theme exactly.
+ * DO NOT use custom colors - only these system tokens.
+ */
+
+:root {
+  /* Editor Colors */
+  --vscode-editor-background: #1e1e1e;
+  --vscode-editor-foreground: #d4d4d4;
+  --vscode-editor-group-border: #3e3e42;
+  --vscode-editor-line-number: #858585;
+  --vscode-editor-whitespace: #424242;
+  --vscode-editor-cursor: #aeafad;
+  
+  /* Input Colors */
+  --vscode-input-background: #3c3c3c;
+  --vscode-input-border: #007acc;
+  
+  /* Semantic Colors */
+  --vscode-accent-blue: #007acc;
+  --vscode-error-red: #f48771;
+  --vscode-warning-yellow: #dcdcaa;
+  --vscode-info-blue: #4fc1ff;
+  --vscode-success-green: #4ec9b0;
+  
+  /* Diff Editor Colors */
+  --vscode-diff-inserted-bg: rgba(55, 135, 58, 0.2);
+  --vscode-diff-removed-bg: rgba(148, 21, 27, 0.2);
+  --vscode-diff-inserted-text: #4ec9b0;
+  --vscode-diff-removed-text: #f48771;
+  
+  /* Typography */
+  --vscode-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --vscode-font-mono: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+  --vscode-font-size: 13px;
+  --vscode-line-height: 1.4;
+  --vscode-letter-spacing: -0.5px;
+  
+  /* Spacing (4px grid) */
+  --vscode-space-xs: 4px;
+  --vscode-space-sm: 8px;
+  --vscode-space-md: 12px;
+  --vscode-space-lg: 16px;
+  --vscode-space-xl: 24px;
+  --vscode-space-xxl: 32px;
+  
+  /* Border Radius */
+  --vscode-radius-sm: 2px;
+  --vscode-radius-md: 4px;
+  
+  /* Animations */
+  --vscode-transition-fast: 100ms ease;
+  --vscode-transition-normal: 200ms ease;
+  
+  /* Scrollbar */
+  --vscode-scrollbar-bg: #424242;
+  --vscode-scrollbar-hover: #4f4f4f;
+}
+
+/* Base Styles for VS Code Components */
+.vscode-component {
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  line-height: var(--vscode-line-height);
+  letter-spacing: var(--vscode-letter-spacing);
+  color: var(--vscode-editor-foreground);
+}
+
+.vscode-mono {
+  font-family: var(--vscode-font-mono);
+}
+
+/* Custom Scrollbar (VS Code style) */
+.vscode-scrollable::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.vscode-scrollable::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.vscode-scrollable::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbar-bg);
+  border-radius: 10px;
+}
+
+.vscode-scrollable::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbar-hover);
+}

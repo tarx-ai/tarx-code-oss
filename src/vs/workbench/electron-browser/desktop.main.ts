@@ -3,6 +3,32 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+// TARX: Sentry temporarily disabled - module resolution issue in browser context
+// import * as Sentry from '@sentry/electron/renderer';
+// import { TARX_SENTRY_DSN } from '../../platform/sentry/common/sentry.js';
+//
+// Sentry.init({
+// 	dsn: TARX_SENTRY_DSN,
+// 	environment: process.env['NODE_ENV'] === 'production' ? 'production' : 'development',
+// 	release: `tarx-code@1.0.0`,
+// 	tracesSampleRate: 1.0,
+// 	sendDefaultPii: true,
+// 	integrations: [
+// 		Sentry.browserTracingIntegration(),
+// 	],
+// 	ignoreErrors: [
+// 		'ResizeObserver loop limit exceeded',
+// 		'ResizeObserver loop completed with undelivered notifications',
+// 		'Network request failed',
+// 		'AbortError',
+// 	],
+// 	beforeSend(event) {
+// 		event.tags = { ...event.tags, app_type: 'code-oss', process_type: 'renderer' };
+// 		if (event.user) { delete event.user.ip_address; delete event.user.email; }
+// 		return event;
+// 	},
+// });
+
 import { localize } from '../../nls.js';
 import product from '../../platform/product/common/product.js';
 import { INativeWindowConfiguration, IWindowsConfiguration } from '../../platform/window/common/window.js';

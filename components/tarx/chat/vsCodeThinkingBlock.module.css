@@ -1,0 +1,131 @@
+/* VSCodeThinkingBlock - VS Code Info Panel Style */
+
+.container {
+  background: var(--vscode-editor-background, #1e1e1e);
+  border-left: 3px solid var(--vscode-accent-blue, #007acc);
+  border-radius: var(--vscode-radius-md, 4px);
+  padding: var(--vscode-space-md, 12px);
+  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--vscode-space-sm, 8px);
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--vscode-space-xs, 4px);
+}
+
+.icon {
+  color: var(--vscode-accent-blue, #007acc);
+  flex-shrink: 0;
+}
+
+.title {
+  font-weight: 600;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+
+.duration {
+  font-weight: 400;
+  color: var(--vscode-editor-line-number, #858585);
+  margin-left: var(--vscode-space-xs, 4px);
+}
+
+.expandButton {
+  background: transparent;
+  border: 1px solid var(--vscode-editor-group-border, #3e3e42);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  cursor: pointer;
+  padding: var(--vscode-space-xs, 4px) var(--vscode-space-sm, 8px);
+  border-radius: var(--vscode-radius-sm, 2px);
+  display: flex;
+  align-items: center;
+  gap: var(--vscode-space-xs, 4px);
+  font-size: 12px;
+  transition: var(--vscode-transition-fast, 100ms ease);
+}
+
+.expandButton:hover {
+  background: rgba(0, 122, 204, 0.1);
+  border-color: var(--vscode-accent-blue, #007acc);
+  color: var(--vscode-accent-blue, #007acc);
+}
+
+.expandButton:focus-visible {
+  outline: 2px solid var(--vscode-accent-blue, #007acc);
+  outline-offset: 2px;
+}
+
+.content {
+  max-height: 0;
+  overflow: hidden;
+  transition: var(--vscode-transition-normal, 200ms ease);
+}
+
+.content.expanded {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.text {
+  margin: 0;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.footer {
+  margin-top: var(--vscode-space-sm, 8px);
+  padding-top: var(--vscode-space-sm, 8px);
+  border-top: 1px solid var(--vscode-editor-group-border, #3e3e42);
+}
+
+.deepDiveButton {
+  background: transparent;
+  border: none;
+  color: var(--vscode-accent-blue, #007acc);
+  cursor: pointer;
+  padding: 0;
+  font-size: var(--vscode-font-size, 13px);
+  display: flex;
+  align-items: center;
+  gap: var(--vscode-space-xs, 4px);
+  transition: var(--vscode-transition-fast, 100ms ease);
+}
+
+.deepDiveButton:hover {
+  text-decoration: underline;
+  filter: brightness(1.1);
+}
+
+.deepDiveButton:focus-visible {
+  outline: 2px solid var(--vscode-accent-blue, #007acc);
+  outline-offset: 2px;
+  border-radius: var(--vscode-radius-sm, 2px);
+}
+
+/* Custom scrollbar for expanded content */
+.content.expanded::-webkit-scrollbar {
+  width: 10px;
+}
+
+.content.expanded::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.content.expanded::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbar-bg, #424242);
+  border-radius: 10px;
+}
+
+.content.expanded::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbar-hover, #4f4f4f);
+}

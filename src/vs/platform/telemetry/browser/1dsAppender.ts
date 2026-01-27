@@ -14,11 +14,7 @@ export class OneDataSystemWebAppender extends AbstractOneDataSystemAppender {
 		iKeyOrClientFactory: string | (() => IAppInsightsCore), // allow factory function for testing
 	) {
 		super(isInternalTelemetry, eventPrefix, defaultData, iKeyOrClientFactory);
-
-		// If we cannot fetch the endpoint it means it is down and we should not send any telemetry.
-		// This is most likely due to ad blockers
-		fetch(this.endPointHealthUrl, { method: 'GET' }).catch(err => {
-			this._aiCoreOrKey = undefined;
-		});
+		// TARX: Telemetry disabled - no external fetch
+		this._aiCoreOrKey = undefined;
 	}
 }

@@ -1,0 +1,155 @@
+/* ArtifactCard - VS Code Code Block Styling */
+
+.container {
+  background: var(--vscode-editor-background, #1e1e1e);
+  border: 1px solid var(--vscode-editor-group-border, #3e3e42);
+  border-radius: var(--vscode-radius-md, 4px);
+  padding: var(--vscode-space-md, 12px);
+  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--vscode-space-sm, 8px);
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--vscode-space-sm, 8px);
+}
+
+.icon {
+  color: var(--vscode-accent-blue, #007acc);
+  flex-shrink: 0;
+}
+
+.languageBadge {
+  background: rgba(62, 62, 66, 0.5);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  padding: 2px var(--vscode-space-sm, 8px);
+  border-radius: var(--vscode-radius-sm, 2px);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.filename {
+  font-size: var(--vscode-font-size, 13px);
+  font-weight: 500;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+
+.lineCount {
+  font-size: 12px;
+  color: var(--vscode-editor-line-number, #858585);
+}
+
+.codeBlock {
+  background: var(--vscode-editor-background, #1e1e1e);
+  border: 1px solid var(--vscode-editor-group-border, #3e3e42);
+  border-radius: var(--vscode-radius-md, 4px);
+  padding: var(--vscode-space-md, 12px);
+  margin: 0 0 var(--vscode-space-md, 12px) 0;
+  font-family: var(--vscode-font-mono, "SF Mono", Monaco, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.code {
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+
+/* Custom scrollbar */
+.codeBlock::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.codeBlock::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.codeBlock::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbar-bg, #424242);
+  border-radius: 10px;
+}
+
+.codeBlock::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbar-hover, #4f4f4f);
+}
+
+.actions {
+  display: flex;
+  gap: var(--vscode-space-sm, 8px);
+  flex-wrap: wrap;
+}
+
+.primaryButton {
+  background: var(--vscode-accent-blue, #007acc);
+  border: 1px solid var(--vscode-accent-blue, #007acc);
+  color: #ffffff;
+  cursor: pointer;
+  padding: var(--vscode-space-xs, 4px) var(--vscode-space-md, 12px);
+  border-radius: var(--vscode-radius-sm, 2px);
+  font-size: var(--vscode-font-size, 13px);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: var(--vscode-space-xs, 4px);
+  transition: var(--vscode-transition-fast, 100ms ease);
+}
+
+.primaryButton:hover {
+  background: #005a9e;
+  border-color: #005a9e;
+}
+
+.primaryButton:focus-visible {
+  outline: 2px solid var(--vscode-accent-blue, #007acc);
+  outline-offset: 2px;
+}
+
+.secondaryButton {
+  background: transparent;
+  border: 1px solid var(--vscode-editor-group-border, #3e3e42);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  cursor: pointer;
+  padding: var(--vscode-space-xs, 4px) var(--vscode-space-md, 12px);
+  border-radius: var(--vscode-radius-sm, 2px);
+  font-size: var(--vscode-font-size, 13px);
+  display: flex;
+  align-items: center;
+  gap: var(--vscode-space-xs, 4px);
+  transition: var(--vscode-transition-fast, 100ms ease);
+}
+
+.secondaryButton:hover {
+  background: rgba(62, 62, 66, 0.3);
+  border-color: var(--vscode-editor-line-number, #858585);
+}
+
+.secondaryButton:focus-visible {
+  outline: 2px solid var(--vscode-accent-blue, #007acc);
+  outline-offset: 2px;
+}
+
+.kbd {
+  background: rgba(62, 62, 66, 0.5);
+  padding: 2px 6px;
+  border-radius: var(--vscode-radius-sm, 2px);
+  font-family: var(--vscode-font-mono, "SF Mono", Monaco, monospace);
+  font-size: 10px;
+  color: var(--vscode-editor-line-number, #858585);
+  margin-left: var(--vscode-space-xs, 4px);
+}

@@ -112,6 +112,16 @@ type GettingStartedStartEntryContent = BuiltinGettingStartedStartEntry[];
 
 export const startEntries: GettingStartedStartEntryContent = [
 	{
+		id: 'tarx.openChat',
+		title: localize('gettingStarted.tarxChat.title', "Chat with TARX"),
+		description: localize('gettingStarted.tarxChat.description', "Ask TARX to help you code, debug, or understand your project."),
+		icon: Codicon.commentDiscussion,
+		content: {
+			type: 'startEntry',
+			command: 'command:workbench.action.chat.open',
+		}
+	},
+	{
 		id: 'welcome.showNewFileEntries',
 		title: localize('gettingStarted.newFile.title', "New File..."),
 		description: localize('gettingStarted.newFile.description', "Open a new untitled text file, notebook, or custom editor."),
@@ -251,12 +261,12 @@ function createCopilotSetupStep(id: string, button: string, when: string, includ
 export const walkthroughs: GettingStartedWalkthroughContent = [
 	{
 		id: 'Setup',
-		title: localize('gettingStarted.setup.title', "Get started with VS Code"),
-		description: localize('gettingStarted.setup.description', "Customize your editor, learn the basics, and start coding"),
+		title: localize('gettingStarted.setup.title', "Get Started with TARX"),
+		description: localize('gettingStarted.setup.description', "Customize your editor, learn the basics, and start coding with local AI"),
 		isFeatured: true,
 		icon: setupIcon,
 		when: '!isWeb',
-		walkthroughPageTitle: localize('gettingStarted.setup.walkthroughPageTitle', 'Setup VS Code'),
+		walkthroughPageTitle: localize('gettingStarted.setup.walkthroughPageTitle', 'Setup TARX'),
 		next: 'Beginner',
 		content: {
 			type: 'steps',
@@ -480,10 +490,10 @@ export const walkthroughs: GettingStartedWalkthroughContent = [
 	{
 		id: 'Beginner',
 		isFeatured: false,
-		title: localize('gettingStarted.beginner.title', "Learn the Fundamentals"),
+		title: localize('gettingStarted.beginner.title', "TARX Features & Tips"),
 		icon: beginnerIcon,
-		description: localize('gettingStarted.beginner.description', "Get an overview of the most essential features"),
-		walkthroughPageTitle: localize('gettingStarted.beginner.walkthroughPageTitle', 'Essential Features'),
+		description: localize('gettingStarted.beginner.description', "Explore local AI coding and essential features"),
+		walkthroughPageTitle: localize('gettingStarted.beginner.walkthroughPageTitle', 'TARX Features'),
 		content: {
 			type: 'steps',
 			steps: [

@@ -1,0 +1,286 @@
+{
+  "name": "tarx",
+  "displayName": "TARX",
+  "description": "Local-first AI assistant with GPU-accelerated inference",
+  "version": "0.1.0",
+  "publisher": "tarx-ai",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "AI",
+    "Machine Learning"
+  ],
+  "keywords": [
+    "ai",
+    "llm",
+    "local",
+    "inference",
+    "copilot",
+    "code completion"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "enabledApiProposals": [
+    "defaultChatParticipant",
+    "chatParticipantAdditions",
+    "chatProvider",
+    "speech"
+  ],
+  "contributes": {
+    "languageModelChatProviders": [
+      {
+        "vendor": "tarx",
+        "displayName": "TARX Local"
+      }
+    ],
+    "chatParticipants": [
+      {
+        "id": "tarx.chat",
+        "name": "tarx",
+        "fullName": "TARX",
+        "description": "Local-first AI assistant powered by llama-server",
+        "isDefault": true,
+        "locations": [
+          "panel"
+        ],
+        "modes": [
+          "ask",
+          "edit",
+          "agent"
+        ],
+        "commands": [
+          {
+            "name": "explain",
+            "description": "Explain code or concepts"
+          },
+          {
+            "name": "refactor",
+            "description": "Suggest code refactoring"
+          },
+          {
+            "name": "fix",
+            "description": "Find and fix bugs"
+          },
+          {
+            "name": "tests",
+            "description": "Generate unit tests"
+          }
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "tarx.openChat",
+        "title": "TARX: Open Chat",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "tarx.explainSelection",
+        "title": "TARX: Explain Selection",
+        "icon": "$(lightbulb)"
+      },
+      {
+        "command": "tarx.refactorSelection",
+        "title": "TARX: Refactor Selection",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "tarx.generateTests",
+        "title": "TARX: Generate Tests",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "tarx.fixCode",
+        "title": "TARX: Fix This Code",
+        "icon": "$(wrench)"
+      },
+      {
+        "command": "tarx.addToContext",
+        "title": "TARX: Add File to Context"
+      },
+      {
+        "command": "tarx.clearContext",
+        "title": "TARX: Clear Context"
+      },
+      {
+        "command": "tarx.showStatus",
+        "title": "TARX: Show Connection Status"
+      },
+      {
+        "command": "tarx.indexProject",
+        "title": "TARX: Index Current Project"
+      },
+      {
+        "command": "tarx.showIndexingProgress",
+        "title": "TARX: Show Indexing Progress"
+      },
+      {
+        "command": "tarx.applyArtifact",
+        "title": "TARX: Apply Code Artifact"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "submenu": "tarx.submenu",
+          "group": "tarx@1",
+          "when": "editorHasSelection"
+        }
+      ],
+      "tarx.submenu": [
+        {
+          "command": "tarx.explainSelection",
+          "group": "1_understand"
+        },
+        {
+          "command": "tarx.refactorSelection",
+          "group": "2_modify"
+        },
+        {
+          "command": "tarx.fixCode",
+          "group": "2_modify"
+        },
+        {
+          "command": "tarx.generateTests",
+          "group": "3_test"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "tarx.addToContext",
+          "group": "tarx@1",
+          "when": "resourceScheme == file"
+        }
+      ]
+    },
+    "submenus": [
+      {
+        "id": "tarx.submenu",
+        "label": "TARX"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "tarx.openChat",
+        "key": "ctrl+shift+t",
+        "mac": "cmd+shift+t"
+      },
+      {
+        "command": "tarx.explainSelection",
+        "key": "ctrl+k ctrl+e",
+        "mac": "cmd+k cmd+e",
+        "when": "editorHasSelection"
+      },
+      {
+        "command": "tarx.generateTests",
+        "key": "ctrl+k ctrl+t",
+        "mac": "cmd+k cmd+t",
+        "when": "editorHasSelection"
+      },
+      {
+        "command": "tarx.refactorSelection",
+        "key": "ctrl+k ctrl+r",
+        "mac": "cmd+k cmd+r",
+        "when": "editorHasSelection"
+      },
+      {
+        "command": "tarx.fixCode",
+        "key": "ctrl+k ctrl+f",
+        "mac": "cmd+k cmd+f",
+        "when": "editorHasSelection"
+      }
+    ],
+    "configuration": {
+      "title": "TARX",
+      "properties": {
+        "tarx.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:11435",
+          "description": "TARX llama-server URL"
+        },
+        "tarx.ragUrl": {
+          "type": "string",
+          "default": "http://localhost:11437",
+          "description": "TARX RAG embedding server URL (nomic-embed)"
+        },
+        "tarx.model": {
+          "type": "string",
+          "default": "local",
+          "description": "Model to use for chat and completions"
+        },
+        "tarx.completions.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable inline code completions"
+        },
+        "tarx.completions.debounceMs": {
+          "type": "number",
+          "default": 300,
+          "description": "Debounce delay for completions (milliseconds)"
+        },
+        "tarx.voiceUrl": {
+          "type": "string",
+          "default": "ws://127.0.0.1:11438",
+          "description": "TARX voice service WebSocket URL"
+        },
+        "tarx.voiceEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable voice input features"
+        },
+        "tarx.telemetry": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable TARX analytics and event tracking. No PII is collected.",
+          "tags": ["telemetry"]
+        }
+      }
+    },
+    "speechProviders": [
+      {
+        "name": "tarx",
+        "description": "TARX Voice (Moshi)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "tarx-sidebar",
+          "title": "TARX",
+          "icon": "$(comment-discussion)"
+        }
+      ]
+    },
+    "views": {
+      "tarx-sidebar": [
+        {
+          "id": "tarx.sidebar",
+          "name": "TARX",
+          "type": "tree"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "tarx.sidebar",
+        "contents": "Welcome to TARX!\n\n[Start Conversation](command:workbench.action.chat.open)\n\nLocal-first AI assistant with GPU-accelerated inference."
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/minimatch": "^5.1.2",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0"
+  }
+}

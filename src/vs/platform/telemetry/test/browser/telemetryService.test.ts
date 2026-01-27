@@ -17,7 +17,8 @@ import { TelemetryConfiguration, TelemetryLevel } from '../../common/telemetry.j
 import { ITelemetryServiceConfig, TelemetryService } from '../../common/telemetryService.js';
 import { ITelemetryAppender, NullAppender } from '../../common/telemetryUtils.js';
 
-const sinonTestFn = sinonTest(sinon);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const sinonTestFn = sinonTest(sinon as any);
 
 class TestTelemetryAppender implements ITelemetryAppender {
 

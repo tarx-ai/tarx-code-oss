@@ -1,0 +1,178 @@
+/* ProjectIntegrationCard - VS Code File Explorer Style */
+
+.container {
+  background: var(--vscode-editor-group-border, #3e3e42);
+  border: 1px solid var(--vscode-editor-group-border, #3e3e42);
+  border-radius: var(--vscode-radius-md, 4px);
+  padding: var(--vscode-space-md, 12px);
+  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--vscode-space-md, 12px);
+  padding-bottom: var(--vscode-space-sm, 8px);
+  border-bottom: 1px solid rgba(62, 62, 66, 0.5);
+}
+
+.title {
+  font-size: var(--vscode-font-size, 13px);
+  font-weight: 600;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+
+.summary {
+  font-size: 12px;
+  font-family: var(--vscode-font-mono, "SF Mono", Monaco, monospace);
+}
+
+.added {
+  color: var(--vscode-success-green, #4ec9b0);
+  font-weight: 600;
+}
+
+.removed {
+  color: var(--vscode-error-red, #f48771);
+  font-weight: 600;
+}
+
+.fileList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vscode-space-xs, 4px);
+  margin-bottom: var(--vscode-space-md, 12px);
+}
+
+.fileItem {
+  border-radius: var(--vscode-radius-sm, 2px);
+}
+
+.fileHeader {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  cursor: pointer;
+  padding: var(--vscode-space-xs, 4px);
+  display: flex;
+  align-items: center;
+  gap: var(--vscode-space-sm, 8px);
+  font-size: 12px;
+  text-align: left;
+  border-radius: var(--vscode-radius-sm, 2px);
+  transition: var(--vscode-transition-fast, 100ms ease);
+}
+
+.fileHeader:hover {
+  background: rgba(30, 30, 30, 0.3);
+}
+
+.fileHeader:focus-visible {
+  outline: 2px solid var(--vscode-accent-blue, #007acc);
+  outline-offset: 2px;
+}
+
+.fileHeader:disabled {
+  cursor: default;
+}
+
+.chevron {
+  color: var(--vscode-editor-line-number, #858585);
+  flex-shrink: 0;
+}
+
+.fileIcon {
+  color: var(--vscode-accent-blue, #007acc);
+  flex-shrink: 0;
+}
+
+.filePath {
+  flex: 1;
+  font-family: var(--vscode-font-mono, "SF Mono", Monaco, monospace);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.changes {
+  font-family: var(--vscode-font-mono, "SF Mono", Monaco, monospace);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.diff {
+  background: var(--vscode-editor-background, #1e1e1e);
+  border: 1px solid var(--vscode-editor-group-border, #3e3e42);
+  border-radius: var(--vscode-radius-md, 4px);
+  padding: var(--vscode-space-sm, 8px);
+  margin: var(--vscode-space-xs, 4px) 0 0 24px;
+  font-family: var(--vscode-font-mono, "SF Mono", Monaco, monospace);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-x: auto;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.diff code {
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+
+/* Custom scrollbar */
+.diff::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.diff::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.diff::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbar-bg, #424242);
+  border-radius: 10px;
+}
+
+.diff::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbar-hover, #4f4f4f);
+}
+
+.actions {
+  display: flex;
+  gap: var(--vscode-space-sm, 8px);
+}
+
+.primaryButton {
+  background: var(--vscode-accent-blue, #007acc);
+  border: 1px solid var(--vscode-accent-blue, #007acc);
+  color: #ffffff;
+  cursor: pointer;
+  padding: var(--vscode-space-xs, 4px) var(--vscode-space-md, 12px);
+  border-radius: var(--vscode-radius-sm, 2px);
+  font-size: var(--vscode-font-size, 13px);
+  font-weight: 500;
+  transition: var(--vscode-transition-fast, 100ms ease);
+}
+
+.primaryButton:hover {
+  background: #005a9e;
+  border-color: #005a9e;
+}
+
+.primaryButton:focus-visible {
+  outline: 2px solid var(--vscode-accent-blue, #007acc);
+  outline-offset: 2px;
+}

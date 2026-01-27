@@ -617,16 +617,17 @@ export class ExtHostChatSessions extends Disposable implements ExtHostChatSessio
 		return {};
 	}
 
-	private async getModelForRequest(request: IChatAgentRequest, extension: IExtensionDescription): Promise<vscode.LanguageModelChat> {
+	private async getModelForRequest(request: IChatAgentRequest, extension: IExtensionDescription): Promise<vscode.LanguageModelChat | undefined> {
 		let model: vscode.LanguageModelChat | undefined;
 		if (request.userSelectedModelId) {
 			model = await this._languageModels.getLanguageModelByIdentifier(extension, request.userSelectedModelId);
 		}
 		if (!model) {
 			model = await this._languageModels.getDefaultLanguageModel(extension);
-			if (!model) {
-				throw new Error('Language model unavailable');
-			}
+			// TARX: Don't throw if no language model - extensions can handle their own inference
+			// if (!model) {
+			// 	throw new Error('Language model unavailable');
+			// }
 		}
 
 		return model;

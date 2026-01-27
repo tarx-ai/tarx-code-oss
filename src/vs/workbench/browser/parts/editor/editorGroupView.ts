@@ -190,7 +190,7 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 			// Container context menu
 			this.createContainerContextMenu();
 
-			// Watermark & shortcuts
+			// Watermark (tips for empty editor groups)
 			this._register(this.instantiationService.createInstance(EditorGroupWatermark, this.element));
 
 			// Progress bar

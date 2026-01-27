@@ -161,7 +161,7 @@ const supportsAllAttachments: Required<IChatAgentAttachmentCapabilities> = {
 	supportsTerminalAttachments: true,
 };
 
-const DISCLAIMER = localize('chatDisclaimer', "AI responses may be inaccurate.");
+const DISCLAIMER = localize('chatDisclaimer', "Local. Private. Proactive.");
 
 export class ChatWidget extends Disposable implements IChatWidget {
 
@@ -932,17 +932,17 @@ export class ChatWidget extends Disposable implements IChatWidget {
 
 		let title: string;
 		if (this.input.currentModeKind === ChatModeKind.Ask) {
-			title = localize('chatDescription', "Ask about your code");
+			title = localize('chatDescription', "What would you like to work on?");
 		} else if (this.input.currentModeKind === ChatModeKind.Edit) {
-			title = localize('editsTitle', "Edit in context");
+			title = localize('editsTitle', "What would you like to edit?");
 		} else {
-			title = localize('agentTitle', "Build with Agent");
+			title = localize('agentTitle', "What would you like TARX to build?");
 		}
 
 		return {
 			title,
 			message: new MarkdownString(DISCLAIMER),
-			icon: Codicon.chatSparkle,
+			icon: Codicon.robot,
 			additionalMessage,
 			suggestedPrompts: this.getPromptFileSuggestions()
 		};
@@ -956,27 +956,43 @@ export class ChatWidget extends Disposable implements IChatWidget {
 			if (isEmpty) {
 				return [
 					{
-						icon: Codicon.vscode,
-						label: localize('chatWidget.suggestedPrompts.gettingStarted', "Ask @vscode"),
-						prompt: localize('chatWidget.suggestedPrompts.gettingStartedPrompt', "@vscode How do I change the theme to light mode?"),
+						icon: Codicon.code,
+						label: localize('chatWidget.suggestedPrompts.helpMeCode', "Help me code"),
+						description: localize('chatWidget.suggestedPrompts.helpMeCodeDesc', "Write code with AI assistance"),
+						prompt: localize('chatWidget.suggestedPrompts.helpMeCodePrompt', "@tarx help me write code"),
 					},
 					{
-						icon: Codicon.newFolder,
-						label: localize('chatWidget.suggestedPrompts.newProject', "Create Project"),
-						prompt: localize('chatWidget.suggestedPrompts.newProjectPrompt', "Create a #new Hello World project in TypeScript"),
+						icon: Codicon.lightbulb,
+						label: localize('chatWidget.suggestedPrompts.explainThis', "Explain this"),
+						description: localize('chatWidget.suggestedPrompts.explainThisDesc', "Understand code concepts"),
+						prompt: localize('chatWidget.suggestedPrompts.explainThisPrompt', "@tarx explain how this works"),
+					},
+					{
+						icon: Codicon.bug,
+						label: localize('chatWidget.suggestedPrompts.debug', "Debug"),
+						description: localize('chatWidget.suggestedPrompts.debugDesc', "Find and fix issues"),
+						prompt: localize('chatWidget.suggestedPrompts.debugPrompt', "@tarx help me debug this issue"),
 					}
 				];
 			} else {
 				return [
 					{
-						icon: Codicon.debugAlt,
-						label: localize('chatWidget.suggestedPrompts.buildWorkspace', "Build Workspace"),
-						prompt: localize('chatWidget.suggestedPrompts.buildWorkspacePrompt', "How do I build this workspace?"),
+						icon: Codicon.code,
+						label: localize('chatWidget.suggestedPrompts.helpMeCodeProject', "Help me code"),
+						description: localize('chatWidget.suggestedPrompts.helpMeCodeProjectDesc', "Write code with AI assistance"),
+						prompt: localize('chatWidget.suggestedPrompts.helpMeCodeProjectPrompt', "@tarx help me write code for this project"),
 					},
 					{
-						icon: Codicon.gear,
-						label: localize('chatWidget.suggestedPrompts.findConfig', "Show Config"),
-						prompt: localize('chatWidget.suggestedPrompts.findConfigPrompt', "Where is the configuration for this project defined?"),
+						icon: Codicon.lightbulb,
+						label: localize('chatWidget.suggestedPrompts.explainThisProject', "Explain this"),
+						description: localize('chatWidget.suggestedPrompts.explainThisProjectDesc', "Understand this codebase"),
+						prompt: localize('chatWidget.suggestedPrompts.explainThisProjectPrompt', "@tarx explain this codebase"),
+					},
+					{
+						icon: Codicon.bug,
+						label: localize('chatWidget.suggestedPrompts.debugProject', "Debug"),
+						description: localize('chatWidget.suggestedPrompts.debugProjectDesc', "Find and fix issues"),
+						prompt: localize('chatWidget.suggestedPrompts.debugProjectPrompt', "@tarx help me debug this issue"),
 					}
 				];
 			}

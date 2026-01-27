@@ -30,7 +30,7 @@ export class ChatStatusBarEntry extends Disposable implements IWorkbenchContribu
 
 	private readonly activeCodeEditorListener = this._register(new MutableDisposable());
 
-	private runningSessionsCount: number;
+	private runningSessionsCount: number = 0;
 
 	constructor(
 		@IChatEntitlementService private readonly chatEntitlementService: ChatEntitlementService,
@@ -42,6 +42,11 @@ export class ChatStatusBarEntry extends Disposable implements IWorkbenchContribu
 		@IChatSessionsService private readonly chatSessionsService: IChatSessionsService,
 	) {
 		super();
+
+		// TARX: Skip Copilot status bar when no defaultChatAgent configured
+		if (!product.defaultChatAgent) {
+			return; // TARX: No Copilot - skip status bar
+		}
 
 		this.runningSessionsCount = this.chatSessionsService.getInProgress().reduce((total, item) => total + item.count, 0);
 

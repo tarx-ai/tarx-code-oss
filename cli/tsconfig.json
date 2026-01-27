@@ -1,0 +1,29 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "commonjs",
+		"lib": ["ES2022"],
+		"outDir": "./out",
+		"rootDir": "..",
+		"strict": true,
+		"noImplicitAny": false,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true,
+		"declaration": false,
+		"moduleResolution": "node",
+		"sourceMap": true,
+		"types": ["node"],
+		"ignoreDeprecations": "6.0"
+	},
+	"include": [
+		"./**/*.ts",
+		"../extensions/tarx/src/systemPrompt.ts",
+		"../extensions/tarx/src/codeAnalysis.ts"
+	],
+	"exclude": [
+		"node_modules",
+		"out"
+	]
+}

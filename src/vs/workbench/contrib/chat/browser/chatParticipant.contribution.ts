@@ -8,7 +8,6 @@ import { Codicon } from '../../../../base/common/codicons.js';
 import { toErrorMessage } from '../../../../base/common/errorMessage.js';
 import { Event } from '../../../../base/common/event.js';
 import { createCommandUri, MarkdownString } from '../../../../base/common/htmlContent.js';
-import { KeyCode, KeyMod } from '../../../../base/common/keyCodes.js';
 import { Disposable, DisposableMap, DisposableStore } from '../../../../base/common/lifecycle.js';
 import * as strings from '../../../../base/common/strings.js';
 import { localize, localize2 } from '../../../../nls.js';
@@ -36,8 +35,8 @@ import { ChatViewPane } from './widgetHosts/viewPane/chatViewPane.js';
 
 const chatViewContainer: ViewContainer = Registry.as<IViewContainersRegistry>(ViewExtensions.ViewContainersRegistry).registerViewContainer({
 	id: ChatViewContainerId,
-	title: localize2('chat.viewContainer.label', "Chat"),
-	icon: Codicon.chatSparkle,
+	title: localize2('chat.viewContainer.label', "TARX"),
+	icon: Codicon.robot,  // TARX: Changed from chatSparkle to robot
 	ctorDescriptor: new SyncDescriptor(ViewPaneContainer, [ChatViewContainerId, { mergeViewWithContainerWhenSingleView: true }]),
 	storageId: ChatViewContainerId,
 	hideIfEmpty: true,
@@ -49,19 +48,14 @@ const chatViewDescriptor: IViewDescriptor = {
 	containerIcon: chatViewContainer.icon,
 	containerTitle: chatViewContainer.title.value,
 	singleViewPaneContainerTitle: chatViewContainer.title.value,
-	name: localize2('chat.viewContainer.label', "Chat"),
+	name: localize2('chat.viewContainer.label', "TARX"),
 	canToggleVisibility: false,
 	canMoveView: true,
+	// TARX: Removed keybinding - Cmd+Alt+I now opens chat as editor tab via workbench.action.chat.open
 	openCommandActionDescriptor: {
 		id: ChatViewContainerId,
 		title: chatViewContainer.title,
-		mnemonicTitle: localize({ key: 'miToggleChat', comment: ['&& denotes a mnemonic'] }, "&&Chat"),
-		keybindings: {
-			primary: KeyMod.CtrlCmd | KeyMod.Alt | KeyCode.KeyI,
-			mac: {
-				primary: KeyMod.CtrlCmd | KeyMod.WinCtrl | KeyCode.KeyI
-			}
-		},
+		mnemonicTitle: localize({ key: 'miToggleChat', comment: ['&& denotes a mnemonic'] }, "&&TARX"),
 		order: 1
 	},
 	ctorDescriptor: new SyncDescriptor(ChatViewPane),

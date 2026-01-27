@@ -69,6 +69,10 @@ const ToolsAgentContextKey = ContextKeyExpr.and(
 export class SetupAgent extends Disposable implements IChatAgentImplementation {
 
 	static registerDefaultAgents(instantiationService: IInstantiationService, location: ChatAgentLocation, mode: ChatModeKind | undefined, context: ChatEntitlementContext, controller: Lazy<ChatSetupController>): { agent: SetupAgent; disposable: IDisposable } {
+		// TARX: Skip registration when no defaultChatAgent configured
+		if (!product.defaultChatAgent) {
+			return { agent: undefined as unknown as SetupAgent, disposable: Disposable.None };
+		}
 		return instantiationService.invokeFunction(accessor => {
 			const chatAgentService = accessor.get(IChatAgentService);
 
@@ -102,6 +106,10 @@ export class SetupAgent extends Disposable implements IChatAgentImplementation {
 	}
 
 	static registerBuiltInAgents(instantiationService: IInstantiationService, context: ChatEntitlementContext, controller: Lazy<ChatSetupController>): IDisposable {
+		// TARX: Skip registration when no defaultChatAgent configured
+		if (!product.defaultChatAgent) {
+			return Disposable.None;
+		}
 		return instantiationService.invokeFunction(accessor => {
 			const chatAgentService = accessor.get(IChatAgentService);
 
@@ -137,6 +145,10 @@ export class SetupAgent extends Disposable implements IChatAgentImplementation {
 	}
 
 	private static doRegisterAgent(instantiationService: IInstantiationService, chatAgentService: IChatAgentService, id: string, name: string, isDefault: boolean, description: string, location: ChatAgentLocation, mode: ChatModeKind | undefined, context: ChatEntitlementContext, controller: Lazy<ChatSetupController>): { agent: SetupAgent; disposable: IDisposable } {
+		// TARX: Safety net - skip registration when no defaultChatAgent configured
+		if (!product.defaultChatAgent) {
+			return { agent: undefined as unknown as SetupAgent, disposable: Disposable.None };
+		}
 		const disposables = new DisposableStore();
 		disposables.add(chatAgentService.registerAgent(id, {
 			id,

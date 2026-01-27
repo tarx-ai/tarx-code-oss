@@ -72,6 +72,11 @@ const compilations = [
 	'extensions/vscode-colorize-perf-tests/tsconfig.json',
 	'extensions/vscode-test-resolver/tsconfig.json',
 
+	// TARX extensions
+	'extensions/tarx/tsconfig.json',
+	'extensions/tarx-local/tsconfig.json',
+	'extensions/tarx-supercomputer/tsconfig.json',
+
 	'.vscode/extensions/vscode-selfhost-test-provider/tsconfig.json',
 	'.vscode/extensions/vscode-selfhost-import-aid/tsconfig.json',
 ];

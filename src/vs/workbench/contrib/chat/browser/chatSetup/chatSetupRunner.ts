@@ -78,6 +78,11 @@ export class ChatSetup {
 	}
 
 	async run(options?: { disableChatViewReveal?: boolean; forceSignInDialog?: boolean; additionalScopes?: readonly string[]; forceAnonymous?: ChatSetupAnonymous }): Promise<IChatSetupResult> {
+		// TARX: Skip setup entirely when no defaultChatAgent configured
+		if (!product.defaultChatAgent) {
+			return { dialogSkipped: true, success: true }; // TARX: Pretend setup succeeded
+		}
+
 		if (this.pendingRun) {
 			return this.pendingRun;
 		}
@@ -158,6 +163,11 @@ export class ChatSetup {
 	}
 
 	private async showDialog(options?: { forceSignInDialog?: boolean; forceAnonymous?: ChatSetupAnonymous }): Promise<ChatSetupStrategy> {
+		// TARX: Never show dialog when no defaultChatAgent configured
+		if (!product.defaultChatAgent) {
+			return ChatSetupStrategy.Canceled;
+		}
+
 		const disposables = new DisposableStore();
 
 		const buttons = this.getButtons(options);

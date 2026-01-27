@@ -71,8 +71,14 @@ export class ChatSetupContribution extends Disposable implements IWorkbenchContr
 		@IExtensionsWorkbenchService private readonly extensionsWorkbenchService: IExtensionsWorkbenchService,
 		@IExtensionService private readonly extensionService: IExtensionService,
 		@IEnvironmentService private readonly environmentService: IEnvironmentService,
+		@IProductService private readonly productService: IProductService,
 	) {
 		super();
+
+		// TARX: Skip all Copilot setup when no defaultChatAgent configured
+		if (!this.productService.defaultChatAgent) {
+			return; // TARX: No Copilot - skip setup entirely
+		}
 
 		const context = chatEntitlementService.context?.value;
 		const requests = chatEntitlementService.requests?.value;
@@ -640,9 +646,15 @@ export class ChatTeardownContribution extends Disposable implements IWorkbenchCo
 		@IExtensionsWorkbenchService private readonly extensionsWorkbenchService: IExtensionsWorkbenchService,
 		@IWorkbenchExtensionEnablementService private readonly extensionEnablementService: IWorkbenchExtensionEnablementService,
 		@IViewDescriptorService private readonly viewDescriptorService: IViewDescriptorService,
-		@IWorkbenchLayoutService private readonly layoutService: IWorkbenchLayoutService
+		@IWorkbenchLayoutService private readonly layoutService: IWorkbenchLayoutService,
+		@IProductService private readonly productService: IProductService,
 	) {
 		super();
+
+		// TARX: Skip Copilot teardown when no defaultChatAgent configured
+		if (!this.productService.defaultChatAgent) {
+			return; // TARX: No Copilot - skip teardown
+		}
 
 		const context = chatEntitlementService.context?.value;
 		if (!context) {

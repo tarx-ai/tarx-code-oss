@@ -1,0 +1,54 @@
+{
+  "name": "tarx-local",
+  "displayName": "TARX LOCAL",
+  "description": "Local AI inference for TARX Workbench",
+  "version": "1.0.0",
+  "publisher": "tarx",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["*"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "TARX LOCAL",
+      "properties": {
+        "tarx.local.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable local inference"
+        },
+        "tarx.local.port": {
+          "type": "number",
+          "default": 11435,
+          "description": "Port for llama-server"
+        },
+        "tarx.local.model": {
+          "type": "string",
+          "default": "auto",
+          "description": "Model to use (auto-detect based on hardware)"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "tarx.local.restart",
+        "title": "TARX: Restart Local Inference"
+      },
+      {
+        "command": "tarx.local.status",
+        "title": "TARX: Show Local Inference Status"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.0.0"
+  }
+}

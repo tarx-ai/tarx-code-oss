@@ -1,0 +1,51 @@
+/* ProjectContextCard - VS Code Toolbar Style */
+
+.container {
+  background: var(--vscode-editor-group-border, #3e3e42);
+  border: 1px solid var(--vscode-editor-group-border, #3e3e42);
+  border-radius: var(--vscode-radius-md, 4px);
+  padding: var(--vscode-space-sm, 8px);
+  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+  line-height: var(--vscode-line-height, 1.4);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--vscode-space-sm, 8px);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--vscode-space-xs, 4px);
+}
+
+.icon {
+  color: var(--vscode-editor-line-number, #858585);
+  flex-shrink: 0;
+}
+
+.label {
+  font-size: 12px;
+  color: var(--vscode-editor-line-number, #858585);
+  flex-shrink: 0;
+}
+
+.value {
+  font-size: var(--vscode-font-size, 13px);
+  font-weight: 600;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Responsive - stack on narrow widths */
+@media (max-width: 500px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

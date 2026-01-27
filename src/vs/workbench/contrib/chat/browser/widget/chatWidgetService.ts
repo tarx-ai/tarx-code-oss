@@ -65,12 +65,23 @@ export class ChatWidgetService extends Disposable implements IChatWidgetService 
 	}
 
 	async revealWidget(preserveFocus?: boolean): Promise<IChatWidget | undefined> {
+		// TARX: Always open chat as editor tab (native VS Code file tab UX)
+		// Skip lastFocusedWidget check to avoid revealing the panel
 		const last = this.lastFocusedWidget;
-		if (last && await this.reveal(last, preserveFocus)) {
+		// Only reveal if it's already an editor (not a panel view)
+		if (last && !isIChatViewViewContext(last.viewContext) && await this.reveal(last, preserveFocus)) {
 			return last;
 		}
 
-		return (await this.viewsService.openView<ChatViewPane>(ChatViewId, !preserveFocus))?.widget;
+		// Open as native editor tab
+		const pane = await this.editorService.openEditor({
+			resource: ChatEditorInput.getNewEditorUri(),
+			options: {
+				preserveFocus,
+				revealIfOpened: true
+			}
+		});
+		return pane instanceof ChatEditor ? pane.widget : undefined;
 	}
 
 	async reveal(widget: IChatWidget, preserveFocus?: boolean): Promise<boolean> {

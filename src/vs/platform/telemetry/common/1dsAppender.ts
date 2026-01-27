@@ -3,12 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import type { IExtendedConfiguration, IExtendedTelemetryItem, ITelemetryItem, ITelemetryUnloadState } from '@microsoft/1ds-core-js';
-import type { IChannelConfiguration, IXHROverride, PostChannel } from '@microsoft/1ds-post-js';
-import { importAMDNodeModule } from '../../../amdX.js';
+import type { IExtendedTelemetryItem, ITelemetryItem, ITelemetryUnloadState } from '@microsoft/1ds-core-js';
+import type { IXHROverride } from '@microsoft/1ds-post-js';
 import { onUnexpectedError } from '../../../base/common/errors.js';
 import { mixin } from '../../../base/common/objects.js';
-import { isWeb } from '../../../base/common/platform.js';
 import { ITelemetryAppender, validateTelemetryData } from './telemetryUtils.js';
 
 // Interface type which is a subset of @microsoft/1ds-core-js AppInsightsCore.
@@ -19,58 +17,19 @@ export interface IAppInsightsCore {
 	unload(isAsync: boolean, unloadComplete: (unloadState: ITelemetryUnloadState) => void): void;
 }
 
-const endpointUrl = 'https://mobile.events.data.microsoft.com/OneCollector/1.0';
-const endpointHealthUrl = 'https://mobile.events.data.microsoft.com/ping';
+// TARX: Telemetry disabled - local-first, no data leaves machine
+const endpointUrl = '';
+const endpointHealthUrl = '';
 
-async function getClient(instrumentationKey: string, addInternalFlag?: boolean, xhrOverride?: IXHROverride): Promise<IAppInsightsCore> {
-	// eslint-disable-next-line local/code-amd-node-module
-	const oneDs = isWeb ? await importAMDNodeModule<typeof import('@microsoft/1ds-core-js')>('@microsoft/1ds-core-js', 'bundle/ms.core.min.js') : await import('@microsoft/1ds-core-js');
-	// eslint-disable-next-line local/code-amd-node-module
-	const postPlugin = isWeb ? await importAMDNodeModule<typeof import('@microsoft/1ds-post-js')>('@microsoft/1ds-post-js', 'bundle/ms.post.min.js') : await import('@microsoft/1ds-post-js');
-
-	const appInsightsCore = new oneDs.AppInsightsCore();
-	const collectorChannelPlugin: PostChannel = new postPlugin.PostChannel();
-	// Configure the app insights core to send to collector++ and disable logging of debug info
-	const coreConfig: IExtendedConfiguration = {
-		instrumentationKey,
-		endpointUrl,
-		loggingLevelTelemetry: 0,
-		loggingLevelConsole: 0,
-		disableCookiesUsage: true,
-		disableDbgExt: true,
-		disableInstrumentationKeyValidation: true,
-		channels: [[
-			collectorChannelPlugin
-		]]
-	};
-
-	if (xhrOverride) {
-		coreConfig.extensionConfig = {};
-		// Configure the channel to use a XHR Request override since it's not available in node
-		const channelConfig: IChannelConfiguration = {
-			alwaysUseXhrOverride: true,
-			ignoreMc1Ms0CookieProcessing: true,
-			httpXHROverride: xhrOverride
-		};
-		coreConfig.extensionConfig[collectorChannelPlugin.identifier] = channelConfig;
-	}
-
-	appInsightsCore.initialize(coreConfig, []);
-
-	appInsightsCore.addTelemetryInitializer((envelope) => {
-		// Opt the user out of 1DS data sharing
-		envelope['ext'] = envelope['ext'] ?? {};
-		envelope['ext']['web'] = envelope['ext']['web'] ?? {};
-		envelope['ext']['web']['consentDetails'] = '{"GPC_DataSharingOptIn":false}';
-
-		if (addInternalFlag) {
-			envelope['ext']['utc'] = envelope['ext']['utc'] ?? {};
-			// Sets it to be internal only based on Windows UTC flagging
-			envelope['ext']['utc']['flags'] = 0x0000811ECD;
+async function getClient(_instrumentationKey: string, _addInternalFlag?: boolean, _xhrOverride?: IXHROverride): Promise<IAppInsightsCore> {
+	// TARX: Return a no-op client - telemetry disabled
+	return {
+		pluginVersionString: 'TARX-disabled',
+		track: () => { /* no-op */ },
+		unload: (_isAsync: boolean, unloadComplete: (unloadState: ITelemetryUnloadState) => void) => {
+			unloadComplete({ reason: 0, isAsync: false });
 		}
-	});
-
-	return appInsightsCore;
+	};
 }
 
 // TODO @lramos15 maybe make more in line with src/vs/platform/telemetry/browser/appInsightsAppender.ts with caching support

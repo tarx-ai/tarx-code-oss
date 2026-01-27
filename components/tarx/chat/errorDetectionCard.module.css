@@ -1,0 +1,160 @@
+/* ErrorDetectionCard - VS Code Error/Problem Styling */
+
+.container {
+  background: var(--vscode-editor-background, #1e1e1e);
+  border-left: 3px solid var(--vscode-error-red, #f48771);
+  border-radius: var(--vscode-radius-md, 4px);
+  padding: var(--vscode-space-md, 12px);
+  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--vscode-space-md, 12px);
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--vscode-space-sm, 8px);
+}
+
+.errorIcon {
+  color: var(--vscode-error-red, #f48771);
+  flex-shrink: 0;
+}
+
+.title {
+  font-weight: 600;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+
+.badge {
+  background: rgba(78, 201, 176, 0.15);
+  color: var(--vscode-success-green, #4ec9b0);
+  padding: var(--vscode-space-xs, 4px) var(--vscode-space-sm, 8px);
+  border-radius: var(--vscode-radius-sm, 2px);
+  font-size: 12px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: var(--vscode-space-xs, 4px);
+}
+
+.codeSection {
+  margin-bottom: var(--vscode-space-md, 12px);
+}
+
+.codeLabel {
+  font-size: 12px;
+  color: var(--vscode-editor-line-number, #858585);
+  margin-bottom: var(--vscode-space-xs, 4px);
+}
+
+.codeBlock {
+  background: var(--vscode-editor-background, #1e1e1e);
+  border: 1px solid var(--vscode-editor-group-border, #3e3e42);
+  border-radius: var(--vscode-radius-md, 4px);
+  padding: var(--vscode-space-sm, 8px);
+  margin: 0;
+  font-family: var(--vscode-font-mono, "SF Mono", Monaco, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+}
+
+.codeBlock code {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.codeBlock.before {
+  background: rgba(148, 21, 27, 0.15);
+  border-color: var(--vscode-error-red, #f48771);
+}
+
+.codeBlock.after {
+  background: rgba(55, 135, 58, 0.15);
+  border-color: var(--vscode-success-green, #4ec9b0);
+}
+
+.changes {
+  margin-bottom: var(--vscode-space-md, 12px);
+  padding: var(--vscode-space-sm, 8px);
+  background: rgba(62, 62, 66, 0.3);
+  border-radius: var(--vscode-radius-md, 4px);
+}
+
+.changesTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  margin-bottom: var(--vscode-space-xs, 4px);
+}
+
+.changesList {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 12px;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+
+.changesList li {
+  margin-bottom: var(--vscode-space-xs, 4px);
+}
+
+.changesList li:last-child {
+  margin-bottom: 0;
+}
+
+.actions {
+  display: flex;
+  gap: var(--vscode-space-sm, 8px);
+}
+
+.primaryButton {
+  background: var(--vscode-accent-blue, #007acc);
+  border: 1px solid var(--vscode-accent-blue, #007acc);
+  color: #ffffff;
+  cursor: pointer;
+  padding: var(--vscode-space-xs, 4px) var(--vscode-space-md, 12px);
+  border-radius: var(--vscode-radius-sm, 2px);
+  font-size: var(--vscode-font-size, 13px);
+  font-weight: 500;
+  transition: var(--vscode-transition-fast, 100ms ease);
+}
+
+.primaryButton:hover {
+  background: #005a9e;
+  border-color: #005a9e;
+}
+
+.primaryButton:focus-visible {
+  outline: 2px solid var(--vscode-accent-blue, #007acc);
+  outline-offset: 2px;
+}
+
+.secondaryButton {
+  background: transparent;
+  border: 1px solid var(--vscode-editor-group-border, #3e3e42);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  cursor: pointer;
+  padding: var(--vscode-space-xs, 4px) var(--vscode-space-md, 12px);
+  border-radius: var(--vscode-radius-sm, 2px);
+  font-size: var(--vscode-font-size, 13px);
+  transition: var(--vscode-transition-fast, 100ms ease);
+}
+
+.secondaryButton:hover {
+  background: rgba(62, 62, 66, 0.3);
+  border-color: var(--vscode-editor-line-number, #858585);
+}
+
+.secondaryButton:focus-visible {
+  outline: 2px solid var(--vscode-accent-blue, #007acc);
+  outline-offset: 2px;
+}

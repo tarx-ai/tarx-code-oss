@@ -1,0 +1,1099 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) TARX AI. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *
+ *  TARX Sidebar - shadcn sidebar-07 inspired styling
+ *  Visual: Clean, minimal, professional. VS Code native feel.
+ *--------------------------------------------------------------------------------------------*/
+
+/* ============================================================================
+   CSS Variables - TARX Design Tokens
+   ============================================================================ */
+.tarx-sidebar-container {
+	--tarx-sidebar-width: 240px;
+	--tarx-sidebar-collapsed-width: 48px;
+	--tarx-spacing-xs: 4px;
+	--tarx-spacing-sm: 8px;
+	--tarx-spacing-md: 12px;
+	--tarx-spacing-lg: 16px;
+	--tarx-radius-sm: 4px;
+	--tarx-radius-md: 6px;
+	--tarx-transition-fast: 0.15s ease;
+	--tarx-transition-normal: 0.2s ease;
+	--tarx-font-xs: 10px;
+	--tarx-font-sm: 11px;
+	--tarx-font-md: 12px;
+	--tarx-font-lg: 13px;
+	--tarx-icon-size: 16px;
+	--tarx-icon-gap: 8px;
+}
+
+/* ============================================================================
+   Main Container
+   ============================================================================ */
+.tarx-sidebar-container {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	width: 100%;
+	background: inherit;
+}
+
+/* Make sure the sidebar part content fills available space */
+.monaco-workbench .part.sidebar > .content {
+	display: flex !important;
+	flex-direction: column !important;
+	height: 100% !important;
+}
+
+.monaco-workbench .part.sidebar > .content > .composite {
+	display: flex !important;
+	flex-direction: column !important;
+	height: 100% !important;
+	width: 100% !important;
+}
+
+/* ============================================================================
+   Header - Logo + Compute Dropdown Pill
+   ============================================================================ */
+.tarx-header {
+	padding: var(--tarx-spacing-md) var(--tarx-spacing-lg);
+	border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.08));
+	position: relative;
+}
+
+.tarx-logo-row {
+	display: flex;
+	align-items: center;
+	gap: var(--tarx-icon-gap);
+}
+
+/* Header collapse/expand toggle button */
+.tarx-header-collapse-btn {
+	width: 28px;
+	height: 28px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	cursor: pointer;
+	border-radius: var(--tarx-radius-sm);
+	transition: background var(--tarx-transition-fast);
+}
+
+.tarx-header-collapse-btn:hover {
+	background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
+}
+
+.tarx-header-collapse-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0.8;
+}
+
+.tarx-logo-icon {
+	width: 24px;
+	height: 24px;
+	object-fit: contain;
+	flex-shrink: 0;
+	border-radius: var(--tarx-radius-sm);
+}
+
+.tarx-logo-text {
+	font-size: 16px;
+	font-weight: 600;
+	flex: 1;
+}
+
+/* Compute Dropdown Pill */
+.tarx-compute-pill {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 8px;
+	border-radius: var(--tarx-radius-md);
+	background: var(--vscode-button-secondaryBackground, rgba(255,255,255,0.08));
+	cursor: pointer;
+	font-size: var(--tarx-font-sm);
+	transition: background var(--tarx-transition-fast);
+	flex-shrink: 0;
+}
+
+.tarx-compute-pill:hover {
+	background: var(--vscode-button-secondaryHoverBackground, rgba(255,255,255,0.12));
+}
+
+.tarx-compute-pill.open {
+	background: var(--vscode-button-secondaryHoverBackground, rgba(255,255,255,0.12));
+}
+
+.tarx-compute-chip-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 14px;
+	height: 14px;
+}
+
+.tarx-compute-chip-icon svg {
+	width: 14px;
+	height: 14px;
+}
+
+.tarx-compute-label {
+	color: var(--vscode-foreground);
+}
+
+.tarx-compute-chevron {
+	width: 12px;
+	height: 12px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0.7;
+	transition: transform var(--tarx-transition-fast);
+}
+
+.tarx-compute-pill.open .tarx-compute-chevron {
+	transform: rotate(180deg);
+}
+
+/* Compute Dropdown Menu */
+.tarx-compute-dropdown {
+	position: absolute;
+	top: 100%;
+	left: var(--tarx-spacing-lg);
+	right: var(--tarx-spacing-lg);
+	margin-top: 4px;
+	background: var(--vscode-dropdown-background, #3c3c3c);
+	border: 1px solid var(--vscode-dropdown-border, rgba(255,255,255,0.1));
+	border-radius: var(--tarx-radius-md);
+	box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+	z-index: 100;
+	overflow: hidden;
+}
+
+.tarx-compute-option {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	cursor: default;
+	transition: background var(--tarx-transition-fast);
+}
+
+.tarx-compute-option:hover {
+	background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
+}
+
+.tarx-compute-option.local {
+	border-bottom: 1px solid var(--vscode-dropdown-border, rgba(255,255,255,0.06));
+}
+
+/* Checkmark - right aligned */
+.tarx-compute-check {
+	width: 16px;
+	height: 16px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--vscode-testing-iconPassed, #73c991);
+	flex-shrink: 0;
+	margin-left: auto;
+	order: 10;
+}
+
+.tarx-compute-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--vscode-input-border, #6c6c6c);
+	flex-shrink: 0;
+}
+
+/* Green for both Local and Super when active */
+.tarx-compute-dot.active {
+	background: var(--vscode-testing-iconPassed, #73c991);
+}
+
+.tarx-compute-dot.connecting {
+	background: var(--vscode-charts-yellow, #cca700);
+	animation: tarx-pulse 1s infinite;
+}
+
+@keyframes tarx-pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.4; }
+}
+
+.tarx-compute-option-label {
+	flex: 1;
+	font-size: var(--tarx-font-md);
+}
+
+/* Join Private Compute link */
+.tarx-compute-link {
+	display: block;
+	padding: 8px 12px;
+	font-size: var(--tarx-font-sm);
+	color: var(--vscode-textLink-foreground, #3794ff);
+	cursor: pointer;
+	border-top: 1px solid var(--vscode-dropdown-border, rgba(255,255,255,0.06));
+}
+
+.tarx-compute-link:hover {
+	background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
+	text-decoration: underline;
+}
+
+/* Toggle Switch */
+.tarx-toggle {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	cursor: pointer;
+	flex-shrink: 0;
+}
+
+.tarx-toggle-input {
+	opacity: 0;
+	width: 0;
+	height: 0;
+	position: absolute;
+}
+
+.tarx-toggle-slider {
+	width: 32px;
+	height: 18px;
+	background: var(--vscode-input-border, #6c6c6c);
+	border-radius: 9px;
+	position: relative;
+	transition: background var(--tarx-transition-fast);
+}
+
+.tarx-toggle-slider::before {
+	content: '';
+	position: absolute;
+	width: 14px;
+	height: 14px;
+	left: 2px;
+	top: 2px;
+	background: white;
+	border-radius: 50%;
+	transition: transform var(--tarx-transition-fast);
+}
+
+.tarx-toggle-input:checked + .tarx-toggle-slider {
+	background: var(--vscode-testing-iconPassed, #73c991);
+}
+
+.tarx-toggle-input:checked + .tarx-toggle-slider::before {
+	transform: translateX(14px);
+}
+
+/* ============================================================================
+   Nav Rows - Chat and Voice with hover action buttons
+   ============================================================================ */
+.tarx-nav-rows {
+	padding: var(--tarx-spacing-sm) 0 0 0;
+}
+
+.tarx-nav-row {
+	display: flex;
+	align-items: center;
+	padding: var(--tarx-spacing-sm) var(--tarx-spacing-md);
+	margin: 0 var(--tarx-spacing-sm);
+	border-radius: var(--tarx-radius-md);
+	cursor: pointer;
+	transition: background var(--tarx-transition-fast);
+	position: relative;
+}
+
+.tarx-nav-row:hover {
+	background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
+}
+
+.tarx-nav-row-icon {
+	width: var(--tarx-icon-size);
+	height: var(--tarx-icon-size);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	opacity: 0.9;
+}
+
+.tarx-nav-row-label {
+	flex: 1;
+	font-size: var(--tarx-font-lg);
+	margin-left: var(--tarx-icon-gap);
+}
+
+/* Action button - hidden by default, shown on hover */
+.tarx-action-btn {
+	width: 20px;
+	height: 20px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: var(--tarx-radius-sm);
+	opacity: 0;
+	transition: opacity var(--tarx-transition-fast), background var(--tarx-transition-fast);
+	flex-shrink: 0;
+}
+
+.tarx-nav-row:hover .tarx-action-btn {
+	opacity: 1;
+}
+
+.tarx-action-btn:hover {
+	background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
+}
+
+/* Voice button always visible when active */
+.tarx-voice-btn.codicon-debug-pause {
+	opacity: 1;
+	color: var(--vscode-textLink-foreground, #3794ff);
+}
+
+/* ============================================================================
+   Collapsible Sections
+   ============================================================================ */
+.tarx-sections {
+	flex: 1;
+	overflow-y: auto;
+	overflow-x: hidden;
+	padding: 0;
+}
+
+.tarx-section {
+	margin-bottom: 2px;
+}
+
+/* Section Header - consistent with nav rows */
+.tarx-section-header {
+	display: flex;
+	align-items: center;
+	padding: var(--tarx-spacing-sm) var(--tarx-spacing-md);
+	margin: 0 var(--tarx-spacing-sm);
+	border-radius: var(--tarx-radius-md);
+	cursor: pointer;
+	user-select: none;
+	transition: background var(--tarx-transition-fast);
+	position: relative;
+}
+
+.tarx-section-header:hover {
+	background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
+}
+
+.tarx-section-icon {
+	width: var(--tarx-icon-size);
+	height: var(--tarx-icon-size);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0.9;
+	flex-shrink: 0;
+}
+
+.tarx-section-title {
+	font-size: var(--tarx-font-lg);
+	font-weight: 500;
+	margin-left: var(--tarx-icon-gap);
+	flex: 1;
+}
+
+/* Section add button - hidden until hover */
+.tarx-section-add {
+	opacity: 0;
+	margin-right: var(--tarx-spacing-sm);
+}
+
+.tarx-section-header:hover .tarx-section-add {
+	opacity: 1;
+}
+
+/* Chevron */
+.tarx-section-chevron {
+	width: 16px;
+	height: 16px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0.5;
+	transition: transform var(--tarx-transition-normal);
+	flex-shrink: 0;
+}
+
+.tarx-section.collapsed .tarx-section-chevron {
+	transform: rotate(-90deg);
+}
+
+/* Section Content */
+.tarx-section-content {
+	overflow: hidden;
+	transition: max-height var(--tarx-transition-normal) ease-out;
+	max-height: 300px;
+}
+
+.tarx-section.collapsed .tarx-section-content {
+	max-height: 0;
+}
+
+/* Section Items - indented under header icon */
+.tarx-section-item {
+	display: flex;
+	align-items: center;
+	padding: var(--tarx-spacing-sm) var(--tarx-spacing-md);
+	margin: 0 var(--tarx-spacing-sm);
+	margin-left: calc(var(--tarx-spacing-sm) + var(--tarx-icon-size) + var(--tarx-spacing-md));
+	border-radius: var(--tarx-radius-md);
+	cursor: pointer;
+	transition: background var(--tarx-transition-fast);
+}
+
+.tarx-section-item:hover {
+	background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.03));
+}
+
+.tarx-section-item.active {
+	background: var(--vscode-list-activeSelectionBackground, rgba(255,255,255,0.06));
+}
+
+.tarx-section-item-icon {
+	width: var(--tarx-icon-size);
+	height: var(--tarx-icon-size);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0.8;
+	margin-right: var(--tarx-icon-gap);
+	flex-shrink: 0;
+}
+
+.tarx-section-item-label {
+	font-size: var(--tarx-font-lg);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* Placeholder item (dimmed) */
+.tarx-section-item.tarx-placeholder {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.tarx-section-item.tarx-placeholder:hover {
+	background: transparent;
+}
+
+/* ============================================================================
+   History Section (now a collapsible section)
+   ============================================================================ */
+
+/* History content within section */
+.tarx-history-content {
+	max-height: 200px;
+	overflow-y: auto;
+}
+
+.tarx-history-empty {
+	padding: var(--tarx-spacing-sm) var(--tarx-spacing-md);
+	margin-left: calc(var(--tarx-icon-size) + var(--tarx-spacing-md));
+	font-size: var(--tarx-font-md);
+	opacity: 0.5;
+	font-style: italic;
+}
+
+.tarx-history-group-label {
+	padding: var(--tarx-spacing-xs) var(--tarx-spacing-md);
+	margin-left: calc(var(--tarx-icon-size) + var(--tarx-spacing-md));
+	font-size: var(--tarx-font-xs);
+	opacity: 0.4;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+}
+
+.tarx-history-item {
+	display: flex;
+	align-items: center;
+	padding: var(--tarx-spacing-xs) var(--tarx-spacing-md);
+	margin: 0 var(--tarx-spacing-sm);
+	margin-left: calc(var(--tarx-spacing-sm) + var(--tarx-icon-size) + var(--tarx-spacing-md));
+	border-radius: var(--tarx-radius-md);
+	cursor: pointer;
+	transition: background var(--tarx-transition-fast);
+}
+
+.tarx-history-item:hover {
+	background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
+}
+
+.tarx-history-item.active {
+	background: var(--vscode-list-activeSelectionBackground, rgba(255,255,255,0.06));
+}
+
+.tarx-history-item-icon {
+	width: 14px;
+	height: 14px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0.6;
+	margin-right: 6px;
+	flex-shrink: 0;
+}
+
+.tarx-history-item-title {
+	font-size: var(--tarx-font-md);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* See all button in section header */
+.tarx-section-see-all {
+	opacity: 0;
+	margin-right: var(--tarx-spacing-sm);
+	color: var(--vscode-textLink-foreground, #3794ff);
+}
+
+.tarx-section-header:hover .tarx-section-see-all {
+	opacity: 1;
+}
+
+/* ============================================================================
+   Footer - Extensions/Settings/Collapse (stacked vertically)
+   ============================================================================ */
+.tarx-footer {
+	display: flex;
+	flex-direction: column;
+	padding: var(--tarx-spacing-sm) 0;
+	border-top: 1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-sideBar-border, rgba(255,255,255,0.06)));
+	margin-top: auto;
+	background: inherit;
+}
+
+.tarx-footer-row {
+	display: flex;
+	align-items: center;
+	padding: var(--tarx-spacing-sm) var(--tarx-spacing-md);
+	margin: 0 var(--tarx-spacing-sm);
+	border-radius: var(--tarx-radius-md);
+	cursor: pointer;
+	transition: background var(--tarx-transition-fast);
+}
+
+.tarx-footer-row:hover {
+	background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
+}
+
+/* Footer icon - consistent with nav row icons */
+.tarx-footer-row > span:first-child {
+	width: var(--tarx-icon-size);
+	height: var(--tarx-icon-size);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	opacity: 0.9;
+}
+
+.tarx-footer-label {
+	font-size: var(--tarx-font-lg);
+	margin-left: var(--tarx-icon-gap);
+	white-space: nowrap;
+}
+
+.tarx-collapse-row {
+	margin-top: var(--tarx-spacing-xs);
+}
+
+/* Custom SVG icons */
+.tarx-custom-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: var(--tarx-icon-size);
+	height: var(--tarx-icon-size);
+}
+
+.tarx-custom-icon svg {
+	width: var(--tarx-icon-size);
+	height: var(--tarx-icon-size);
+}
+
+/* ============================================================================
+   Collapsed State
+   ============================================================================ */
+.tarx-sidebar-container.collapsed {
+	width: var(--tarx-sidebar-collapsed-width);
+}
+
+.tarx-sidebar-container.collapsed .tarx-logo-text,
+.tarx-sidebar-container.collapsed .tarx-compute-pill,
+.tarx-sidebar-container.collapsed .tarx-compute-dropdown,
+.tarx-sidebar-container.collapsed .tarx-nav-row-label,
+.tarx-sidebar-container.collapsed .tarx-section-title,
+.tarx-sidebar-container.collapsed .tarx-section-add,
+.tarx-sidebar-container.collapsed .tarx-section-see-all,
+.tarx-sidebar-container.collapsed .tarx-section-content,
+.tarx-sidebar-container.collapsed .tarx-history-content,
+.tarx-sidebar-container.collapsed .tarx-footer-label,
+.tarx-sidebar-container.collapsed .tarx-action-btn {
+	display: none;
+}
+
+.tarx-sidebar-container.collapsed .tarx-header {
+	padding: var(--tarx-spacing-md) var(--tarx-spacing-sm);
+}
+
+.tarx-sidebar-container.collapsed .tarx-logo-row {
+	justify-content: center;
+}
+
+/* Hide logo icon in collapsed mode, show only the collapse toggle */
+.tarx-sidebar-container.collapsed .tarx-logo-icon {
+	display: none;
+}
+
+/* Header collapse button in collapsed mode */
+.tarx-sidebar-container.collapsed .tarx-header-collapse-btn {
+	width: 32px;
+	height: 32px;
+}
+
+.tarx-sidebar-container.collapsed .tarx-header-collapse-icon {
+	opacity: 0.9;
+}
+
+.tarx-sidebar-container.collapsed .tarx-nav-row {
+	justify-content: center;
+	padding: var(--tarx-spacing-sm);
+}
+
+.tarx-sidebar-container.collapsed .tarx-section-header {
+	justify-content: center;
+	padding: var(--tarx-spacing-sm);
+	margin: 0;
+}
+
+.tarx-sidebar-container.collapsed .tarx-section-chevron {
+	display: none;
+}
+
+.tarx-sidebar-container.collapsed .tarx-footer {
+	padding: var(--tarx-spacing-md) 0;
+	gap: var(--tarx-spacing-xs);
+}
+
+.tarx-sidebar-container.collapsed .tarx-footer-row {
+	justify-content: center;
+	padding: var(--tarx-spacing-md) var(--tarx-spacing-sm);
+	margin: 2px var(--tarx-spacing-xs);
+}
+
+/* ============================================================================
+   Scrollbar Styling
+   ============================================================================ */
+.tarx-sections::-webkit-scrollbar,
+.tarx-history-list::-webkit-scrollbar {
+	width: 6px;
+}
+
+.tarx-sections::-webkit-scrollbar-track,
+.tarx-history-list::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.tarx-sections::-webkit-scrollbar-thumb,
+.tarx-history-list::-webkit-scrollbar-thumb {
+	background: var(--vscode-scrollbarSlider-background, rgba(255,255,255,0.1));
+	border-radius: 3px;
+}
+
+.tarx-sections::-webkit-scrollbar-thumb:hover,
+.tarx-history-list::-webkit-scrollbar-thumb:hover {
+	background: var(--vscode-scrollbarSlider-hoverBackground, rgba(255,255,255,0.2));
+}
+
+/* ============================================================================
+   Hide Native Activity Bar - TARX replaces it
+   ============================================================================ */
+.monaco-workbench .part.activitybar {
+	display: none !important;
+	width: 0 !important;
+	min-width: 0 !important;
+	max-width: 0 !important;
+	visibility: hidden !important;
+	overflow: hidden !important;
+	flex: 0 0 0 !important;
+}
+
+/* Position sidebar at the far left */
+.monaco-workbench .part.sidebar {
+	left: 0 !important;
+	margin-left: 0 !important;
+	min-width: 48px !important;
+}
+
+/* Hide the native sidebar title bar and pane composite bar */
+.monaco-workbench .part.sidebar > .title {
+	display: none !important;
+}
+
+.monaco-workbench .part.sidebar > .content > .composite > .pane-composite-part-title {
+	display: none !important;
+}
+
+/* Ensure sidebar content area fills the space */
+.monaco-workbench .part.sidebar > .content > .composite > .content {
+	height: 100% !important;
+}
+
+/* Ensure no leftover space from activity bar container */
+.monaco-workbench > .monaco-grid-view > .monaco-grid-branch-node > .monaco-split-view2.horizontal > .split-view-container > .split-view-view:first-child {
+	min-width: 0 !important;
+}
+
+/* Hide auxiliary bar by default if visible */
+.monaco-workbench .part.auxiliarybar {
+	display: none !important;
+}
+
+/* Minimize the sash (resize handle) between sidebar and editor */
+.monaco-workbench .sash.vertical {
+	width: 2px !important;
+	background: transparent !important;
+}
+
+/* Hide sash when hovering to left of sidebar */
+.monaco-workbench .part.sidebar ~ .sash.vertical {
+	left: auto !important;
+}
+
+/* Remove any extra borders/padding from sidebar container */
+.monaco-workbench .part.sidebar > .content {
+	border: none !important;
+}
+
+/* Target the split view sash specifically */
+.monaco-split-view2 > .sash-container > .sash {
+	width: 2px !important;
+}
+
+/* ============================================================================
+   TARX Loading & Empty States
+   ============================================================================ */
+
+/* Skeleton Shimmer Animation */
+.tarx-skeleton {
+	background: linear-gradient(90deg,
+		var(--vscode-editor-background) 25%,
+		var(--vscode-list-hoverBackground) 50%,
+		var(--vscode-editor-background) 75%);
+	background-size: 200% 100%;
+	animation: tarx-shimmer 1.5s infinite;
+	border-radius: var(--tarx-radius-sm);
+}
+
+@keyframes tarx-shimmer {
+	0% { background-position: 200% 0; }
+	100% { background-position: -200% 0; }
+}
+
+/* Typing Indicator (three animated dots) */
+.tarx-typing-indicator {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 8px 12px;
+	background: var(--vscode-input-background, rgba(255,255,255,0.05));
+	border-radius: var(--tarx-radius-md);
+}
+
+.tarx-typing-indicator .tarx-dot {
+	width: 6px;
+	height: 6px;
+	background: var(--vscode-foreground);
+	border-radius: 50%;
+	opacity: 0.4;
+	animation: tarx-typing-bounce 1.4s infinite ease-in-out both;
+}
+
+.tarx-typing-indicator .tarx-dot:nth-child(1) { animation-delay: -0.32s; }
+.tarx-typing-indicator .tarx-dot:nth-child(2) { animation-delay: -0.16s; }
+.tarx-typing-indicator .tarx-dot:nth-child(3) { animation-delay: 0s; }
+
+@keyframes tarx-typing-bounce {
+	0%, 80%, 100% {
+		transform: scale(0.8);
+		opacity: 0.4;
+	}
+	40% {
+		transform: scale(1);
+		opacity: 1;
+	}
+}
+
+/* Empty State Container */
+.tarx-empty-state {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	padding: var(--tarx-spacing-lg);
+	text-align: center;
+	gap: var(--tarx-spacing-sm);
+}
+
+.tarx-empty-state-icon {
+	font-size: 32px;
+	opacity: 0.4;
+	margin-bottom: var(--tarx-spacing-sm);
+}
+
+.tarx-empty-state-text {
+	font-size: var(--tarx-font-md);
+	opacity: 0.6;
+	margin-bottom: var(--tarx-spacing-sm);
+}
+
+/* CTA Button */
+.tarx-cta-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	padding: 6px 12px;
+	font-size: var(--tarx-font-md);
+	font-weight: 500;
+	color: var(--vscode-button-foreground);
+	background: var(--vscode-button-background);
+	border: none;
+	border-radius: var(--tarx-radius-md);
+	cursor: pointer;
+	transition: background var(--tarx-transition-fast);
+}
+
+.tarx-cta-btn:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
+.tarx-cta-btn.secondary {
+	color: var(--vscode-button-secondaryForeground);
+	background: var(--vscode-button-secondaryBackground);
+}
+
+.tarx-cta-btn.secondary:hover {
+	background: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* Model Loading Indicator */
+.tarx-model-loading {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: var(--tarx-spacing-md);
+	padding: var(--tarx-spacing-lg);
+	text-align: center;
+}
+
+.tarx-model-loading-spinner {
+	width: 32px;
+	height: 32px;
+	border: 3px solid var(--vscode-input-border, rgba(255,255,255,0.1));
+	border-top-color: var(--vscode-progressBar-background, #0e70c0);
+	border-radius: 50%;
+	animation: tarx-spin 1s linear infinite;
+}
+
+@keyframes tarx-spin {
+	to { transform: rotate(360deg); }
+}
+
+.tarx-model-loading-text {
+	font-size: var(--tarx-font-md);
+	color: var(--vscode-foreground);
+	opacity: 0.8;
+}
+
+.tarx-model-loading-subtext {
+	font-size: var(--tarx-font-sm);
+	color: var(--vscode-descriptionForeground);
+	opacity: 0.6;
+}
+
+/* File Upload Progress */
+.tarx-upload-progress {
+	display: flex;
+	flex-direction: column;
+	gap: var(--tarx-spacing-xs);
+	padding: var(--tarx-spacing-sm) var(--tarx-spacing-md);
+	background: var(--vscode-input-background, rgba(255,255,255,0.05));
+	border-radius: var(--tarx-radius-md);
+	margin: var(--tarx-spacing-sm) 0;
+}
+
+.tarx-upload-progress-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--tarx-spacing-sm);
+}
+
+.tarx-upload-progress-info {
+	display: flex;
+	align-items: center;
+	gap: var(--tarx-spacing-sm);
+	flex: 1;
+	min-width: 0;
+}
+
+.tarx-upload-progress-icon {
+	flex-shrink: 0;
+	opacity: 0.8;
+}
+
+.tarx-upload-progress-icon.spinning {
+	animation: tarx-spin 1s linear infinite;
+}
+
+.tarx-upload-progress-text {
+	font-size: var(--tarx-font-sm);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.tarx-upload-progress-percent {
+	font-size: var(--tarx-font-sm);
+	opacity: 0.7;
+	flex-shrink: 0;
+}
+
+.tarx-upload-progress-bar {
+	height: 3px;
+	background: var(--vscode-input-border, rgba(255,255,255,0.1));
+	border-radius: 2px;
+	overflow: hidden;
+}
+
+.tarx-upload-progress-bar-fill {
+	height: 100%;
+	background: var(--vscode-progressBar-background, #0e70c0);
+	border-radius: 2px;
+	transition: width 0.3s ease;
+}
+
+/* Chat Skeleton Bubbles */
+.tarx-chat-skeleton {
+	display: flex;
+	flex-direction: column;
+	gap: var(--tarx-spacing-md);
+	padding: var(--tarx-spacing-md);
+}
+
+.tarx-chat-skeleton-bubble {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--tarx-spacing-sm);
+}
+
+.tarx-chat-skeleton-avatar {
+	width: 28px;
+	height: 28px;
+	border-radius: 50%;
+	flex-shrink: 0;
+}
+
+.tarx-chat-skeleton-content {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	flex: 1;
+}
+
+.tarx-chat-skeleton-line {
+	height: 12px;
+	border-radius: var(--tarx-radius-sm);
+}
+
+.tarx-chat-skeleton-line.short { width: 60%; }
+.tarx-chat-skeleton-line.medium { width: 80%; }
+.tarx-chat-skeleton-line.long { width: 100%; }
+
+/* Chat Empty State */
+.tarx-chat-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	height: 100%;
+	padding: var(--tarx-spacing-lg);
+	text-align: center;
+}
+
+.tarx-chat-empty-title {
+	font-size: 18px;
+	font-weight: 500;
+	margin-bottom: var(--tarx-spacing-sm);
+	color: var(--vscode-foreground);
+}
+
+.tarx-chat-empty-subtitle {
+	font-size: var(--tarx-font-md);
+	color: var(--vscode-descriptionForeground);
+	margin-bottom: var(--tarx-spacing-lg);
+}
+
+/* Suggestion Chips */
+.tarx-suggestion-chips {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: var(--tarx-spacing-sm);
+	max-width: 400px;
+}
+
+.tarx-suggestion-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 8px 14px;
+	font-size: var(--tarx-font-md);
+	color: var(--vscode-foreground);
+	background: var(--vscode-input-background, rgba(255,255,255,0.05));
+	border: 1px solid var(--vscode-input-border, rgba(255,255,255,0.1));
+	border-radius: 20px;
+	cursor: pointer;
+	transition: all var(--tarx-transition-fast);
+}
+
+.tarx-suggestion-chip:hover {
+	background: var(--vscode-list-hoverBackground);
+	border-color: var(--vscode-focusBorder);
+}
+
+.tarx-suggestion-chip .codicon {
+	opacity: 0.7;
+}
+
+/* Inline empty state for sections */
+.tarx-section-empty-state {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--tarx-spacing-sm);
+	padding: var(--tarx-spacing-sm) var(--tarx-spacing-md);
+	margin-left: calc(var(--tarx-icon-size) + var(--tarx-spacing-md));
+}
+
+.tarx-section-empty-state .tarx-cta-btn {
+	padding: 4px 10px;
+	font-size: var(--tarx-font-sm);
+}

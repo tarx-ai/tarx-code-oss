@@ -1,0 +1,25 @@
+npm warn Unknown project config "disturl". This will stop working in the next major version of npm.
+npm warn Unknown project config "target". This will stop working in the next major version of npm.
+npm warn Unknown project config "ms_build_id". This will stop working in the next major version of npm.
+npm warn Unknown project config "runtime". This will stop working in the next major version of npm.
+npm warn Unknown project config "build_from_source". This will stop working in the next major version of npm.
+npm warn Unknown project config "timeout". This will stop working in the next major version of npm.
+
+> tarx-code@1.0.0 electron
+> node build/lib/electron.ts
+
+[20:45:03] Synchronizing built-in extensions...
+[20:45:03] You can manage built-in extensions with the [36m--builtin[39m flag
+[20:45:03] [34m[github][39m ms-vscode.js-debug-companion@1.1.3 [32m✔︎[39m
+[20:45:03] [34m[github][39m ms-vscode.js-debug@1.105.0 [32m✔︎[39m
+[20:45:03] [34m[github][39m ms-vscode.vscode-js-profile-table@1.0.10 [32m✔︎[39m
+file:///Users/master/Desktop/tarx-code-oss/out/main.js:11
+import { app, protocol, crashReporter, Menu, contentTracing } from 'electron';
+                                       ^^^^
+SyntaxError: The requested module 'electron' does not provide an export named 'Menu'
+    at ModuleJob._instantiate (node:internal/modules/esm/module_job:226:21)
+    at async ModuleJob.run (node:internal/modules/esm/module_job:335:5)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:665:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:132:5)
+
+Node.js v22.21.1

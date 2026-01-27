@@ -231,16 +231,17 @@ export class ExtHostLanguageModelTools implements ExtHostLanguageModelToolsShape
 		return typeConvert.LanguageModelToolResult.from(extensionResult, item.extension);
 	}
 
-	private async getModel(modelId: string, extension: IExtensionDescription): Promise<vscode.LanguageModelChat> {
+	private async getModel(modelId: string, extension: IExtensionDescription): Promise<vscode.LanguageModelChat | undefined> {
 		let model: vscode.LanguageModelChat | undefined;
 		if (modelId) {
 			model = await this._languageModels.getLanguageModelByIdentifier(extension, modelId);
 		}
 		if (!model) {
 			model = await this._languageModels.getDefaultLanguageModel(extension);
-			if (!model) {
-				throw new Error('Language model unavailable');
-			}
+			// TARX: Don't throw if no language model - extensions can handle their own inference
+			// if (!model) {
+			// 	throw new Error('Language model unavailable');
+			// }
 		}
 
 		return model;

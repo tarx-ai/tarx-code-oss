@@ -1,0 +1,55 @@
+{
+  "name": "tarx-supercomputer",
+  "displayName": "TARX SUPERCOMPUTER",
+  "description": "Mesh networking and distributed compute for TARX Workbench",
+  "version": "1.0.0",
+  "publisher": "tarx",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["*"],
+  "main": "./out/extension.js",
+  "extensionDependencies": ["tarx.tarx-local"],
+  "contributes": {
+    "configuration": {
+      "title": "TARX SUPERCOMPUTER",
+      "properties": {
+        "tarx.supercomputer.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable mesh networking (ON by default)"
+        },
+        "tarx.supercomputer.shareCompute": {
+          "type": "boolean",
+          "default": true,
+          "description": "Earn revenue by sharing compute"
+        },
+        "tarx.supercomputer.meshPort": {
+          "type": "number",
+          "default": 11436,
+          "description": "Port for mesh-node HTTP API"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "tarx.showSupercomputerDashboard",
+        "title": "TARX: Show Supercomputer Dashboard"
+      },
+      {
+        "command": "tarx.supercomputer.restart",
+        "title": "TARX: Restart Mesh Node"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.0.0"
+  }
+}

@@ -19867,8 +19867,9 @@ declare module 'vscode' {
 		/**
 		 * This is the model that is currently selected in the UI. Extensions can use this or use {@link lm.selectChatModels} to
 		 * pick another model. Don't hold onto this past the lifetime of the request.
+		 * TARX: Made optional to support local inference without VS Code's built-in language model.
 		 */
-		readonly model: LanguageModelChat;
+		readonly model?: LanguageModelChat;
 	}
 
 	/**

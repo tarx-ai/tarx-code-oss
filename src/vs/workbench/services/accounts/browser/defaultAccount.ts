@@ -82,7 +82,26 @@ interface IMcpRegistryResponse {
 	readonly mcp_registries: ReadonlyArray<IMcpRegistryProvider>;
 }
 
-function toDefaultAccountConfig(defaultChatAgent: IDefaultChatAgent): IDefaultAccountConfig {
+// TARX: Safe default config when no defaultChatAgent is configured
+const emptyDefaultAccountConfig: IDefaultAccountConfig = {
+	preferredExtensions: [],
+	authenticationProvider: {
+		default: { id: '', name: '' },
+		enterprise: { id: '', name: '' },
+		enterpriseProviderConfig: '',
+		enterpriseProviderUriSetting: '',
+		scopes: [],
+	},
+	entitlementUrl: '',
+	tokenEntitlementUrl: '',
+	mcpRegistryDataUrl: '',
+};
+
+function toDefaultAccountConfig(defaultChatAgent: IDefaultChatAgent | undefined): IDefaultAccountConfig {
+	// TARX: Return empty config when no defaultChatAgent configured
+	if (!defaultChatAgent) {
+		return emptyDefaultAccountConfig;
+	}
 	return {
 		preferredExtensions: [
 			defaultChatAgent.chatExtensionId,
@@ -747,6 +766,13 @@ class DefaultAccountProviderContribution extends Disposable implements IWorkbenc
 		@ILogService logService: ILogService,
 	) {
 		super();
+
+		// TARX: Skip registration when no defaultChatAgent configured
+		if (!productService.defaultChatAgent) {
+			logService.debug('[DefaultAccount] No defaultChatAgent configured, skipping DefaultAccountProvider registration');
+			return;
+		}
+
 		const defaultAccountProvider = this._register(instantiationService.createInstance(DefaultAccountProvider, toDefaultAccountConfig(productService.defaultChatAgent)));
 		defaultAccountService.setDefaultAccountProvider(defaultAccountProvider);
 	}
