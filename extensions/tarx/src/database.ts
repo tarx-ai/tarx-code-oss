@@ -561,17 +561,20 @@ export class JsonDatabase implements DatabaseOperations {
 	}
 
 	async getRecentConversation(projectId: string | null): Promise<Conversation | null> {
-		const conversations = this.data.conversations
-			.filter(c => c.projectId === projectId)
-			.sort((a, b) => b.updatedAt - a.updatedAt);
+		// Get most recent conversation - all if no project, filtered if project active
+		const filtered = projectId === null
+			? this.data.conversations
+			: this.data.conversations.filter(c => c.projectId === projectId);
+		const conversations = filtered.sort((a, b) => b.updatedAt - a.updatedAt);
 		return conversations[0] || null;
 	}
 
 	async getRecentTurns(projectId: string | null, limit: number = 10): Promise<ConversationTurn[]> {
-		// Get conversations for this project, sorted by most recent
-		const conversations = this.data.conversations
-			.filter(c => c.projectId === projectId)
-			.sort((a, b) => b.updatedAt - a.updatedAt);
+		// Get conversations - all if no project, filtered if project active
+		const filtered = projectId === null
+			? this.data.conversations
+			: this.data.conversations.filter(c => c.projectId === projectId);
+		const conversations = filtered.sort((a, b) => b.updatedAt - a.updatedAt);
 
 		if (conversations.length === 0) {
 			return [];
@@ -601,8 +604,13 @@ export class JsonDatabase implements DatabaseOperations {
 	}
 
 	async getRecentConversations(projectId: string | null, limit: number = 5): Promise<Conversation[]> {
-		return this.data.conversations
-			.filter(c => c.projectId === projectId)
+		// If no project is active (projectId is null), show ALL conversations
+		// If a project is active, filter to that project's conversations
+		const filtered = projectId === null
+			? this.data.conversations
+			: this.data.conversations.filter(c => c.projectId === projectId);
+
+		return filtered
 			.sort((a, b) => b.updatedAt - a.updatedAt)
 			.slice(0, limit);
 	}

@@ -226,10 +226,11 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 		this.registerUploadProgressCommands();
 
 		// Load history and projects from database (async, runs after UI is ready)
+		// Use longer delay to ensure TARX extension is activated first
 		setTimeout(() => {
-			this.loadHistory();
-			this.loadProjects();
-		}, 500);
+			this.loadHistoryWithRetry(3);
+			this.loadProjectsWithRetry(3);
+		}, 1000);
 
 		// Apply collapsed state if it was saved
 		console.log('[TARX Sidebar] Sidebar container isCollapsed:', this.isCollapsed);
@@ -633,6 +634,10 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 					// Refresh projects list when command is executed
 					console.log('[TARX Sidebar] Projects refresh triggered');
 					this.loadProjects();
+				} else if (e.commandId === 'tarx.history.refresh') {
+					// Refresh history list when command is executed
+					console.log('[TARX Sidebar] History refresh triggered');
+					this.loadHistory();
 				}
 			})
 		);
@@ -886,6 +891,25 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 	}
 
 	/**
+	 * Load projects with retry logic (extension may not be ready yet)
+	 */
+	private async loadProjectsWithRetry(retries: number): Promise<void> {
+		try {
+			await this.loadProjects();
+			if (this.projects.length === 0 && retries > 0) {
+				// No projects found, but could be extension not ready - retry
+				console.log(`[TARX Sidebar] No projects, retrying in 1s (${retries} left)`);
+				setTimeout(() => this.loadProjectsWithRetry(retries - 1), 1000);
+			}
+		} catch (e) {
+			if (retries > 0) {
+				console.log(`[TARX Sidebar] loadProjects failed, retrying in 1s (${retries} left):`, e);
+				setTimeout(() => this.loadProjectsWithRetry(retries - 1), 1000);
+			}
+		}
+	}
+
+	/**
 	 * Load projects from the TARX extension database
 	 */
 	private async loadProjects(): Promise<void> {
@@ -1099,9 +1123,24 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 	}
 
 	/**
+	 * Load history with retry logic (extension may not be ready yet)
+	 */
+	private async loadHistoryWithRetry(retries: number): Promise<void> {
+		try {
+			await this.loadHistory();
+		} catch (e) {
+			if (retries > 0) {
+				console.log(`[TARX Sidebar] loadHistory failed, retrying in 1s (${retries} left):`, e);
+				setTimeout(() => this.loadHistoryWithRetry(retries - 1), 1000);
+			}
+		}
+	}
+
+	/**
 	 * Load history from the TARX extension database
 	 */
 	private async loadHistory(): Promise<void> {
+		console.log('[TARX Sidebar] loadHistory called');
 		try {
 			const result = await this.commandService.executeCommand<{
 				conversations: Array<{
@@ -1121,10 +1160,11 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 				console.log('[TARX Sidebar] Loaded history:', items.length, 'conversations');
 				this.updateHistory(items);
 			} else {
-				console.log('[TARX Sidebar] No history found');
+				console.log('[TARX Sidebar] No history found (empty result)');
 			}
 		} catch (e) {
 			console.log('[TARX Sidebar] Failed to load history:', e);
+			throw e; // Re-throw for retry logic
 		}
 	}
 

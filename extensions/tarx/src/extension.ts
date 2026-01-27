@@ -855,6 +855,9 @@ export function activate(context: vscode.ExtensionContext) {
 				const projectId = activeProject?.id || null;
 				activeConversation = await db.createConversation(projectId);
 				console.log('[TARX] Created new conversation:', activeConversation.id);
+
+				// Trigger history refresh so sidebar shows the new conversation
+				await vscode.commands.executeCommand('tarx.history.refresh');
 			} catch (e) {
 				console.warn('[TARX] Failed to create new conversation:', e);
 			}
@@ -1042,11 +1045,48 @@ export function activate(context: vscode.ExtensionContext) {
 			`# ${projectName}\n\nCreated with TARX\n`
 		);
 
+		// Create .tarx directory for project config
+		const tarxDir = path.join(folderPath, '.tarx');
+		fs.mkdirSync(tarxDir, { recursive: true });
+
+		// Create project.md overview file
+		const projectType = 'general';
+		const createdDate = new Date().toISOString();
+		const projectMd = `---
+name: ${projectName}
+created: ${createdDate}
+type: ${projectType}
+---
+
+# ${projectName}
+
+## Instructions
+_Add project-specific instructions for TARX here. These will be included in the AI context._
+
+## Quick Links
+- [README](../README.md)
+
+## Notes
+_Add any project notes here_
+`;
+		fs.writeFileSync(path.join(tarxDir, 'project.md'), projectMd);
+
+		// Create config.json for structured data
+		const projectConfig = {
+			name: projectName,
+			created: Date.now(),
+			type: projectType,
+			instructions: '',
+			pinnedFiles: [],
+			conversationIds: []
+		};
+		fs.writeFileSync(path.join(tarxDir, 'config.json'), JSON.stringify(projectConfig, null, 2));
+
+		console.log('[TARX] Created .tarx folder with project.md and config.json');
+
 		// Save project to database
 		if (db) {
 			try {
-				const projectType = 'general';
-
 				const newProject = await db.createProject({
 					name: projectName,
 					root: folderPath,
@@ -1111,9 +1151,43 @@ export function activate(context: vscode.ExtensionContext) {
 			await db.setActiveProject(projectId);
 			activeProject = project;
 
-			// Open the folder
+			// Check if project overview exists, create if not (migration)
+			const overviewPath = path.join(project.root, '.tarx', 'project.md');
+			if (!fs.existsSync(overviewPath)) {
+				// Migrate: create .tarx folder for existing project
+				const tarxDir = path.join(project.root, '.tarx');
+				if (!fs.existsSync(tarxDir)) {
+					fs.mkdirSync(tarxDir, { recursive: true });
+				}
+				const projectMd = `---
+name: ${project.name}
+created: ${new Date(project.createdAt).toISOString()}
+type: ${project.type || 'general'}
+---
+
+# ${project.name}
+
+## Instructions
+_Add project-specific instructions for TARX here._
+
+## Quick Links
+- [README](../README.md)
+
+## Notes
+_Add any project notes here_
+`;
+				fs.writeFileSync(overviewPath, projectMd);
+				console.log('[TARX] Created project overview for existing project:', project.name);
+			}
+
+			// Open the folder (this will reload the window)
 			const uri = vscode.Uri.file(project.root);
-			await vscode.commands.executeCommand('vscode.openFolder', uri);
+			await vscode.commands.executeCommand('vscode.openFolder', uri, { forceNewWindow: false });
+
+			// Note: Opening the overview file after openFolder won't work because
+			// the window reloads. Instead, we'll open it on workspace init.
+			// For now, show info message
+			console.log('[TARX] Project opened:', project.name);
 			return true;
 		} catch (e) {
 			console.error('[TARX] Failed to open project:', e);
@@ -1162,6 +1236,59 @@ export function activate(context: vscode.ExtensionContext) {
 		console.log('[TARX] Projects refresh command triggered');
 		// This is a signal command - the sidebar Part listens for this
 		// and calls loadProjects() when it fires
+	});
+
+	// History Refresh - Signal sidebar to reload history list
+	safeRegisterCommand(context, 'tarx.history.refresh', async () => {
+		console.log('[TARX] History refresh command triggered');
+		// This is a signal command - the sidebar Part listens for this
+		// and calls loadHistory() when it fires
+	});
+
+	// Projects Show Overview - Open the project.md overview file
+	safeRegisterCommand(context, 'tarx.projects.showOverview', async () => {
+		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+		if (!workspaceFolder) {
+			vscode.window.showWarningMessage('No workspace folder open');
+			return;
+		}
+
+		const overviewPath = path.join(workspaceFolder.uri.fsPath, '.tarx', 'project.md');
+		if (fs.existsSync(overviewPath)) {
+			const doc = await vscode.workspace.openTextDocument(overviewPath);
+			await vscode.window.showTextDocument(doc, { preview: false });
+			console.log('[TARX] Opened project overview:', overviewPath);
+		} else {
+			// Create the overview file if it doesn't exist
+			const tarxDir = path.join(workspaceFolder.uri.fsPath, '.tarx');
+			if (!fs.existsSync(tarxDir)) {
+				fs.mkdirSync(tarxDir, { recursive: true });
+			}
+
+			const projectName = workspaceFolder.name;
+			const projectMd = `---
+name: ${projectName}
+created: ${new Date().toISOString()}
+type: general
+---
+
+# ${projectName}
+
+## Instructions
+_Add project-specific instructions for TARX here._
+
+## Quick Links
+- [README](../README.md)
+
+## Notes
+_Add any project notes here_
+`;
+			fs.writeFileSync(overviewPath, projectMd);
+
+			const doc = await vscode.workspace.openTextDocument(overviewPath);
+			await vscode.window.showTextDocument(doc, { preview: false });
+			console.log('[TARX] Created and opened project overview:', overviewPath);
+		}
 	});
 
 	console.log('[TARX] Sidebar nav commands registered');
@@ -1336,6 +1463,43 @@ async function initializeWorkspace(context: vscode.ExtensionContext): Promise<vo
 		const project = await projectIndexer.ensureProject(workspaceFolder.uri);
 		activeProject = project;
 		console.log(`[TARX] Active project: ${project.name} (${project.type || 'unknown'})`);
+
+		// Check if this is a TARX project (has .tarx folder)
+		const tarxDir = path.join(workspaceFolder.uri.fsPath, '.tarx');
+		const overviewPath = path.join(tarxDir, 'project.md');
+		const isTarxProject = fs.existsSync(tarxDir);
+
+		// If not a TARX project yet but opened from ~/TARX/, create the config
+		const isInTarxHome = workspaceFolder.uri.fsPath.includes(path.join(os.homedir(), 'TARX'));
+		if (!isTarxProject && isInTarxHome) {
+			// Create .tarx folder for projects in ~/TARX/
+			fs.mkdirSync(tarxDir, { recursive: true });
+			const projectMd = `---
+name: ${project.name}
+created: ${new Date().toISOString()}
+type: ${project.type || 'general'}
+---
+
+# ${project.name}
+
+## Instructions
+_Add project-specific instructions for TARX here._
+
+## Quick Links
+- [README](../README.md)
+
+## Notes
+_Add any project notes here_
+`;
+			fs.writeFileSync(overviewPath, projectMd);
+			console.log('[TARX] Created .tarx folder for project in ~/TARX/');
+
+			// Open the overview file for new TARX projects
+			setTimeout(async () => {
+				const doc = await vscode.workspace.openTextDocument(overviewPath);
+				await vscode.window.showTextDocument(doc, { preview: false });
+			}, 500);
+		}
 
 		// Set up file watcher for incremental indexing
 		if (fileWatcher) {
