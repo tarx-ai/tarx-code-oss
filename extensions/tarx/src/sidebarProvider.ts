@@ -188,23 +188,15 @@ export function registerSidebarProvider(context: vscode.ExtensionContext): TarxS
 
 	context.subscriptions.push(treeView);
 
-	// Register start new conversation command
+	// Register start new conversation command (delegates to tarx.chat.new)
 	context.subscriptions.push(
 		vscode.commands.registerCommand('tarx.startNewConversation', () => {
-			// Open native chat panel
-			vscode.commands.executeCommand('workbench.action.chat.open');
+			// Delegate to main command in extension.ts
+			vscode.commands.executeCommand('tarx.chat.new');
 		})
 	);
 
-	// Register open conversation command
-	context.subscriptions.push(
-		vscode.commands.registerCommand('tarx.openConversation', (conversationId: string) => {
-			// Open chat panel with conversation context
-			vscode.commands.executeCommand('workbench.action.chat.open');
-			// TODO: Load specific conversation context
-			console.log('[TARX] Opening conversation:', conversationId);
-		})
-	);
+	// Note: tarx.openConversation is registered in extension.ts with full database support
 
 	return provider;
 }
