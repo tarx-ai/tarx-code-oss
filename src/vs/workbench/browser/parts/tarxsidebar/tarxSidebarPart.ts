@@ -833,10 +833,7 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 				this.navDisposables.add(addDisposableListener(itemEl, EventType.CLICK, (e) => {
 					e.stopPropagation(); // Prevent header collapse toggle
 					console.log('[TARX Sidebar] Item clicked:', item.label, '-> executing:', item.command);
-					this.commandService.executeCommand(item.command!).then(
-						() => console.log('[TARX Sidebar] Command executed successfully:', item.command),
-						(err) => console.error('[TARX Sidebar] Command failed:', item.command, err)
-					);
+					this.openViewInAuxiliaryBar(item.command!, item.label);
 				}));
 			}
 		}
@@ -1169,6 +1166,42 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 	}
 
 	/**
+	 * Open a view in the Auxiliary Bar (right side panel).
+	 * Since TARX sidebar replaces the primary sidebar, we show views on the right.
+	 */
+	private async openViewInAuxiliaryBar(command: string, label: string): Promise<void> {
+		console.log('[TARX Sidebar] Opening view in auxiliary bar:', label, '->', command);
+
+		// Map view commands to their auxiliary bar equivalents
+		const viewToAuxiliaryMap: Record<string, string> = {
+			'workbench.view.explorer': 'workbench.files.action.focusFilesExplorer',
+			'workbench.view.search': 'workbench.action.findInFiles',
+			'workbench.view.scm': 'workbench.view.scm',
+			'workbench.view.debug': 'workbench.view.debug',
+			'workbench.view.extensions': 'workbench.view.extensions',
+		};
+
+		try {
+			// First, show the auxiliary bar
+			await this.commandService.executeCommand('workbench.action.focusAuxiliaryBar');
+
+			// Then execute the view command
+			const actualCommand = viewToAuxiliaryMap[command] || command;
+			await this.commandService.executeCommand(actualCommand);
+
+			console.log('[TARX Sidebar] View opened successfully:', label);
+		} catch (err) {
+			console.error('[TARX Sidebar] Failed to open view:', label, err);
+			// Fallback: just try the original command
+			try {
+				await this.commandService.executeCommand(command);
+			} catch (fallbackErr) {
+				console.error('[TARX Sidebar] Fallback also failed:', fallbackErr);
+			}
+		}
+	}
+
+	/**
 	 * Footer: Extensions, Settings, and Collapse toggle (stacked vertically)
 	 */
 	private createFooter(): void {
@@ -1184,8 +1217,7 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 		const extLabel = append(extRow, $('span.tarx-footer-label'));
 		extLabel.textContent = 'Extensions';
 		this.navDisposables.add(addDisposableListener(extRow, EventType.CLICK, () => {
-			console.log('[TARX Sidebar] Extensions clicked');
-			this.commandService.executeCommand('workbench.view.extensions');
+			this.openViewInAuxiliaryBar('workbench.view.extensions', 'Extensions');
 		}));
 
 		// Settings row

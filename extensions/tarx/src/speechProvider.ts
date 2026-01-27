@@ -302,11 +302,12 @@ export function registerSpeechProvider(context: vscode.ExtensionContext): void {
 					extension: { id: 'tarx.tarx', uuid: '' },
 					displayName: 'TARX Voice (Moshi)'
 				},
-				createSpeechToTextSession: (token: vscode.CancellationToken) =>
+				// VS Code expects 'provide*' method names
+				provideSpeechToTextSession: (token: vscode.CancellationToken) =>
 					speechProvider.createSpeechToTextSession(token),
-				createTextToSpeechSession: (token: vscode.CancellationToken) =>
+				provideTextToSpeechSession: (token: vscode.CancellationToken) =>
 					speechProvider.createTextToSpeechSession(token),
-				createKeywordRecognitionSession: (token: vscode.CancellationToken) =>
+				provideKeywordRecognitionSession: (token: vscode.CancellationToken) =>
 					speechProvider.createKeywordRecognitionSession(token)
 			});
 
