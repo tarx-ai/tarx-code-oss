@@ -1,0 +1,2285 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) TARX AI. All rights reserved.
+ *  Licensed under the MIT License.
+ *
+ *  TARX Sidebar - shadcn sidebar-07 inspired styling
+ *  Visual: Clean, minimal, professional. VS Code native feel.
+ *--------------------------------------------------------------------------------------------*/
+
+/* ============================================================================
+   CSS Variables - TARX Design Tokens
+   ============================================================================ */
+:root {
+	--tarx-sidebar-width: 240px;
+	--tarx-sidebar-collapsed-width: 48px;
+	--tarx-spacing-xs: 4px;
+	--tarx-spacing-sm: 8px;
+	--tarx-spacing-md: 12px;
+	--tarx-spacing-lg: 16px;
+	--tarx-radius-sm: 4px;
+	--tarx-radius-md: 6px;
+	--tarx-transition-fast: 0.15s ease;
+	--tarx-transition-normal: 0.2s ease;
+	--tarx-font-xs: 10px;
+	--tarx-font-sm: 11px;
+	--tarx-font-md: 12px;
+	--tarx-font-lg: 13px;
+	--tarx-icon-size: 16px;
+	--tarx-icon-gap: 8px;
+}
+
+/* Reset */
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	padding: 0;
+	font-family: var(--vscode-font-family);
+	font-size: var(--vscode-font-size);
+	color: var(--vscode-foreground);
+	background: var(--vscode-sideBar-background);
+}
+
+/* Codicon icon base - ensure proper rendering */
+.codicon {
+	font-family: codicon !important;
+	font-size: 16px;
+	font-style: normal;
+	font-weight: normal;
+	line-height: 1;
+	display: inline-block;
+	text-rendering: auto;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	user-select: none;
+	-webkit-user-select: none;
+}
+
+/* ============================================================================
+   Main Container
+   ============================================================================ */
+.tarx-sidebar-container {
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+	width: 100%;
+	background: var(--vscode-sideBar-background);
+	color: var(--vscode-sideBar-foreground);
+}
+
+/* ============================================================================
+   Header - Logo + Greeting
+   ============================================================================ */
+.tarx-header {
+	box-sizing: border-box;
+	padding: 0 var(--tarx-spacing-md);
+	border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.08));
+	position: relative;
+	height: 35px;
+	display: flex;
+	align-items: center;
+	flex-shrink: 0;
+}
+
+.tarx-logo-row {
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	gap: var(--tarx-icon-gap);
+	height: 100%;
+}
+
+.tarx-logo-icon {
+	width: 18px;
+	height: 18px;
+	object-fit: contain;
+	flex-shrink: 0;
+	border-radius: var(--tarx-radius-sm);
+	display: block;
+}
+
+.tarx-logo-icon.tarx-logo-clickable {
+	cursor: pointer;
+	transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.tarx-logo-icon.tarx-logo-clickable:hover {
+	transform: scale(1.15);
+	filter: brightness(1.2);
+}
+
+.tarx-logo-icon.tarx-logo-clickable:active {
+	transform: scale(0.95);
+}
+
+.tarx-logo-text {
+	font-size: var(--tarx-font-lg);
+	font-weight: 700;
+	flex: 1;
+}
+
+/* ============================================================================
+   Nav Rows - Chat with hover action button
+   ============================================================================ */
+.tarx-nav-rows {
+	padding: var(--tarx-spacing-sm) 0 0 0;
+	flex-shrink: 0;
+}
+
+.tarx-nav-row {
+	display: flex;
+	align-items: center;
+	padding: var(--tarx-spacing-sm) var(--tarx-spacing-md);
+	margin: 0 var(--tarx-spacing-sm);
+	border-radius: var(--tarx-radius-md);
+	cursor: pointer;
+	transition: background var(--tarx-transition-fast);
+	position: relative;
+}
+
+.tarx-nav-row:hover {
+	background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
+}
+
+.tarx-nav-row-icon {
+	width: var(--tarx-icon-size);
+	height: var(--tarx-icon-size);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	opacity: 0.9;
+}
+
+.tarx-nav-row-label {
+	flex: 1;
+	font-size: var(--tarx-font-lg);
+	margin-left: var(--tarx-icon-gap);
+}
+
+.tarx-action-btn {
+	width: 20px;
+	height: 20px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: var(--tarx-radius-sm);
+	opacity: 0;
+	transition: opacity var(--tarx-transition-fast), background var(--tarx-transition-fast);
+	flex-shrink: 0;
+	cursor: pointer;
+}
+
+.tarx-nav-row:hover .tarx-action-btn {
+	opacity: 1;
+}
+
+.tarx-action-btn:hover {
+	background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
+}
+
+/* ============================================================================
+   Collapsible Sections
+   ============================================================================ */
+.tarx-sections {
+	flex: 1;
+	overflow-y: auto;
+	overflow-x: hidden;
+	padding: 0;
+}
+
+.tarx-section {
+	margin-bottom: 2px;
+}
+
+.tarx-section-wrapper {
+	position: relative;
+}
+
+.tarx-section-wrapper.drag-over::after {
+	content: 'Drop files here';
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(66, 133, 244, 0.1);
+	border: 2px dashed var(--vscode-focusBorder, #4285f4);
+	border-radius: var(--tarx-radius-md);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: var(--tarx-font-lg);
+	z-index: 10;
+	pointer-events: none;
+}
+
+.tarx-section-header {
+	display: flex;
+	align-items: center;
+	padding: var(--tarx-spacing-sm) var(--tarx-spacing-md);
+	margin: 0 var(--tarx-spacing-sm);
+	border-radius: var(--tarx-radius-md);
+	cursor: pointer;
+	user-select: none;
+	transition: background var(--tarx-transition-fast);
+	position: relative;
+}
+
+.tarx-section-header:hover {
+	background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
+}
+
+.tarx-section-icon {
+	width: var(--tarx-icon-size);
+	height: var(--tarx-icon-size);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0.9;
+	flex-shrink: 0;
+}
+
+.tarx-section-title {
+	font-size: var(--tarx-font-lg);
+	font-weight: 500;
+	margin-left: var(--tarx-icon-gap);
+	flex: 1;
+}
+
+.tarx-section-add,
+.tarx-section-see-all {
+	opacity: 0;
+	margin-right: var(--tarx-spacing-sm);
+}
+
+.tarx-section-header:hover .tarx-section-add,
+.tarx-section-header:hover .tarx-section-see-all {
+	opacity: 1;
+}
+
+.tarx-section-see-all {
+	color: var(--vscode-textLink-foreground, #3794ff);
+}
+
+.tarx-section-chevron {
+	width: 16px;
+	height: 16px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0.5;
+	transition: transform var(--tarx-transition-normal);
+	flex-shrink: 0;
+}
+
+.tarx-section.collapsed .tarx-section-chevron {
+	transform: rotate(-90deg);
+}
+
+.tarx-section-content {
+	overflow: hidden;
+	transition: max-height var(--tarx-transition-normal) ease-out;
+	max-height: 500px;
+}
+
+.tarx-section.collapsed .tarx-section-content {
+	max-height: 0;
+}
+
+/* ============================================================================
+   Section Items
+   ============================================================================ */
+.tarx-section-item {
+	display: flex;
+	align-items: center;
+	padding: var(--tarx-spacing-sm) var(--tarx-spacing-md);
+	margin: 0 var(--tarx-spacing-sm);
+	margin-left: calc(var(--tarx-spacing-sm) + var(--tarx-icon-size) + var(--tarx-spacing-md));
+	border-radius: var(--tarx-radius-md);
+	cursor: pointer;
+	transition: background var(--tarx-transition-fast);
+}
+
+.tarx-section-item:hover {
+	background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.03));
+}
+
+.tarx-section-item.active {
+	background: var(--vscode-list-activeSelectionBackground, rgba(255,255,255,0.06));
+}
+
+.tarx-section-item-icon {
+	width: var(--tarx-icon-size);
+	height: var(--tarx-icon-size);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0.8;
+	margin-right: var(--tarx-icon-gap);
+	flex-shrink: 0;
+}
+
+.tarx-section-item-emoji {
+	width: var(--tarx-icon-size);
+	height: var(--tarx-icon-size);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin-right: var(--tarx-icon-gap);
+	flex-shrink: 0;
+	font-size: 14px;
+}
+
+.tarx-section-item-label {
+	font-size: var(--tarx-font-lg);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* Empty State */
+.tarx-section-empty-state {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--tarx-spacing-sm);
+	padding: var(--tarx-spacing-sm) var(--tarx-spacing-md);
+	margin-left: calc(var(--tarx-icon-size) + var(--tarx-spacing-md));
+}
+
+.tarx-empty-state-text {
+	font-size: var(--tarx-font-md);
+	opacity: 0.5;
+	font-style: italic;
+}
+
+.tarx-text-link {
+	color: var(--vscode-textLink-foreground, #3794ff);
+	font-size: var(--tarx-font-md);
+	cursor: pointer;
+	text-decoration: none;
+}
+
+.tarx-text-link:hover {
+	text-decoration: underline;
+}
+
+.tarx-empty-state.clickable {
+	cursor: pointer;
+	padding: var(--tarx-spacing-sm);
+	text-align: center;
+}
+
+/* ============================================================================
+   History Section
+   ============================================================================ */
+.tarx-history-content {
+	overflow: visible;
+}
+
+.tarx-history-group-label {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: var(--tarx-spacing-xs) var(--tarx-spacing-md);
+	margin-left: calc(var(--tarx-icon-size) + var(--tarx-spacing-md));
+	font-size: var(--tarx-font-xs);
+	opacity: 0.4;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	position: sticky;
+	top: 0;
+	background: var(--vscode-sideBar-background);
+	z-index: 1;
+}
+
+.tarx-history-group-icon {
+	display: flex;
+	align-items: center;
+}
+
+.tarx-claude-sync-icon {
+	color: #d97757;
+	font-size: 10px;
+}
+
+.tarx-claude-logo-icon {
+	width: 14px;
+	height: 14px;
+	flex-shrink: 0;
+	opacity: 0.85;
+}
+
+.tarx-history-group-icon .tarx-claude-logo-icon {
+	width: 12px;
+	height: 12px;
+}
+
+.tarx-history-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px var(--tarx-spacing-md);
+	margin: 1px var(--tarx-spacing-sm);
+	margin-left: calc(var(--tarx-spacing-sm) + var(--tarx-icon-size) + var(--tarx-spacing-md));
+	border-radius: var(--tarx-radius-md);
+	cursor: pointer;
+	transition: background var(--tarx-transition-fast);
+	min-height: 28px;
+}
+
+.tarx-history-item:hover {
+	background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
+}
+
+.tarx-history-item-icon {
+	flex-shrink: 0;
+	width: 16px;
+	height: 16px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0.85;
+}
+
+.tarx-history-item-icon img {
+	width: 14px;
+	height: 14px;
+}
+
+.tarx-history-item-icon .codicon {
+	font-size: 14px;
+	opacity: 0.7;
+}
+
+.tarx-history-item-title {
+	font-size: var(--tarx-font-md);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	flex: 1;
+	min-width: 0;
+}
+
+.tarx-history-item-time {
+	font-size: var(--tarx-font-xs);
+	opacity: 0.5;
+	flex-shrink: 0;
+	white-space: nowrap;
+}
+
+/* ============================================================================
+   Files Section
+   ============================================================================ */
+.tarx-section-divider {
+	font-size: var(--tarx-font-xs);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	opacity: 0.5;
+	padding: var(--tarx-spacing-md) var(--tarx-spacing-md) var(--tarx-spacing-xs);
+	margin-left: calc(var(--tarx-icon-size) + var(--tarx-spacing-md));
+}
+
+.tarx-uploaded-files {
+	padding: 0 var(--tarx-spacing-sm);
+}
+
+.tarx-uploaded-file {
+	display: flex;
+	align-items: center;
+	padding: var(--tarx-spacing-xs) var(--tarx-spacing-sm);
+	margin-left: calc(var(--tarx-icon-size) + var(--tarx-spacing-md));
+	border-radius: var(--tarx-radius-sm);
+	cursor: pointer;
+	transition: background var(--tarx-transition-fast);
+}
+
+.tarx-uploaded-file:hover {
+	background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.03));
+}
+
+.tarx-file-icon {
+	width: 14px;
+	height: 14px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0.7;
+	margin-right: var(--tarx-spacing-xs);
+	flex-shrink: 0;
+}
+
+.tarx-file-name {
+	flex: 1;
+	font-size: var(--tarx-font-sm);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.tarx-file-size {
+	font-size: var(--tarx-font-xs);
+	opacity: 0.5;
+	white-space: nowrap;
+}
+
+.tarx-file-delete {
+	width: 16px;
+	height: 16px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0;
+	margin-left: var(--tarx-spacing-xs);
+	cursor: pointer;
+	border-radius: var(--tarx-radius-sm);
+	transition: opacity var(--tarx-transition-fast), background var(--tarx-transition-fast);
+}
+
+.tarx-file-attach {
+	width: var(--tarx-icon-size);
+	height: var(--tarx-icon-size);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0;
+	margin-left: var(--tarx-spacing-xs);
+	cursor: pointer;
+	border-radius: var(--tarx-radius-sm);
+	transition: opacity var(--tarx-transition-fast), background var(--tarx-transition-fast);
+	color: var(--vscode-textLink-foreground);
+}
+
+.tarx-uploaded-file:hover .tarx-file-attach {
+	opacity: 0.5;
+}
+
+.tarx-file-attach:hover {
+	opacity: 1 !important;
+	background: var(--vscode-list-hoverBackground);
+}
+
+.tarx-uploaded-file:hover .tarx-file-delete {
+	opacity: 0.5;
+}
+
+.tarx-file-delete:hover {
+	opacity: 1 !important;
+	background: var(--vscode-list-hoverBackground);
+}
+
+/* ============================================================================
+   Footer
+   ============================================================================ */
+.tarx-footer {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	padding: var(--tarx-spacing-sm) 0;
+	border-top: 1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.06));
+	margin-top: auto;
+	background: inherit;
+	flex-shrink: 0;
+}
+
+.tarx-footer-row {
+	display: flex;
+	align-items: center;
+	padding: var(--tarx-spacing-sm) var(--tarx-spacing-md);
+	margin: 0 var(--tarx-spacing-sm);
+	border-radius: var(--tarx-radius-md);
+	cursor: pointer;
+	transition: background var(--tarx-transition-fast);
+}
+
+.tarx-footer-row:hover {
+	background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
+}
+
+.tarx-footer-row > span:first-child {
+	width: var(--tarx-icon-size);
+	height: var(--tarx-icon-size);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	opacity: 0.9;
+}
+
+.tarx-footer-label {
+	font-size: var(--tarx-font-lg);
+	margin-left: var(--tarx-icon-gap);
+	white-space: nowrap;
+}
+
+.tarx-compute-chip-icon {
+	width: var(--tarx-icon-size);
+	height: var(--tarx-icon-size);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.tarx-compute-chevron {
+	margin-left: auto;
+	opacity: 0.6;
+}
+
+.tarx-compute-row.open {
+	background: var(--vscode-list-activeSelectionBackground, rgba(255,255,255,0.08));
+}
+
+/* Compute Dropdown */
+.tarx-compute-dropdown {
+	position: absolute;
+	bottom: 100%;
+	left: var(--tarx-spacing-lg);
+	right: var(--tarx-spacing-lg);
+	margin-bottom: 4px;
+	background: var(--vscode-dropdown-background, #3c3c3c);
+	border: 1px solid var(--vscode-dropdown-border, rgba(255,255,255,0.1));
+	border-radius: var(--tarx-radius-md);
+	box-shadow: 0 -4px 12px rgba(0,0,0,0.3);
+	z-index: 100;
+	overflow: hidden;
+}
+
+.tarx-compute-option {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	cursor: default;
+	transition: background var(--tarx-transition-fast);
+}
+
+.tarx-compute-option:hover {
+	background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
+}
+
+.tarx-compute-option.local {
+	border-bottom: 1px solid var(--vscode-dropdown-border, rgba(255,255,255,0.06));
+}
+
+.tarx-compute-check {
+	width: 16px;
+	height: 16px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--vscode-testing-iconPassed, #73c991);
+	flex-shrink: 0;
+	margin-left: auto;
+}
+
+.tarx-compute-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--vscode-input-border, #6c6c6c);
+	flex-shrink: 0;
+}
+
+.tarx-compute-dot.active {
+	background: var(--vscode-testing-iconPassed, #73c991);
+}
+
+.tarx-compute-dot.connecting {
+	background: var(--vscode-charts-yellow, #cca700);
+	animation: tarx-pulse 1s infinite;
+}
+
+@keyframes tarx-pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.4; }
+}
+
+.tarx-compute-option-label {
+	flex: 1;
+	font-size: var(--tarx-font-md);
+}
+
+/* ============================================================================
+   Model Loading Indicator
+   ============================================================================ */
+.tarx-model-loading {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: var(--tarx-spacing-md);
+	padding: var(--tarx-spacing-lg);
+	text-align: center;
+	flex: 1;
+}
+
+.tarx-model-loading-spinner {
+	width: 32px;
+	height: 32px;
+	border: 3px solid var(--vscode-input-border, rgba(255,255,255,0.1));
+	border-top-color: var(--vscode-progressBar-background, #0e70c0);
+	border-radius: 50%;
+	animation: tarx-spin 1s linear infinite;
+}
+
+@keyframes tarx-spin {
+	to { transform: rotate(360deg); }
+}
+
+.tarx-model-loading-text {
+	font-size: var(--tarx-font-md);
+	color: var(--vscode-foreground);
+	opacity: 0.8;
+}
+
+.tarx-model-loading-subtext {
+	font-size: var(--tarx-font-sm);
+	color: var(--vscode-descriptionForeground);
+	opacity: 0.6;
+}
+
+/* ============================================================================
+   Upload Progress
+   ============================================================================ */
+.tarx-upload-progress {
+	display: flex;
+	flex-direction: column;
+	gap: var(--tarx-spacing-xs);
+	padding: var(--tarx-spacing-sm) var(--tarx-spacing-md);
+	background: var(--vscode-input-background, rgba(255,255,255,0.05));
+	border-radius: var(--tarx-radius-md);
+	margin: var(--tarx-spacing-sm) var(--tarx-spacing-md);
+	flex-shrink: 0;
+}
+
+.tarx-upload-progress-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--tarx-spacing-sm);
+}
+
+.tarx-upload-progress-info {
+	display: flex;
+	align-items: center;
+	gap: var(--tarx-spacing-sm);
+	flex: 1;
+	min-width: 0;
+}
+
+.tarx-upload-progress-icon {
+	flex-shrink: 0;
+	opacity: 0.8;
+}
+
+.tarx-upload-progress-icon.spinning {
+	animation: tarx-spin 1s linear infinite;
+}
+
+.tarx-upload-progress-text {
+	font-size: var(--tarx-font-sm);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.tarx-upload-progress-percent {
+	font-size: var(--tarx-font-sm);
+	opacity: 0.7;
+	flex-shrink: 0;
+}
+
+.tarx-upload-progress-bar {
+	height: 3px;
+	background: var(--vscode-input-border, rgba(255,255,255,0.1));
+	border-radius: 2px;
+	overflow: hidden;
+}
+
+.tarx-upload-progress-bar-fill {
+	height: 100%;
+	background: var(--vscode-progressBar-background, #0e70c0);
+	border-radius: 2px;
+	transition: width 0.3s ease;
+}
+
+/* ============================================================================
+   Project Modal
+   ============================================================================ */
+.tarx-modal-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(0, 0, 0, 0.6);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 9999;
+	backdrop-filter: blur(2px);
+}
+
+.tarx-modal {
+	background: var(--vscode-editor-background, #1e1e1e);
+	border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.1));
+	border-radius: 12px;
+	padding: 0;
+	width: 420px;
+	max-width: 90vw;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+	animation: tarx-modal-appear 0.15s ease-out;
+}
+
+@keyframes tarx-modal-appear {
+	from {
+		opacity: 0;
+		transform: scale(0.95) translateY(-10px);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1) translateY(0);
+	}
+}
+
+.tarx-modal-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 16px 20px;
+	border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.08));
+}
+
+.tarx-modal-header h2 {
+	margin: 0;
+	font-size: 16px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+
+.tarx-modal-close {
+	width: 28px;
+	height: 28px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 20px;
+	cursor: pointer;
+	border-radius: 6px;
+	opacity: 0.6;
+	transition: all 0.15s ease;
+}
+
+.tarx-modal-close:hover {
+	opacity: 1;
+	background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
+}
+
+.tarx-modal-content {
+	padding: 20px;
+}
+
+.tarx-modal-content label {
+	display: block;
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--vscode-foreground);
+	opacity: 0.8;
+	margin-bottom: 6px;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+}
+
+.tarx-modal-content input,
+.tarx-modal-content textarea {
+	width: 100%;
+	padding: 10px 12px;
+	margin-bottom: 16px;
+	background: var(--vscode-input-background, rgba(255,255,255,0.05));
+	border: 1px solid var(--vscode-input-border, rgba(255,255,255,0.1));
+	border-radius: 6px;
+	color: var(--vscode-input-foreground, inherit);
+	font-size: 14px;
+	font-family: inherit;
+	box-sizing: border-box;
+	transition: border-color 0.15s ease;
+}
+
+.tarx-modal-content input:focus,
+.tarx-modal-content textarea:focus {
+	outline: none;
+	border-color: var(--vscode-focusBorder, #4285f4);
+}
+
+.tarx-modal-content input.error {
+	border-color: var(--vscode-errorForeground, #f44336);
+}
+
+.tarx-modal-content textarea {
+	min-height: 80px;
+	resize: vertical;
+	line-height: 1.5;
+}
+
+.tarx-modal-actions {
+	display: flex;
+	gap: 10px;
+	justify-content: flex-end;
+	padding: 16px 20px;
+	border-top: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.08));
+	background: var(--vscode-sideBar-background, rgba(0,0,0,0.1));
+	border-radius: 0 0 12px 12px;
+}
+
+.tarx-modal-btn {
+	padding: 8px 16px;
+	border-radius: 6px;
+	cursor: pointer;
+	font-size: 13px;
+	font-weight: 500;
+	border: 1px solid var(--vscode-button-border, transparent);
+	background: transparent;
+	color: var(--vscode-foreground);
+	transition: all 0.15s ease;
+}
+
+.tarx-modal-btn:hover {
+	background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
+}
+
+.tarx-modal-btn.primary {
+	background: var(--tarx-btn-primary);
+	color: white;
+	border-color: transparent;
+	box-shadow: var(--tarx-gradient-glow);
+	transition: all 0.2s ease;
+}
+
+.tarx-modal-btn.primary:hover {
+	background: var(--tarx-gradient-primary-hover);
+	box-shadow: var(--tarx-gradient-glow-hover);
+	transform: scale(1.03);
+}
+
+/* ============================================================================
+   Scrollbar Styling
+   ============================================================================ */
+.tarx-sections::-webkit-scrollbar {
+	width: 6px;
+}
+
+.tarx-sections::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.tarx-sections::-webkit-scrollbar-thumb {
+	background: var(--vscode-scrollbarSlider-background, rgba(255,255,255,0.1));
+	border-radius: 3px;
+}
+
+.tarx-sections::-webkit-scrollbar-thumb:hover {
+	background: var(--vscode-scrollbarSlider-hoverBackground, rgba(255,255,255,0.2));
+}
+
+/* ============================================================================
+   TARX Brand Gradient System
+   ============================================================================ */
+
+/* ============================================================================
+   TARX Button Design System — Official Design Tokens
+   Primary: Cyan→Purple (Create, Submit, Save, Confirm)
+   Accent: Pink→Orange (Delete, Warning, Upgrade CTAs)
+   Success: Green→Mint (Connected, Complete, Active states)
+   ============================================================================ */
+
+:root {
+	/* Official TARX Button Gradients */
+	--tarx-btn-primary: linear-gradient(90deg, #00F0FF 0%, #B026FF 100%);
+	--tarx-btn-accent: linear-gradient(90deg, #FF2E97 0%, #FF6B00 100%);
+	--tarx-btn-success: linear-gradient(90deg, #00FF94 0%, #00FFCC 100%);
+
+	/* Legacy gradient variables (kept for backwards compatibility) */
+	--tarx-gradient-primary: linear-gradient(90deg, #00F0FF 0%, #B026FF 100%);
+	--tarx-gradient-primary-hover: linear-gradient(90deg, #00D4E0 0%, #9C22E0 100%);
+	--tarx-gradient-secondary: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+	--tarx-gradient-secondary-hover: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+	--tarx-gradient-accent: linear-gradient(90deg, #FF2E97 0%, #FF6B00 100%);
+	--tarx-gradient-accent-hover: linear-gradient(90deg, #E6287F 0%, #E05F00 100%);
+	--tarx-gradient-success: linear-gradient(90deg, #00FF94 0%, #00FFCC 100%);
+	--tarx-gradient-success-hover: linear-gradient(90deg, #00E085 0%, #00E0B5 100%);
+	--tarx-gradient-glow: 0 4px 15px rgba(0, 240, 255, 0.25);
+	--tarx-gradient-glow-hover: 0 10px 25px rgba(0, 240, 255, 0.35);
+}
+
+/* ── TARX Button Base ── */
+.tarx-btn {
+	height: 2.5rem;
+	width: 100%;
+	border-radius: 0.5rem;
+	font-weight: 600;
+	font-size: 13px;
+	color: white;
+	border: none;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+}
+
+.tarx-btn:hover {
+	transform: scale(1.03);
+	box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+}
+
+.tarx-btn:active {
+	transform: scale(0.98);
+}
+
+.tarx-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+	transform: none;
+}
+
+/* ── Primary: Cyan→Purple (Create, Submit, Save, Confirm) ── */
+.tarx-btn-primary {
+	background: var(--tarx-btn-primary);
+	box-shadow: var(--tarx-gradient-glow);
+}
+
+.tarx-btn-primary:hover:not(:disabled) {
+	background: var(--tarx-gradient-primary-hover);
+	box-shadow: var(--tarx-gradient-glow-hover);
+}
+
+/* ── Accent: Pink→Orange (Delete, Warning, Upgrade CTAs) ── */
+.tarx-btn-accent {
+	background: var(--tarx-btn-accent);
+	box-shadow: 0 4px 15px rgba(255, 46, 151, 0.25);
+}
+
+.tarx-btn-accent:hover:not(:disabled) {
+	background: var(--tarx-gradient-accent-hover);
+	box-shadow: 0 10px 25px rgba(255, 46, 151, 0.35);
+}
+
+/* ── Success: Green→Mint (Connected, Complete, Active) ── */
+.tarx-btn-success {
+	background: var(--tarx-btn-success);
+	color: #0a0a0a;
+	box-shadow: 0 4px 15px rgba(0, 255, 148, 0.25);
+}
+
+.tarx-btn-success:hover:not(:disabled) {
+	background: var(--tarx-gradient-success-hover);
+	box-shadow: 0 10px 25px rgba(0, 255, 148, 0.35);
+}
+
+/* Base Gradient Button */
+.tarx-btn-gradient {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	padding: 10px 20px;
+	border: none;
+	border-radius: 8px;
+	background: var(--tarx-gradient-primary);
+	color: white;
+	font-size: 13px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	box-shadow: var(--tarx-gradient-glow);
+	overflow: hidden;
+}
+
+.tarx-btn-gradient::before {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: var(--tarx-gradient-primary-hover);
+	opacity: 0;
+	transition: opacity 0.2s ease;
+}
+
+.tarx-btn-gradient:hover {
+	box-shadow: var(--tarx-gradient-glow-hover);
+	transform: translateY(-1px);
+}
+
+.tarx-btn-gradient:hover::before {
+	opacity: 1;
+}
+
+.tarx-btn-gradient:active {
+	transform: translateY(0);
+}
+
+.tarx-btn-gradient span,
+.tarx-btn-gradient .codicon {
+	position: relative;
+	z-index: 1;
+}
+
+/* Gradient Button Variants */
+.tarx-btn-gradient.secondary {
+	background: var(--tarx-gradient-secondary);
+}
+
+.tarx-btn-gradient.secondary::before {
+	background: var(--tarx-gradient-secondary-hover);
+}
+
+.tarx-btn-gradient.accent {
+	background: var(--tarx-gradient-accent);
+}
+
+.tarx-btn-gradient.accent::before {
+	background: var(--tarx-gradient-accent-hover);
+}
+
+.tarx-btn-gradient.success {
+	background: var(--tarx-gradient-success);
+}
+
+.tarx-btn-gradient.success::before {
+	background: var(--tarx-gradient-success-hover);
+}
+
+/* Small Gradient Button */
+.tarx-btn-gradient.small {
+	padding: 6px 12px;
+	font-size: 12px;
+	border-radius: 6px;
+}
+
+/* Large Gradient Button */
+.tarx-btn-gradient.large {
+	padding: 14px 28px;
+	font-size: 15px;
+	border-radius: 10px;
+}
+
+/* Outline Gradient Button (gradient border only) */
+.tarx-btn-gradient-outline {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	padding: 10px 20px;
+	border: none;
+	border-radius: 8px;
+	background: transparent;
+	color: var(--vscode-foreground);
+	font-size: 13px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.tarx-btn-gradient-outline::before {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	border-radius: 8px;
+	padding: 1px;
+	background: var(--tarx-gradient-primary);
+	-webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+	-webkit-mask-composite: xor;
+	mask-composite: exclude;
+}
+
+.tarx-btn-gradient-outline:hover {
+	background: rgba(139, 92, 246, 0.1);
+}
+
+/* Gradient Text */
+.tarx-text-gradient {
+	background: var(--tarx-gradient-primary);
+	-webkit-background-clip: text;
+	-webkit-text-fill-color: transparent;
+	background-clip: text;
+}
+
+/* Apply gradient to modal primary button — Uses TARX Cyan→Purple */
+.tarx-modal-btn.primary.gradient {
+	background: var(--tarx-btn-primary);
+	border: none;
+	box-shadow: var(--tarx-gradient-glow);
+	transition: all 0.2s ease;
+}
+
+.tarx-modal-btn.primary.gradient:hover {
+	background: var(--tarx-gradient-primary-hover);
+	box-shadow: var(--tarx-gradient-glow-hover);
+	transform: scale(1.03);
+}
+
+/* Gradient Icon Button */
+.tarx-icon-btn-gradient {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	border: none;
+	border-radius: 8px;
+	background: var(--tarx-gradient-primary);
+	color: white;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	box-shadow: var(--tarx-gradient-glow);
+}
+
+.tarx-icon-btn-gradient:hover {
+	box-shadow: var(--tarx-gradient-glow-hover);
+	transform: translateY(-1px);
+}
+
+/* Gradient Badge */
+.tarx-badge-gradient {
+	display: inline-flex;
+	align-items: center;
+	padding: 2px 8px;
+	border-radius: 12px;
+	background: var(--tarx-gradient-primary);
+	color: white;
+	font-size: 10px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+}
+
+/* ============================================================================
+   Header Settings Button
+   ============================================================================ */
+
+.tarx-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.tarx-header-settings-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	border: none;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+	border-radius: var(--tarx-radius-sm);
+	opacity: 0.7;
+	transition: all var(--tarx-transition-fast);
+}
+
+.tarx-header-settings-btn:hover {
+	background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1));
+	opacity: 1;
+	color: var(--vscode-foreground);
+}
+
+/* ============================================================================
+   Settings View
+   ============================================================================ */
+
+.tarx-settings-view {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	overflow: hidden;
+}
+
+.tarx-settings-header {
+	display: flex;
+	align-items: center;
+	gap: var(--tarx-spacing-sm);
+	padding: var(--tarx-spacing-sm) var(--tarx-spacing-md);
+	border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, rgba(255, 255, 255, 0.08));
+	flex-shrink: 0;
+}
+
+.tarx-settings-back-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	border: none;
+	background: transparent;
+	color: var(--vscode-foreground);
+	cursor: pointer;
+	border-radius: var(--tarx-radius-sm);
+	transition: background var(--tarx-transition-fast);
+}
+
+.tarx-settings-back-btn:hover {
+	background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1));
+}
+
+.tarx-settings-title {
+	font-size: var(--tarx-font-lg);
+	font-weight: 600;
+	margin: 0;
+}
+
+.tarx-settings-content {
+	flex: 1;
+	overflow-y: auto;
+	padding: var(--tarx-spacing-md);
+}
+
+/* Settings Sections */
+.tarx-settings-section {
+	margin-bottom: var(--tarx-spacing-lg);
+}
+
+.tarx-settings-section-title {
+	font-size: var(--tarx-font-sm);
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: var(--vscode-descriptionForeground);
+	margin: 0 0 var(--tarx-spacing-md) 0;
+	padding-bottom: var(--tarx-spacing-xs);
+	border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, rgba(255, 255, 255, 0.08));
+}
+
+/* Settings Group (Claude API, Local Model, etc.) */
+.tarx-settings-group {
+	background: var(--vscode-input-background, rgba(255, 255, 255, 0.04));
+	border: 1px solid var(--vscode-input-border, rgba(255, 255, 255, 0.1));
+	border-radius: var(--tarx-radius-md);
+	padding: var(--tarx-spacing-md);
+	margin-bottom: var(--tarx-spacing-md);
+}
+
+.tarx-settings-group-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: var(--tarx-spacing-md);
+}
+
+.tarx-settings-group-label {
+	font-size: var(--tarx-font-md);
+	font-weight: 600;
+}
+
+/* Status Dot */
+.tarx-settings-status-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--vscode-descriptionForeground);
+}
+
+.tarx-settings-status-dot.connected {
+	background: var(--vscode-testing-iconPassed, #73c991);
+	box-shadow: 0 0 6px var(--vscode-testing-iconPassed, #73c991);
+}
+
+.tarx-settings-status-dot.error {
+	background: var(--vscode-errorForeground, #f44336);
+	box-shadow: 0 0 6px var(--vscode-errorForeground, #f44336);
+}
+
+.tarx-settings-status-dot.not-configured {
+	background: var(--vscode-descriptionForeground, #888);
+}
+
+/* Settings Field */
+.tarx-settings-field {
+	margin-bottom: var(--tarx-spacing-md);
+}
+
+.tarx-settings-label {
+	display: block;
+	font-size: var(--tarx-font-sm);
+	color: var(--vscode-descriptionForeground);
+	margin-bottom: var(--tarx-spacing-xs);
+}
+
+.tarx-settings-input-row {
+	display: flex;
+	gap: var(--tarx-spacing-xs);
+}
+
+.tarx-settings-input {
+	flex: 1;
+	padding: var(--tarx-spacing-sm);
+	font-size: var(--tarx-font-md);
+	background: var(--vscode-input-background);
+	border: 1px solid var(--vscode-input-border, rgba(255, 255, 255, 0.1));
+	border-radius: var(--tarx-radius-sm);
+	color: var(--vscode-input-foreground);
+	outline: none;
+}
+
+.tarx-settings-input:focus {
+	border-color: var(--vscode-focusBorder);
+}
+
+.tarx-settings-input::placeholder {
+	color: var(--vscode-input-placeholderForeground, rgba(255, 255, 255, 0.4));
+}
+
+.tarx-settings-icon-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	border: 1px solid var(--vscode-input-border, rgba(255, 255, 255, 0.1));
+	background: var(--vscode-input-background);
+	border-radius: var(--tarx-radius-sm);
+	color: var(--vscode-foreground);
+	cursor: pointer;
+	transition: background var(--tarx-transition-fast);
+}
+
+.tarx-settings-icon-btn:hover {
+	background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1));
+}
+
+.tarx-settings-select {
+	width: 100%;
+	padding: var(--tarx-spacing-sm);
+	font-size: var(--tarx-font-md);
+	background: var(--vscode-dropdown-background);
+	border: 1px solid var(--vscode-dropdown-border, rgba(255, 255, 255, 0.1));
+	border-radius: var(--tarx-radius-sm);
+	color: var(--vscode-dropdown-foreground);
+	cursor: pointer;
+	outline: none;
+}
+
+.tarx-settings-select:focus {
+	border-color: var(--vscode-focusBorder);
+}
+
+.tarx-settings-error {
+	display: block;
+	font-size: var(--tarx-font-xs);
+	color: var(--vscode-errorForeground, #f44336);
+	margin-top: var(--tarx-spacing-xs);
+}
+
+/* Settings Actions */
+.tarx-settings-actions {
+	display: flex;
+	gap: var(--tarx-spacing-sm);
+	flex-wrap: wrap;
+}
+
+.tarx-settings-btn {
+	padding: var(--tarx-spacing-sm) var(--tarx-spacing-md);
+	font-size: var(--tarx-font-sm);
+	border: 1px solid var(--vscode-button-border, rgba(255, 255, 255, 0.1));
+	border-radius: var(--tarx-radius-sm);
+	background: var(--vscode-button-secondaryBackground, rgba(255, 255, 255, 0.1));
+	color: var(--vscode-button-secondaryForeground);
+	cursor: pointer;
+	transition: all var(--tarx-transition-fast);
+}
+
+.tarx-settings-btn:hover:not(:disabled) {
+	background: var(--vscode-button-secondaryHoverBackground, rgba(255, 255, 255, 0.15));
+}
+
+.tarx-settings-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.tarx-settings-btn.primary {
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	border-color: var(--vscode-button-background);
+}
+
+.tarx-settings-btn.primary:hover:not(:disabled) {
+	background: var(--vscode-button-hoverBackground);
+}
+
+.tarx-settings-btn.danger {
+	background: var(--vscode-errorForeground, #f44336);
+	color: white;
+	border-color: var(--vscode-errorForeground, #f44336);
+}
+
+.tarx-settings-btn.danger:hover:not(:disabled) {
+	opacity: 0.9;
+}
+
+.tarx-settings-btn.danger-outline {
+	background: transparent;
+	color: var(--vscode-errorForeground, #f44336);
+	border-color: var(--vscode-errorForeground, #f44336);
+	display: flex;
+	align-items: center;
+	gap: var(--tarx-spacing-xs);
+}
+
+.tarx-settings-btn.danger-outline:hover:not(:disabled) {
+	background: rgba(244, 67, 54, 0.1);
+}
+
+/* Test Result */
+.tarx-settings-test-result {
+	margin-top: var(--tarx-spacing-sm);
+	padding: var(--tarx-spacing-sm);
+	border-radius: var(--tarx-radius-sm);
+	font-size: var(--tarx-font-sm);
+}
+
+.tarx-settings-test-result.success {
+	background: rgba(115, 201, 145, 0.1);
+	color: var(--vscode-testing-iconPassed, #73c991);
+	border: 1px solid rgba(115, 201, 145, 0.3);
+}
+
+.tarx-settings-test-result.error {
+	background: rgba(244, 67, 54, 0.1);
+	color: var(--vscode-errorForeground, #f44336);
+	border: 1px solid rgba(244, 67, 54, 0.3);
+}
+
+/* Read-only Info */
+.tarx-settings-readonly {
+	display: flex;
+	flex-direction: column;
+	gap: var(--tarx-spacing-xs);
+}
+
+.tarx-settings-readonly-row {
+	display: flex;
+	justify-content: space-between;
+	font-size: var(--tarx-font-sm);
+}
+
+.tarx-settings-readonly-label {
+	color: var(--vscode-descriptionForeground);
+}
+
+.tarx-settings-readonly-value {
+	font-weight: 500;
+}
+
+.tarx-settings-readonly-value.connected {
+	color: var(--vscode-testing-iconPassed, #73c991);
+}
+
+.tarx-settings-readonly-value.disconnected {
+	color: var(--vscode-descriptionForeground);
+}
+
+/* Toggle Rows */
+.tarx-settings-toggle-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: var(--tarx-spacing-md);
+	background: var(--vscode-input-background, rgba(255, 255, 255, 0.04));
+	border: 1px solid var(--vscode-input-border, rgba(255, 255, 255, 0.1));
+	border-radius: var(--tarx-radius-md);
+	margin-bottom: var(--tarx-spacing-sm);
+}
+
+.tarx-settings-toggle-info {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.tarx-settings-toggle-label {
+	font-size: var(--tarx-font-md);
+	font-weight: 500;
+}
+
+.tarx-settings-toggle-desc {
+	font-size: var(--tarx-font-xs);
+	color: var(--vscode-descriptionForeground);
+}
+
+/* Toggle Switch */
+.tarx-settings-toggle {
+	position: relative;
+	display: inline-block;
+	width: 36px;
+	height: 20px;
+	flex-shrink: 0;
+}
+
+.tarx-settings-toggle input {
+	opacity: 0;
+	width: 0;
+	height: 0;
+}
+
+.tarx-settings-toggle-slider {
+	position: absolute;
+	cursor: pointer;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background-color: var(--vscode-input-background, rgba(255, 255, 255, 0.1));
+	border: 1px solid var(--vscode-input-border, rgba(255, 255, 255, 0.2));
+	border-radius: 20px;
+	transition: 0.3s;
+}
+
+.tarx-settings-toggle-slider:before {
+	position: absolute;
+	content: "";
+	height: 14px;
+	width: 14px;
+	left: 2px;
+	bottom: 2px;
+	background-color: var(--vscode-foreground);
+	border-radius: 50%;
+	transition: 0.3s;
+}
+
+.tarx-settings-toggle input:checked + .tarx-settings-toggle-slider {
+	background-color: var(--vscode-button-background);
+	border-color: var(--vscode-button-background);
+}
+
+.tarx-settings-toggle input:checked + .tarx-settings-toggle-slider:before {
+	transform: translateX(16px);
+	background-color: white;
+}
+
+/* Clear Memory */
+.tarx-settings-clear-memory {
+	margin-top: var(--tarx-spacing-md);
+}
+
+.tarx-settings-confirm {
+	padding: var(--tarx-spacing-md);
+	background: rgba(244, 67, 54, 0.1);
+	border: 1px solid rgba(244, 67, 54, 0.3);
+	border-radius: var(--tarx-radius-md);
+}
+
+.tarx-settings-confirm span {
+	display: block;
+	font-size: var(--tarx-font-sm);
+	margin-bottom: var(--tarx-spacing-sm);
+	color: var(--vscode-errorForeground, #f44336);
+}
+
+.tarx-settings-confirm-actions {
+	display: flex;
+	gap: var(--tarx-spacing-sm);
+}
+
+/* About Section */
+.tarx-settings-about {
+	padding: var(--tarx-spacing-md);
+	background: var(--vscode-input-background, rgba(255, 255, 255, 0.04));
+	border: 1px solid var(--vscode-input-border, rgba(255, 255, 255, 0.1));
+	border-radius: var(--tarx-radius-md);
+}
+
+.tarx-settings-about-row {
+	display: flex;
+	justify-content: space-between;
+	font-size: var(--tarx-font-sm);
+	margin-bottom: var(--tarx-spacing-sm);
+}
+
+.tarx-settings-about-label {
+	color: var(--vscode-descriptionForeground);
+}
+
+.tarx-settings-about-value {
+	font-weight: 500;
+}
+
+.tarx-settings-about-links {
+	display: flex;
+	gap: var(--tarx-spacing-sm);
+	font-size: var(--tarx-font-sm);
+}
+
+.tarx-settings-about-links a {
+	color: var(--vscode-textLink-foreground, #3794ff);
+	text-decoration: none;
+}
+
+.tarx-settings-about-links a:hover {
+	text-decoration: underline;
+}
+
+.tarx-settings-link-sep {
+	color: var(--vscode-descriptionForeground);
+}
+
+/* ============================================================================
+   Error Boundary
+   ============================================================================ */
+
+.tarx-error-boundary {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	height: 100%;
+	padding: var(--tarx-spacing-lg);
+	text-align: center;
+}
+
+.tarx-error-content {
+	max-width: 300px;
+}
+
+.tarx-error-icon {
+	font-size: 32px !important;
+	color: var(--vscode-errorForeground, #f44336);
+	margin-bottom: var(--tarx-spacing-md);
+}
+
+.tarx-error-content h2 {
+	margin: 0 0 var(--tarx-spacing-sm) 0;
+	font-size: var(--tarx-font-lg);
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+
+.tarx-error-message {
+	font-size: var(--tarx-font-sm);
+	color: var(--vscode-descriptionForeground);
+	margin: 0 0 var(--tarx-spacing-md) 0;
+	line-height: 1.4;
+}
+
+.tarx-error-retry-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--tarx-spacing-xs);
+	padding: var(--tarx-spacing-sm) var(--tarx-spacing-md);
+	font-size: var(--tarx-font-sm);
+	border: 1px solid var(--vscode-button-border, rgba(255, 255, 255, 0.1));
+	border-radius: var(--tarx-radius-sm);
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	cursor: pointer;
+	transition: all var(--tarx-transition-fast);
+}
+
+.tarx-error-retry-btn:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
+.tarx-error-details {
+	margin-top: var(--tarx-spacing-md);
+	text-align: left;
+}
+
+.tarx-error-details summary {
+	font-size: var(--tarx-font-sm);
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+	margin-bottom: var(--tarx-spacing-sm);
+}
+
+.tarx-error-details summary:hover {
+	color: var(--vscode-foreground);
+}
+
+.tarx-error-details pre {
+	margin: 0;
+	padding: var(--tarx-spacing-sm);
+	font-size: var(--tarx-font-xs);
+	font-family: var(--vscode-editor-font-family, monospace);
+	background: var(--vscode-input-background, rgba(255, 255, 255, 0.04));
+	border: 1px solid var(--vscode-input-border, rgba(255, 255, 255, 0.1));
+	border-radius: var(--tarx-radius-sm);
+	color: var(--vscode-errorForeground, #f44336);
+	white-space: pre-wrap;
+	word-break: break-word;
+	max-height: 150px;
+	overflow-y: auto;
+}
+
+/* ============================================================================
+   Billing Section
+   ============================================================================ */
+
+.tarx-billing-badge {
+	display: inline-block;
+	padding: 2px 8px;
+	border-radius: var(--tarx-radius-sm);
+	font-size: var(--tarx-font-xs);
+	font-weight: 600;
+	text-transform: uppercase;
+}
+
+.tarx-billing-badge.free {
+	background: var(--vscode-badge-background, rgba(255,255,255,0.1));
+	color: var(--vscode-badge-foreground, #ccc);
+}
+
+.tarx-billing-badge.lite {
+	background: rgba(37, 99, 235, 0.15);
+	color: #60a5fa;
+}
+
+.tarx-billing-badge.pro {
+	background: rgba(124, 58, 237, 0.15);
+	color: #a78bfa;
+}
+
+.tarx-billing-badge.max {
+	background: rgba(217, 119, 64, 0.15);
+	color: #fb923c;
+}
+
+.tarx-billing-details {
+	padding: var(--tarx-spacing-sm) 0;
+}
+
+.tarx-billing-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 2px 0;
+	font-size: var(--tarx-font-sm);
+}
+
+.tarx-billing-label {
+	color: var(--vscode-descriptionForeground, #999);
+}
+
+.tarx-billing-value {
+	color: var(--vscode-foreground);
+}
+
+.tarx-billing-value.active {
+	color: var(--vscode-testing-iconPassed, #73c991);
+}
+
+.tarx-billing-credits {
+	padding: var(--tarx-spacing-sm) 0;
+}
+
+.tarx-billing-bar {
+	width: 100%;
+	height: 6px;
+	background: var(--vscode-input-border, rgba(255,255,255,0.1));
+	border-radius: 3px;
+	overflow: hidden;
+	margin-bottom: var(--tarx-spacing-xs);
+}
+
+.tarx-billing-bar-fill {
+	height: 100%;
+	background: var(--vscode-progressBar-background, #0078d4);
+	border-radius: 3px;
+	transition: width 0.3s ease;
+}
+
+.tarx-billing-bar-fill.warning {
+	background: #f59e0b;
+}
+
+.tarx-billing-credits-text {
+	font-size: var(--tarx-font-xs);
+	color: var(--vscode-descriptionForeground, #999);
+}
+
+.tarx-billing-overage {
+	font-size: var(--tarx-font-xs);
+	color: #f59e0b;
+	margin-top: var(--tarx-spacing-xs);
+}
+
+.tarx-billing-actions {
+	display: flex;
+	flex-direction: column;
+	gap: var(--tarx-spacing-sm);
+	padding: var(--tarx-spacing-sm) 0;
+}
+
+.tarx-billing-error {
+	font-size: var(--tarx-font-sm);
+	color: var(--vscode-errorForeground, #f44336);
+	padding: var(--tarx-spacing-sm) 0;
+}
+
+/* ============================================================================
+   Custom SVG Icon Styling
+   ============================================================================ */
+
+/* TARX Logo icon in header */
+.tarx-logo-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.tarx-logo-icon svg {
+	width: 20px;
+	height: 18px;
+}
+
+/* Custom nav row icons - slightly larger than codicons */
+.tarx-nav-row-icon.tarx-custom-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.tarx-nav-row-icon.tarx-custom-icon svg {
+	width: 18px;
+	height: 18px;
+	opacity: 0.95;
+}
+
+/* Brand color treatment for TARX logo */
+.tarx-logo-icon svg {
+	color: #a78bfa;
+	transition: color 0.15s ease;
+}
+
+.tarx-logo-icon:hover svg {
+	color: #c4b5fd;
+}
+
+/* Logo text gradient treatment */
+.tarx-logo-text {
+	background: linear-gradient(135deg, #a78bfa 0%, #c084fc 100%);
+	-webkit-background-clip: text;
+	-webkit-text-fill-color: transparent;
+	background-clip: text;
+	font-size: 14px;
+}
+
+/* ============================================================================
+   P1 Additions - Header Status, Projects, History, Files, Footer
+   ============================================================================ */
+
+/* Header Status Dot */
+.tarx-header-status-dot {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	flex-shrink: 0;
+	margin-left: 2px;
+}
+
+.tarx-header-status-dot.online {
+	background: var(--vscode-testing-iconPassed, #73c991);
+	box-shadow: 0 0 4px var(--vscode-testing-iconPassed, #73c991);
+}
+
+.tarx-header-status-dot.connecting {
+	background: var(--vscode-charts-yellow, #cca700);
+	animation: tarx-pulse 1s infinite;
+}
+
+.tarx-header-status-dot.offline {
+	background: var(--vscode-errorForeground, #f44336);
+}
+
+/* Header Model Name */
+.tarx-header-model-name {
+	font-size: var(--tarx-font-xs);
+	opacity: 0.5;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 80px;
+	/* Override gradient text-fill from logo-text */
+	-webkit-text-fill-color: currentColor;
+}
+
+/* ── Projects Section ── */
+.tarx-section-loading {
+	display: flex;
+	align-items: center;
+	gap: var(--tarx-spacing-sm);
+	padding: var(--tarx-spacing-sm) var(--tarx-spacing-md);
+	margin-left: calc(var(--tarx-icon-size) + var(--tarx-spacing-md));
+	font-size: var(--tarx-font-md);
+	opacity: 0.6;
+}
+
+.tarx-empty-state-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--tarx-spacing-xs);
+	padding: var(--tarx-spacing-sm) var(--tarx-spacing-md);
+	font-size: var(--tarx-font-sm);
+	font-weight: 600;
+	border: none;
+	border-radius: var(--tarx-radius-md);
+	background: var(--tarx-btn-primary);
+	color: white;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	box-shadow: var(--tarx-gradient-glow);
+}
+
+.tarx-empty-state-btn:hover {
+	background: var(--tarx-gradient-primary-hover);
+	transform: scale(1.03);
+	box-shadow: var(--tarx-gradient-glow-hover);
+}
+
+.tarx-project-item {
+	display: flex;
+	align-items: center;
+	gap: var(--tarx-icon-gap);
+	padding: var(--tarx-spacing-sm) var(--tarx-spacing-md);
+	margin: 0 var(--tarx-spacing-sm);
+	margin-left: calc(var(--tarx-spacing-sm) + var(--tarx-icon-size) + var(--tarx-spacing-md));
+	border-radius: var(--tarx-radius-md);
+	cursor: pointer;
+	transition: background var(--tarx-transition-fast);
+}
+
+.tarx-project-item:hover {
+	background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
+}
+
+.tarx-project-item.active {
+	background: var(--vscode-list-activeSelectionBackground, rgba(255,255,255,0.06));
+}
+
+.tarx-project-item.selected {
+	background: var(--vscode-list-activeSelectionBackground, rgba(100,149,237,0.2));
+	border-left: 2px solid var(--vscode-focusBorder, #007acc);
+	padding-left: calc(var(--tarx-spacing-md) - 2px);
+}
+
+.tarx-project-icon {
+	width: var(--tarx-icon-size);
+	height: var(--tarx-icon-size);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0.8;
+	flex-shrink: 0;
+}
+
+.tarx-project-name {
+	flex: 1;
+	font-size: var(--tarx-font-lg);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.tarx-project-active-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--vscode-testing-iconPassed, #73c991);
+	flex-shrink: 0;
+}
+
+/* ── History Section Search ── */
+.tarx-history-search {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: var(--tarx-spacing-xs) var(--tarx-spacing-sm);
+	margin: 0 var(--tarx-spacing-sm) var(--tarx-spacing-xs);
+	margin-left: calc(var(--tarx-spacing-sm) + var(--tarx-icon-size) + var(--tarx-spacing-md));
+	background: var(--vscode-input-background, rgba(255,255,255,0.05));
+	border: 1px solid var(--vscode-input-border, rgba(255,255,255,0.1));
+	border-radius: var(--tarx-radius-sm);
+}
+
+.tarx-history-search .codicon-search {
+	opacity: 0.5;
+	font-size: 12px;
+	flex-shrink: 0;
+}
+
+.tarx-history-search-input {
+	flex: 1;
+	background: transparent;
+	border: none;
+	outline: none;
+	color: var(--vscode-input-foreground);
+	font-size: var(--tarx-font-sm);
+	font-family: inherit;
+	min-width: 0;
+}
+
+.tarx-history-search-input::placeholder {
+	color: var(--vscode-input-placeholderForeground, rgba(255,255,255,0.35));
+}
+
+.tarx-history-search-clear {
+	opacity: 0.5;
+	cursor: pointer;
+	font-size: 12px;
+	flex-shrink: 0;
+}
+
+.tarx-history-search-clear:hover {
+	opacity: 1;
+}
+
+/* History Item Delete */
+.tarx-history-item-delete {
+	width: 16px;
+	height: 16px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0;
+	cursor: pointer;
+	border-radius: var(--tarx-radius-sm);
+	transition: opacity var(--tarx-transition-fast), background var(--tarx-transition-fast);
+	flex-shrink: 0;
+}
+
+.tarx-history-item:hover .tarx-history-item-delete {
+	opacity: 0.5;
+}
+
+.tarx-history-item-delete:hover {
+	opacity: 1 !important;
+	background: var(--vscode-list-hoverBackground);
+}
+
+/* ── Files Section Meta ── */
+.tarx-file-meta {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex-shrink: 0;
+	margin-left: auto;
+}
+
+.tarx-file-time {
+	font-size: var(--tarx-font-xs);
+	opacity: 0.4;
+	white-space: nowrap;
+}
+
+/* ── Footer Version ── */
+.tarx-footer-version {
+	text-align: center;
+	font-size: var(--tarx-font-xs);
+	opacity: 0.3;
+	padding: 2px 0;
+	letter-spacing: 0.3px;
+}
+
+/* ── Emoji Picker (DEPRECATED - removed for cleaner UX) ── */
+/* Emoji picker has been removed from project creation flow */
+
+/* ============================================================================
+   Collapsed Sidebar — Icon-Only Rail
+   When the webview is narrow (<80px), show icons only at 48px width.
+   ============================================================================ */
+@media (max-width: 80px) {
+	.tarx-sidebar-container {
+		width: var(--tarx-sidebar-collapsed-width);
+		overflow: hidden;
+	}
+
+	/* Header: icon only, centered */
+	.tarx-header {
+		padding: 0;
+		justify-content: center;
+	}
+
+	.tarx-header .tarx-logo-text,
+	.tarx-header .tarx-header-status-dot,
+	.tarx-header .tarx-header-model-name,
+	.tarx-header .tarx-header-settings-btn {
+		display: none;
+	}
+
+	.tarx-header .tarx-logo-icon {
+		margin: 0 auto;
+	}
+
+	/* Nav rows: icon only, centered */
+	.tarx-nav-row {
+		justify-content: center;
+		padding: var(--tarx-spacing-sm) 0;
+		margin: 0;
+	}
+
+	.tarx-nav-row-label,
+	.tarx-nav-row .tarx-action-btn {
+		display: none;
+	}
+
+	/* Sections: show header icon only */
+	.tarx-section-header {
+		justify-content: center;
+		padding: var(--tarx-spacing-sm) 0;
+		margin: 0;
+	}
+
+	.tarx-section-title,
+	.tarx-section-chevron,
+	.tarx-section-add,
+	.tarx-section-see-all {
+		display: none;
+	}
+
+	.tarx-section-icon {
+		margin: 0;
+	}
+
+	/* Hide section content in collapsed rail */
+	.tarx-section-content {
+		display: none;
+	}
+
+	/* Footer: icon only, centered */
+	.tarx-footer-row {
+		justify-content: center;
+		padding: var(--tarx-spacing-sm) 0;
+		margin: 0;
+	}
+
+	.tarx-footer-label,
+	.tarx-compute-chevron {
+		display: none;
+	}
+
+	.tarx-footer-version {
+		display: none;
+	}
+
+	/* Compute dropdown: hide in collapsed */
+	.tarx-compute-dropdown {
+		display: none;
+	}
+
+	/* Tooltip on hover for icon-only items */
+	.tarx-nav-row,
+	.tarx-section-header,
+	.tarx-footer-row {
+		position: relative;
+	}
+}
