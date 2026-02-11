@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# TARX Code-OSS Build Audit Script
+# Workbench Build Audit Script
 # Verifies branding, checks for old artifacts, ensures clean build
 
 set -e
@@ -12,7 +12,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 echo "=================================================="
-echo "TARX Code-OSS Build Audit"
+echo "Workbench Build Audit"
 echo "=================================================="
 echo ""
 

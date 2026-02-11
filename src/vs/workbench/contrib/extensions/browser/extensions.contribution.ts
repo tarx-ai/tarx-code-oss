@@ -128,6 +128,25 @@ export const VIEW_CONTAINER = Registry.as<IViewContainersRegistry>(ViewContainer
 		alwaysUseContainerInfo: true,
 	}, ViewContainerLocation.Sidebar);
 
+// TARX: Also register Extensions for AuxiliaryBar so it can be opened on the right side
+// This is needed because TARX replaces the native sidebar
+Registry.as<IViewContainersRegistry>(ViewContainerExtensions.ViewContainersRegistry).registerViewContainer(
+	{
+		id: VIEWLET_ID,
+		title: localize2('extensions', "Extensions"),
+		openCommandActionDescriptor: {
+			id: VIEWLET_ID,
+			mnemonicTitle: localize({ key: 'miViewExtensions', comment: ['&& denotes a mnemonic'] }, "E&&xtensions"),
+			keybindings: { primary: KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyX },
+			order: 4,
+		},
+		ctorDescriptor: new SyncDescriptor(ExtensionsViewPaneContainer),
+		icon: extensionsViewIcon,
+		order: 4,
+		rejectAddedViews: true,
+		alwaysUseContainerInfo: true,
+	}, ViewContainerLocation.AuxiliaryBar);
+
 Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration)
 	.registerConfiguration({
 		id: 'extensions',

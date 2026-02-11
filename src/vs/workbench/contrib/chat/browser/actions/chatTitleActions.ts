@@ -19,18 +19,48 @@ import { MENU_INLINE_CHAT_WIDGET_SECONDARY } from '../../../inlineChat/common/in
 import { INotebookEditor } from '../../../notebook/browser/notebookBrowser.js';
 import { CellEditType, CellKind, NOTEBOOK_EDITOR_ID } from '../../../notebook/common/notebookCommon.js';
 import { NOTEBOOK_IS_ACTIVE_EDITOR } from '../../../notebook/common/notebookContextKeys.js';
+import { IClipboardService } from '../../../../../platform/clipboard/common/clipboardService.js';
 import { ChatContextKeys } from '../../common/actions/chatContextKeys.js';
 import { applyingChatEditsFailedContextKey, isChatEditingActionContext } from '../../common/editing/chatEditingService.js';
 import { ChatAgentVoteDirection, ChatAgentVoteDownReason, IChatService } from '../../common/chatService/chatService.js';
 import { isResponseVM } from '../../common/model/chatViewModel.js';
 import { ChatModeKind } from '../../common/constants.js';
 import { IChatAccessibilityService, IChatWidgetService } from '../chat.js';
-import { CHAT_CATEGORY } from './chatActions.js';
+import { CHAT_CATEGORY, stringifyItem } from './chatActions.js';
 
 export const MarkUnhelpfulActionId = 'workbench.action.chat.markUnhelpful';
 const enableFeedbackConfig = 'config.telemetry.feedback.enabled';
 
 export function registerChatTitleActions() {
+	// TARX: Copy full response text — always visible, no extension participant requirement
+	registerAction2(class CopyResponseAction extends Action2 {
+		constructor() {
+			super({
+				id: 'workbench.action.chat.copyResponse',
+				title: localize2('chat.copyResponse.label', "Copy"),
+				f1: false,
+				category: CHAT_CATEGORY,
+				icon: Codicon.copy,
+				menu: [{
+					id: MenuId.ChatMessageFooter,
+					group: 'navigation',
+					order: 1,
+					when: ChatContextKeys.isResponse
+				}]
+			});
+		}
+
+		run(accessor: ServicesAccessor, ...args: unknown[]) {
+			const item = args[0];
+			if (!isResponseVM(item)) {
+				return;
+			}
+
+			const clipboardService = accessor.get(IClipboardService);
+			clipboardService.writeText(stringifyItem(item, false));
+		}
+	});
+
 	registerAction2(class MarkHelpfulAction extends Action2 {
 		constructor() {
 			super({

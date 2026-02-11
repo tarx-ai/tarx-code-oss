@@ -163,7 +163,11 @@ export class PtyHostService extends Disposable implements IPtyHostService {
 				if (this._restartCount <= Constants.MaxRestarts) {
 					this._logService.error(`ptyHost terminated unexpectedly with code ${e.code}`);
 					this._restartCount++;
-					this.restartPtyHost();
+					setTimeout(() => {
+						if (!this._store.isDisposed) {
+							this.restartPtyHost();
+						}
+					}, 2000);
 				} else {
 					this._logService.error(`ptyHost terminated unexpectedly with code ${e.code}, giving up`);
 				}

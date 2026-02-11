@@ -164,6 +164,60 @@ export const TARX_MESH_PORT = 11436;
 export const TARX_EMBEDDINGS_PORT = 11437;
 
 /**
+ * TARX embedding model pattern (prefix match for nomic-embed blob in ~/.ollama/models/blobs/)
+ */
+export const TARX_EMBEDDINGS_MODEL_PATTERN = 'sha256-970aa74c';
+
+/**
+ * TARX Embedding Sidecar Service - manages embedding server lifecycle
+ */
+export interface ITarxEmbeddingSidecarService {
+	readonly _serviceBrand: undefined;
+
+	/**
+	 * Event fired when embedding server status changes
+	 */
+	readonly onDidChangeStatus: Event<ITarxEmbeddingsStatus>;
+
+	/**
+	 * Start the embedding server
+	 */
+	startEmbeddings(): Promise<ITarxSpawnResult>;
+
+	/**
+	 * Stop the embedding server
+	 */
+	stopEmbeddings(): Promise<void>;
+
+	/**
+	 * Check if embedding server is running
+	 */
+	isRunning(): boolean;
+
+	/**
+	 * Check health endpoint
+	 */
+	checkHealth(): Promise<{ healthy: boolean; latencyMs: number }>;
+
+	/**
+	 * Get the embeddings port
+	 */
+	readonly port: number;
+}
+
+export const ITarxEmbeddingSidecarService = createDecorator<ITarxEmbeddingSidecarService>('tarxEmbeddingSidecarService');
+
+/**
+ * Status of the embedding server
+ */
+export interface ITarxEmbeddingsStatus {
+	readonly running: boolean;
+	readonly port: number;
+	readonly modelLoaded: boolean;
+	readonly healthState: TarxHealthState;
+}
+
+/**
  * TARX paths
  */
 export function getTarxModelsDir(): string {

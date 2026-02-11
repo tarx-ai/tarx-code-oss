@@ -14,6 +14,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
+import { execSync } from 'child_process';
 import {
 	DatabaseOperations,
 	Project,
@@ -25,7 +26,7 @@ import {
 	generateId
 } from './database';
 
-// Type definitions for better-sqlite3 (will be properly typed when package is installed)
+// Legacy interface for compatibility - no longer used with sqlite3 CLI
 interface Database {
 	exec(sql: string): void;
 	prepare(sql: string): Statement;
@@ -116,17 +117,44 @@ CREATE INDEX IF NOT EXISTS idx_mesh_nodes_status ON mesh_nodes(status);
  * All data stored locally in ~/.tarx/tarx.db
  */
 export class SqliteDatabase implements DatabaseOperations {
-	private db: Database | null = null;
 	private dbPath: string;
 	private initialized: boolean = false;
 
 	constructor(storagePath: string) {
-		this.dbPath = path.join(storagePath, 'tarx.db');
+		// Validate storage path - reject invalid/mock paths to prevent EACCES errors
+		if (this.isInvalidStoragePath(storagePath)) {
+			const os = require('os');
+			const fallbackPath = path.join(os.homedir(), 'Library/Application Support/tarx');
+			console.warn(`[TARX-DB] Invalid storage path "${storagePath}", using fallback: ${fallbackPath}`);
+			this.dbPath = path.join(fallbackPath, 'memory.db');
+		} else {
+			this.dbPath = path.join(storagePath, 'memory.db');
+		}
+	}
+
+	/**
+	 * Check if storage path is invalid (too shallow or mock path)
+	 */
+	private isInvalidStoragePath(storagePath: string): boolean {
+		if (!storagePath) {
+			return true;
+		}
+		const normalized = path.normalize(storagePath);
+		const parts = normalized.split(path.sep).filter(Boolean);
+		// Reject paths with fewer than 2 parts (e.g., /mock has only 1 part)
+		if (parts.length < 2) {
+			return true;
+		}
+		// Reject known test/mock paths
+		if (normalized.startsWith('/mock') || normalized.startsWith('/test')) {
+			return true;
+		}
+		return false;
 	}
 
 	/**
 	 * Initialize the database connection
-	 * Called lazily on first operation
+	 * Called lazily on first operation - uses sqlite3 CLI to avoid better-sqlite3 version mismatch
 	 */
 	private async ensureInitialized(): Promise<void> {
 		if (this.initialized) return;
@@ -138,44 +166,73 @@ export class SqliteDatabase implements DatabaseOperations {
 				fs.mkdirSync(dir, { recursive: true });
 			}
 
-			// Dynamic import of better-sqlite3
-			// eslint-disable-next-line @typescript-eslint/no-require-imports
-			const Database = require('better-sqlite3');
-			this.db = new Database(this.dbPath) as Database;
-
-			// Enable WAL mode for better concurrent access
-			this.db.pragma('journal_mode = WAL');
-
-			// Enable foreign keys
-			this.db.pragma('foreign_keys = ON');
+			// Use sqlite3 CLI to initialize database
+			// Enable WAL mode and foreign keys
+			this.execSQL('PRAGMA journal_mode = WAL;');
+			this.execSQL('PRAGMA foreign_keys = ON;');
 
 			// Initialize schema
-			this.db.exec(SCHEMA_SQL);
-			this.db.exec(SQLITE_EXTENSIONS_SQL);
-
-			// Try to load vec0 extension for vector search
-			// Falls back to manual cosine similarity if not available
-			try {
-				// vec0 extension path varies by platform
-				// this.db.loadExtension('vec0');
-				console.log('[TARX-DB] vec0 extension not loaded (using fallback cosine similarity)');
-			} catch {
-				console.log('[TARX-DB] vec0 extension not available, using manual vector search');
-			}
+			this.execSQL(SCHEMA_SQL);
+			this.execSQL(SQLITE_EXTENSIONS_SQL);
 
 			this.initialized = true;
 			console.log('[TARX-DB] SQLite database initialized at:', this.dbPath);
 		} catch (e) {
-			console.error('[TARX-DB] Failed to initialize SQLite, falling back to JSON:', e);
+			console.error('[TARX-DB] Failed to initialize SQLite:', e);
 			throw e;
 		}
 	}
 
 	/**
+	 * Execute SQL using sqlite3 CLI
+	 */
+	private execSQL(sql: string): void {
+		execSync(`sqlite3 "${this.dbPath}"`, {
+			encoding: 'utf8',
+			input: sql
+		});
+	}
+
+	/**
+	 * Query database and return JSON result using sqlite3 CLI
+	 */
+	private queryJSON<T>(sql: string): T[] {
+		try {
+			const result = execSync(`sqlite3 "${this.dbPath}" -json`, {
+				encoding: 'utf8',
+				input: sql
+			});
+			return result.trim() ? JSON.parse(result) : [];
+		} catch {
+			return [];
+		}
+	}
+
+	/**
+	 * Query for a single row
+	 */
+	private queryOne<T>(sql: string): T | null {
+		const results = this.queryJSON<T>(sql);
+		return results.length > 0 ? results[0] : null;
+	}
+
+	/**
 	 * Get the raw database instance (for advanced operations)
+	 * Note: Returns null - CLI approach doesn't use Database instance
+	 * @deprecated Use CLI methods instead
 	 */
 	getDb(): Database | null {
-		return this.db;
+		return null;
+	}
+
+	/**
+	 * Ensure database is ready and return instance
+	 * Note: Returns null - CLI approach doesn't use Database instance
+	 * @deprecated Use CLI methods instead
+	 */
+	async ensureDbReady(): Promise<Database | null> {
+		await this.ensureInitialized();
+		return null;
 	}
 
 	// ========================================
@@ -184,57 +241,54 @@ export class SqliteDatabase implements DatabaseOperations {
 
 	async createProject(project: Omit<Project, 'id' | 'createdAt'>): Promise<Project> {
 		await this.ensureInitialized();
-		if (!this.db) throw new Error('Database not initialized');
 
 		const id = generateId();
 		const createdAt = Date.now();
+		const name = project.name.replace(/'/g, "''");
+		const root = project.root.replace(/'/g, "''");
+		const type = project.type ? project.type.replace(/'/g, "''") : null;
 
-		this.db.prepare(`
+		this.execSQL(`
 			INSERT INTO projects (id, name, root, type, created_at, is_active)
-			VALUES (?, ?, ?, ?, ?, ?)
-		`).run(id, project.name, project.root, project.type, createdAt, project.isActive ? 1 : 0);
+			VALUES ('${id}', '${name}', '${root}', ${type ? `'${type}'` : 'NULL'}, ${createdAt}, ${project.isActive ? 1 : 0});
+		`);
 
 		return { ...project, id, createdAt };
 	}
 
 	async getProject(id: string): Promise<Project | null> {
 		await this.ensureInitialized();
-		if (!this.db) throw new Error('Database not initialized');
 
-		const row = this.db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as ProjectRow | undefined;
+		const row = this.queryOne<ProjectRow>(`SELECT * FROM projects WHERE id = '${id.replace(/'/g, "''")}';`);
 		return row ? this.rowToProject(row) : null;
 	}
 
 	async getProjectByRoot(root: string): Promise<Project | null> {
 		await this.ensureInitialized();
-		if (!this.db) throw new Error('Database not initialized');
 
-		const row = this.db.prepare('SELECT * FROM projects WHERE root = ?').get(root) as ProjectRow | undefined;
+		const row = this.queryOne<ProjectRow>(`SELECT * FROM projects WHERE root = '${root.replace(/'/g, "''")}';`);
 		return row ? this.rowToProject(row) : null;
 	}
 
 	async listProjects(): Promise<Project[]> {
 		await this.ensureInitialized();
-		if (!this.db) throw new Error('Database not initialized');
 
-		const rows = this.db.prepare('SELECT * FROM projects ORDER BY created_at DESC').all() as ProjectRow[];
+		const rows = this.queryJSON<ProjectRow>('SELECT * FROM projects ORDER BY created_at DESC;');
 		return rows.map(row => this.rowToProject(row));
 	}
 
 	async setActiveProject(id: string): Promise<void> {
 		await this.ensureInitialized();
-		if (!this.db) throw new Error('Database not initialized');
 
-		this.db.prepare('UPDATE projects SET is_active = 0').run();
-		this.db.prepare('UPDATE projects SET is_active = 1 WHERE id = ?').run(id);
+		this.execSQL(`UPDATE projects SET is_active = 0;`);
+		this.execSQL(`UPDATE projects SET is_active = 1 WHERE id = '${id.replace(/'/g, "''")}';`);
 	}
 
 	async deleteProject(id: string): Promise<void> {
 		await this.ensureInitialized();
-		if (!this.db) throw new Error('Database not initialized');
 
 		// Cascading delete handles files and embeddings
-		this.db.prepare('DELETE FROM projects WHERE id = ?').run(id);
+		this.execSQL(`DELETE FROM projects WHERE id = '${id.replace(/'/g, "''")}';`);
 	}
 
 	// ========================================
@@ -243,56 +297,56 @@ export class SqliteDatabase implements DatabaseOperations {
 
 	async addProjectFile(file: Omit<ProjectFile, 'id'>): Promise<ProjectFile> {
 		await this.ensureInitialized();
-		if (!this.db) throw new Error('Database not initialized');
+
+		const projectId = file.projectId.replace(/'/g, "''");
+		const filePath = file.filePath.replace(/'/g, "''");
+		const mimeType = file.mimeType ? file.mimeType.replace(/'/g, "''") : null;
 
 		// Check if file already exists (upsert)
-		const existing = this.db.prepare(`
-			SELECT id FROM project_files WHERE project_id = ? AND file_path = ?
-		`).get(file.projectId, file.filePath) as { id: string } | undefined;
+		const existing = this.queryOne<{ id: string }>(`
+			SELECT id FROM project_files WHERE project_id = '${projectId}' AND file_path = '${filePath}';
+		`);
 
 		if (existing) {
-			this.db.prepare(`
+			this.execSQL(`
 				UPDATE project_files
-				SET file_size = ?, mime_type = ?, is_binary = ?, last_indexed = ?
-				WHERE id = ?
-			`).run(file.fileSize, file.mimeType, file.isBinary ? 1 : 0, file.lastIndexed, existing.id);
+				SET file_size = ${file.fileSize}, mime_type = ${mimeType ? `'${mimeType}'` : 'NULL'}, is_binary = ${file.isBinary ? 1 : 0}, last_indexed = ${file.lastIndexed || 'NULL'}
+				WHERE id = '${existing.id}';
+			`);
 
 			return { ...file, id: existing.id };
 		}
 
 		const id = generateId();
-		this.db.prepare(`
+		this.execSQL(`
 			INSERT INTO project_files (id, project_id, file_path, file_size, mime_type, is_binary, last_indexed)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
-		`).run(id, file.projectId, file.filePath, file.fileSize, file.mimeType, file.isBinary ? 1 : 0, file.lastIndexed);
+			VALUES ('${id}', '${projectId}', '${filePath}', ${file.fileSize}, ${mimeType ? `'${mimeType}'` : 'NULL'}, ${file.isBinary ? 1 : 0}, ${file.lastIndexed || 'NULL'});
+		`);
 
 		return { ...file, id };
 	}
 
 	async getProjectFiles(projectId: string): Promise<ProjectFile[]> {
 		await this.ensureInitialized();
-		if (!this.db) throw new Error('Database not initialized');
 
-		const rows = this.db.prepare(`
-			SELECT * FROM project_files WHERE project_id = ? ORDER BY file_path
-		`).all(projectId) as ProjectFileRow[];
+		const rows = this.queryJSON<ProjectFileRow>(`
+			SELECT * FROM project_files WHERE project_id = '${projectId.replace(/'/g, "''")}' ORDER BY file_path;
+		`);
 
 		return rows.map(row => this.rowToProjectFile(row));
 	}
 
 	async updateFileIndexed(fileId: string, timestamp: number): Promise<void> {
 		await this.ensureInitialized();
-		if (!this.db) throw new Error('Database not initialized');
 
-		this.db.prepare('UPDATE project_files SET last_indexed = ? WHERE id = ?').run(timestamp, fileId);
+		this.execSQL(`UPDATE project_files SET last_indexed = ${timestamp} WHERE id = '${fileId.replace(/'/g, "''")}';`);
 	}
 
 	async deleteProjectFiles(projectId: string): Promise<void> {
 		await this.ensureInitialized();
-		if (!this.db) throw new Error('Database not initialized');
 
 		// Cascading delete handles embeddings
-		this.db.prepare('DELETE FROM project_files WHERE project_id = ?').run(projectId);
+		this.execSQL(`DELETE FROM project_files WHERE project_id = '${projectId.replace(/'/g, "''")}';`);
 	}
 
 	// ========================================
@@ -301,34 +355,33 @@ export class SqliteDatabase implements DatabaseOperations {
 
 	async addEmbedding(embedding: Omit<FileEmbedding, 'id' | 'createdAt'>): Promise<void> {
 		await this.ensureInitialized();
-		if (!this.db) throw new Error('Database not initialized');
+
+		const fileId = embedding.fileId.replace(/'/g, "''");
+		const content = embedding.content.replace(/'/g, "''");
 
 		// Delete existing embedding for this chunk (upsert)
-		this.db.prepare(`
-			DELETE FROM file_embeddings WHERE file_id = ? AND chunk_index = ?
-		`).run(embedding.fileId, embedding.chunkIndex);
+		this.execSQL(`DELETE FROM file_embeddings WHERE file_id = '${fileId}' AND chunk_index = ${embedding.chunkIndex};`);
 
 		const id = generateId();
 		const createdAt = Date.now();
 
-		// Store embedding as binary blob
-		const embeddingBuffer = Buffer.from(embedding.embedding.buffer);
+		// Store embedding as base64 for CLI compatibility
+		const embeddingBase64 = Buffer.from(embedding.embedding.buffer).toString('base64');
 
-		this.db.prepare(`
+		this.execSQL(`
 			INSERT INTO file_embeddings (id, file_id, chunk_index, content, embedding, created_at)
-			VALUES (?, ?, ?, ?, ?, ?)
-		`).run(id, embedding.fileId, embedding.chunkIndex, embedding.content, embeddingBuffer, createdAt);
+			VALUES ('${id}', '${fileId}', ${embedding.chunkIndex}, '${content}', '${embeddingBase64}', ${createdAt});
+		`);
 	}
 
 	async getFileEmbeddings(fileId: string): Promise<FileEmbedding[]> {
 		await this.ensureInitialized();
-		if (!this.db) throw new Error('Database not initialized');
 
-		const rows = this.db.prepare(`
-			SELECT * FROM file_embeddings WHERE file_id = ? ORDER BY chunk_index
-		`).all(fileId) as EmbeddingRow[];
+		const rows = this.queryJSON<EmbeddingRowCLI>(`
+			SELECT * FROM file_embeddings WHERE file_id = '${fileId.replace(/'/g, "''")}' ORDER BY chunk_index;
+		`);
 
-		return rows.map(row => this.rowToEmbedding(row));
+		return rows.map(row => this.rowToEmbeddingCLI(row));
 	}
 
 	async searchEmbeddings(
@@ -337,19 +390,20 @@ export class SqliteDatabase implements DatabaseOperations {
 		limit: number = 10
 	): Promise<Array<{ content: string; filePath: string; similarity: number }>> {
 		await this.ensureInitialized();
-		if (!this.db) throw new Error('Database not initialized');
 
 		// Get all embeddings for this project
-		const rows = this.db.prepare(`
+		const rows = this.queryJSON<{ content: string; embedding: string; file_path: string }>(`
 			SELECT fe.content, fe.embedding, pf.file_path
 			FROM file_embeddings fe
 			JOIN project_files pf ON pf.id = fe.file_id
-			WHERE pf.project_id = ?
-		`).all(projectId) as Array<{ content: string; embedding: Buffer; file_path: string }>;
+			WHERE pf.project_id = '${projectId.replace(/'/g, "''")}';
+		`);
 
 		// Calculate cosine similarity for each embedding
 		const results = rows.map(row => {
-			const embedding = new Float32Array(row.embedding.buffer, row.embedding.byteOffset, row.embedding.byteLength / 4);
+			// Decode base64 embedding
+			const embeddingBuffer = Buffer.from(row.embedding, 'base64');
+			const embedding = new Float32Array(embeddingBuffer.buffer, embeddingBuffer.byteOffset, embeddingBuffer.byteLength / 4);
 			const similarity = this.cosineSimilarity(queryEmbedding, embedding);
 			return {
 				content: row.content,
@@ -366,9 +420,8 @@ export class SqliteDatabase implements DatabaseOperations {
 
 	async deleteFileEmbeddings(fileId: string): Promise<void> {
 		await this.ensureInitialized();
-		if (!this.db) throw new Error('Database not initialized');
 
-		this.db.prepare('DELETE FROM file_embeddings WHERE file_id = ?').run(fileId);
+		this.execSQL(`DELETE FROM file_embeddings WHERE file_id = '${fileId.replace(/'/g, "''")}';`);
 	}
 
 	// ========================================
@@ -377,110 +430,190 @@ export class SqliteDatabase implements DatabaseOperations {
 
 	async createConversation(projectId: string | null): Promise<Conversation> {
 		await this.ensureInitialized();
-		if (!this.db) throw new Error('Database not initialized');
 
 		const id = generateId();
 		const now = Date.now();
+		const escapedProjectId = projectId ? projectId.replace(/'/g, "''") : null;
 
-		this.db.prepare(`
+		// Create native conversation
+		this.execSQL(`
 			INSERT INTO conversations (id, project_id, title, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?)
-		`).run(id, projectId, null, now, now);
+			VALUES ('${id}', ${escapedProjectId ? `'${escapedProjectId}'` : 'NULL'}, NULL, ${now}, ${now});
+		`);
+
+		// DUAL-SAVE: Also create matching MCP session for MCP queries
+		try {
+			// Ensure default TARX Chat space exists
+			const defaultSpace = this.queryJSON<any>(`SELECT id FROM spaces WHERE name = 'TARX Chat' LIMIT 1;`);
+			let spaceId = defaultSpace[0]?.id;
+			if (!spaceId) {
+				spaceId = generateId();
+				this.execSQL(`
+					INSERT INTO spaces (id, name, description, emoji, created_at, updated_at, last_accessed_at, message_count)
+					VALUES ('${spaceId}', 'TARX Chat', 'Native @tarx conversations', '💬', ${now}, ${now}, ${now}, 0);
+				`);
+				console.log('[SqliteDB] Created default TARX Chat space');
+			}
+
+			// Create session in MCP sessions table (use same ID as conversation)
+			this.execSQL(`
+				INSERT INTO sessions (id, space_id, title, created_at, updated_at, message_count, model)
+				VALUES ('${id}', '${spaceId}', 'TARX Conversation', ${now}, ${now}, 0, 'qwen');
+			`);
+			console.log('[SqliteDB] Created MCP session for new conversation:', id);
+		} catch (e) {
+			console.warn('[SqliteDB] MCP session creation failed (non-critical):', e);
+		}
 
 		return { id, projectId, title: null, createdAt: now, updatedAt: now };
 	}
 
 	async updateConversationTitle(id: string, title: string): Promise<void> {
 		await this.ensureInitialized();
-		if (!this.db) throw new Error('Database not initialized');
 
-		this.db.prepare(`
-			UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?
-		`).run(title, Date.now(), id);
+		const escapedId = id.replace(/'/g, "''");
+		const escapedTitle = title.replace(/'/g, "''");
+		const now = Date.now();
+
+		// Update native conversation
+		this.execSQL(`UPDATE conversations SET title = '${escapedTitle}', updated_at = ${now} WHERE id = '${escapedId}';`);
+
+		// DUAL-SAVE: Also update MCP session title
+		try {
+			this.execSQL(`UPDATE sessions SET title = '${escapedTitle}', updated_at = ${now} WHERE id = '${escapedId}';`);
+		} catch (e) {
+			// Non-critical - MCP session may not exist
+		}
 	}
 
 	async addConversationTurn(turn: Omit<ConversationTurn, 'id' | 'createdAt'>): Promise<ConversationTurn> {
 		await this.ensureInitialized();
-		if (!this.db) throw new Error('Database not initialized');
 
 		const id = generateId();
 		const createdAt = Date.now();
 
-		this.db.prepare(`
+		const conversationId = turn.conversationId.replace(/'/g, "''");
+		const role = turn.role.replace(/'/g, "''");
+		const content = turn.content.replace(/'/g, "''");
+		const fileRefs = JSON.stringify(turn.fileRefs).replace(/'/g, "''");
+		const artifacts = turn.artifacts ? turn.artifacts.replace(/'/g, "''") : null;
+
+		// Save to native conversation_turns table
+		this.execSQL(`
 			INSERT INTO conversation_turns (id, conversation_id, role, content, file_refs, artifacts, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
-		`).run(id, turn.conversationId, turn.role, turn.content, JSON.stringify(turn.fileRefs), turn.artifacts, createdAt);
+			VALUES ('${id}', '${conversationId}', '${role}', '${content}', '${fileRefs}', ${artifacts ? `'${artifacts}'` : 'NULL'}, ${createdAt});
+		`);
 
 		// Update conversation timestamp
-		this.db.prepare(`
-			UPDATE conversations SET updated_at = ? WHERE id = ?
-		`).run(createdAt, turn.conversationId);
+		this.execSQL(`UPDATE conversations SET updated_at = ${createdAt} WHERE id = '${conversationId}';`);
+
+		// DUAL-SAVE: Also save to MCP messages table for MCP session queries
+		// This ensures messages appear in both native history AND MCP queries (tarx_list_sessions, etc.)
+		try {
+			// Ensure MCP session exists (use conversation_id as session_id)
+			const sessionExists = this.queryJSON<any>(`SELECT id FROM sessions WHERE id = '${conversationId}' LIMIT 1;`);
+			if (sessionExists.length === 0) {
+				// Create a default space if needed
+				const defaultSpace = this.queryJSON<any>(`SELECT id FROM spaces WHERE name = 'TARX Chat' LIMIT 1;`);
+				let spaceId = defaultSpace[0]?.id;
+				if (!spaceId) {
+					spaceId = generateId();
+					this.execSQL(`
+						INSERT INTO spaces (id, name, description, emoji, created_at, updated_at, last_accessed_at, message_count)
+						VALUES ('${spaceId}', 'TARX Chat', 'Native @tarx conversations', '💬', ${createdAt}, ${createdAt}, ${createdAt}, 0);
+					`);
+					console.log('[SqliteDB] Created default TARX Chat space');
+				}
+				// Create session in MCP sessions table
+				this.execSQL(`
+					INSERT INTO sessions (id, space_id, title, created_at, updated_at, message_count, model)
+					VALUES ('${conversationId}', '${spaceId}', 'TARX Conversation', ${createdAt}, ${createdAt}, 0, 'qwen');
+				`);
+				console.log('[SqliteDB] Created MCP session for conversation:', conversationId);
+			}
+
+			// Insert message into MCP messages table
+			const msgId = 'msg-' + id; // Prefix to avoid ID collision
+			this.execSQL(`
+				INSERT INTO messages (id, session_id, role, content, created_at, model)
+				VALUES ('${msgId}', '${conversationId}', '${role}', '${content}', ${createdAt}, 'qwen');
+			`);
+
+			// Update session message count and timestamp
+			this.execSQL(`UPDATE sessions SET message_count = message_count + 1, updated_at = ${createdAt} WHERE id = '${conversationId}';`);
+			this.execSQL(`UPDATE spaces SET message_count = message_count + 1, updated_at = ${createdAt}, last_accessed_at = ${createdAt} WHERE id IN (SELECT space_id FROM sessions WHERE id = '${conversationId}');`);
+
+			console.log(`[SqliteDB] Dual-saved message to MCP: ${role} (${content.substring(0, 50)}...)`);
+		} catch (e) {
+			// Log but don't fail - native save already succeeded
+			console.warn('[SqliteDB] MCP dual-save failed (non-critical):', e);
+		}
 
 		return { ...turn, id, createdAt };
 	}
 
 	async getConversationTurns(conversationId: string): Promise<ConversationTurn[]> {
 		await this.ensureInitialized();
-		if (!this.db) throw new Error('Database not initialized');
 
-		const rows = this.db.prepare(`
-			SELECT * FROM conversation_turns WHERE conversation_id = ? ORDER BY created_at ASC
-		`).all(conversationId) as ConversationTurnRow[];
+		const escapedId = conversationId.replace(/'/g, "''");
+		const rows = this.queryJSON<ConversationTurnRow>(`
+			SELECT * FROM conversation_turns WHERE conversation_id = '${escapedId}' ORDER BY created_at ASC;
+		`);
 
 		return rows.map(row => this.rowToTurn(row));
 	}
 
 	async getRecentConversation(projectId: string | null): Promise<Conversation | null> {
 		await this.ensureInitialized();
-		if (!this.db) throw new Error('Database not initialized');
 
 		const row = projectId
-			? this.db.prepare(`
-				SELECT * FROM conversations WHERE project_id = ? ORDER BY updated_at DESC LIMIT 1
-			`).get(projectId) as ConversationRow | undefined
-			: this.db.prepare(`
-				SELECT * FROM conversations WHERE project_id IS NULL ORDER BY updated_at DESC LIMIT 1
-			`).get() as ConversationRow | undefined;
+			? this.queryOne<ConversationRow>(`
+				SELECT * FROM conversations WHERE project_id = '${projectId.replace(/'/g, "''")}' ORDER BY updated_at DESC LIMIT 1;
+			`)
+			: this.queryOne<ConversationRow>(`
+				SELECT * FROM conversations WHERE project_id IS NULL ORDER BY updated_at DESC LIMIT 1;
+			`);
 
 		return row ? this.rowToConversation(row) : null;
 	}
 
 	async getRecentTurns(projectId: string | null, limit: number = 10): Promise<ConversationTurn[]> {
 		await this.ensureInitialized();
-		if (!this.db) throw new Error('Database not initialized');
 
 		const rows = projectId
-			? this.db.prepare(`
+			? this.queryJSON<ConversationTurnRow>(`
 				SELECT ct.* FROM conversation_turns ct
 				JOIN conversations c ON c.id = ct.conversation_id
-				WHERE c.project_id = ?
+				WHERE c.project_id = '${projectId.replace(/'/g, "''")}'
 				ORDER BY ct.created_at DESC
-				LIMIT ?
-			`).all(projectId, limit) as ConversationTurnRow[]
-			: this.db.prepare(`
+				LIMIT ${limit};
+			`)
+			: this.queryJSON<ConversationTurnRow>(`
 				SELECT ct.* FROM conversation_turns ct
 				JOIN conversations c ON c.id = ct.conversation_id
 				WHERE c.project_id IS NULL
 				ORDER BY ct.created_at DESC
-				LIMIT ?
-			`).all(limit) as ConversationTurnRow[];
+				LIMIT ${limit};
+			`);
 
 		// Return in chronological order (oldest first)
 		return rows.map(row => this.rowToTurn(row)).reverse();
 	}
 
 	async getRecentConversations(projectId: string | null, limit: number = 5): Promise<Conversation[]> {
+		console.log('[TARX-DB] getRecentConversations called with projectId:', projectId, 'limit:', limit);
 		await this.ensureInitialized();
-		if (!this.db) throw new Error('Database not initialized');
 
+		console.log('[TARX-DB] Database initialized, querying conversations...');
 		const rows = projectId
-			? this.db.prepare(`
-				SELECT * FROM conversations WHERE project_id = ? ORDER BY updated_at DESC LIMIT ?
-			`).all(projectId, limit) as ConversationRow[]
-			: this.db.prepare(`
-				SELECT * FROM conversations WHERE project_id IS NULL ORDER BY updated_at DESC LIMIT ?
-			`).all(limit) as ConversationRow[];
+			? this.queryJSON<ConversationRow>(`
+				SELECT * FROM conversations WHERE project_id = '${projectId.replace(/'/g, "''")}' ORDER BY updated_at DESC LIMIT ${limit};
+			`)
+			: this.queryJSON<ConversationRow>(`
+				SELECT * FROM conversations WHERE project_id IS NULL ORDER BY updated_at DESC LIMIT ${limit};
+			`);
 
+		console.log('[TARX-DB] Found', rows.length, 'conversations');
 		return rows.map(row => this.rowToConversation(row));
 	}
 
@@ -517,13 +650,10 @@ export class SqliteDatabase implements DatabaseOperations {
 
 	/**
 	 * Close the database connection
+	 * Note: CLI approach doesn't maintain persistent connection, just reset state
 	 */
 	close(): void {
-		if (this.db) {
-			this.db.close();
-			this.db = null;
-			this.initialized = false;
-		}
+		this.initialized = false;
 	}
 
 	// ========================================
@@ -560,6 +690,21 @@ export class SqliteDatabase implements DatabaseOperations {
 			chunkIndex: row.chunk_index,
 			content: row.content,
 			embedding: new Float32Array(row.embedding.buffer, row.embedding.byteOffset, row.embedding.byteLength / 4),
+			createdAt: row.created_at
+		};
+	}
+
+	private rowToEmbeddingCLI(row: EmbeddingRowCLI): FileEmbedding {
+		// Decode base64 embedding back to Float32Array
+		const embeddingBuffer = Buffer.from(row.embedding, 'base64');
+		const embedding = new Float32Array(embeddingBuffer.buffer, embeddingBuffer.byteOffset, embeddingBuffer.byteLength / 4);
+
+		return {
+			id: row.id,
+			fileId: row.file_id,
+			chunkIndex: row.chunk_index,
+			content: row.content,
+			embedding,
 			createdAt: row.created_at
 		};
 	}
@@ -616,6 +761,16 @@ interface EmbeddingRow {
 	chunk_index: number;
 	content: string;
 	embedding: Buffer;
+	created_at: number;
+}
+
+// For CLI-based queries where embedding comes back as base64 string
+interface EmbeddingRowCLI {
+	id: string;
+	file_id: string;
+	chunk_index: number;
+	content: string;
+	embedding: string;  // base64 encoded
 	created_at: number;
 }
 

@@ -1,4 +1,4 @@
-# TARX Code OSS - Conversational UI Audit Results
+# Workbench - Conversational UI Audit Results
 
 **Date:** January 24, 2026
 **Auditor:** Claude Code

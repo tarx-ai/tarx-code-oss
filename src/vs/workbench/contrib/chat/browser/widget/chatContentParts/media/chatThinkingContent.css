@@ -226,3 +226,74 @@
 	line-height: inherit;
 	padding: 0 4px;
 }
+
+/* TARX-specific thinking block styles */
+.interactive-session .interactive-response .value .tarx-thinking-block {
+	background: var(--vscode-editor-background);
+	border-left: 3px solid var(--vscode-charts-purple);
+	padding: 8px 12px;
+	margin: 4px 0;
+	font-style: italic;
+	opacity: 0.85;
+	border-radius: 4px;
+	transition: opacity 0.3s ease;
+}
+
+.interactive-session .interactive-response .value .tarx-thinking-header {
+	font-weight: 600;
+	color: var(--vscode-charts-purple);
+	font-size: 0.85em;
+	margin-bottom: 4px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+/* Pulsing dot for active thinking header */
+.interactive-session .interactive-response .value .tarx-thinking-header::before {
+	content: '';
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--vscode-charts-purple);
+	flex-shrink: 0;
+}
+
+.interactive-session .interactive-response .value .tarx-thinking-active .tarx-thinking-header::before {
+	animation: tarx-thinking-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes tarx-thinking-pulse {
+	0%, 100% { opacity: 0.4; transform: scale(0.8); }
+	50% { opacity: 1; transform: scale(1.2); }
+}
+
+/* Shimmer animation for active thinking */
+@keyframes tarx-shimmer {
+	0% { background-position: -200px 0; }
+	100% { background-position: 200px 0; }
+}
+
+.interactive-session .interactive-response .value .tarx-thinking-active {
+	background: linear-gradient(
+		90deg,
+		var(--vscode-editor-background) 0%,
+		var(--vscode-editor-selectionBackground) 50%,
+		var(--vscode-editor-background) 100%
+	);
+	background-size: 400px 100%;
+	animation: tarx-shimmer 1.5s ease-in-out infinite;
+	opacity: 1;
+}
+
+/* Enhanced border style for thinking collapsibles */
+.interactive-session .interactive-response .value .chat-thinking-box .chat-used-context-list.chat-thinking-collapsible {
+	border-left: 3px solid var(--vscode-charts-purple);
+	transition: border-color 0.2s ease;
+}
+
+/* Streaming state glow */
+.interactive-session .interactive-response .value .chat-thinking-box .chat-used-context-list.chat-thinking-collapsible.chat-thinking-streaming {
+	border-left-color: var(--vscode-charts-purple);
+	box-shadow: -2px 0 8px -4px var(--vscode-charts-purple);
+}

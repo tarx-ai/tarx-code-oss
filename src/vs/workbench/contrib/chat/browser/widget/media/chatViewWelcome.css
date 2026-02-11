@@ -222,3 +222,39 @@ div.chat-welcome-view {
 		background-color: var(--vscode-list-hoverBackground);
 	}
 }
+
+/* TARX-specific welcome view styles */
+.chat-welcome-view .tarx-welcome-icon {
+	background: linear-gradient(135deg, #6366f1, #8b5cf6);
+	border-radius: 12px;
+	width: 72px;
+	height: 72px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-weight: bold;
+	color: white;
+	font-size: 32px;
+	margin-bottom: 8px;
+	box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+}
+
+.chat-welcome-view .tarx-welcome-subtitle {
+	color: var(--vscode-descriptionForeground);
+	font-size: 13px;
+	margin-top: 4px;
+	font-style: italic;
+}
+
+/* Suggested prompts polish */
+.chat-welcome-view-suggested-prompts > .chat-welcome-view-suggested-prompt {
+	transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.chat-welcome-view-suggested-prompts > .chat-welcome-view-suggested-prompt:hover {
+	transform: translateY(-1px);
+}
+
+.chat-welcome-view-suggested-prompts > .chat-welcome-view-suggested-prompt:active {
+	transform: translateY(0);
+}

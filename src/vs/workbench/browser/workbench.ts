@@ -4,8 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import './style.js';
-// TARX: Sentry temporarily disabled - module resolution issue in browser context
-// import * as Sentry from '@sentry/electron/renderer';
+// TARX: Sentry stub — @sentry/browser can't resolve as bare specifier in renderer ESM context
+const Sentry: { captureException?: (e: unknown, ctx?: unknown) => string | undefined; captureMessage?: (m: string, l?: string) => string | undefined } = (globalThis as any).Sentry || {};
 import { runWhenWindowIdle } from '../../base/browser/dom.js';
 import { Event, Emitter, setGlobalLeakWarningThreshold } from '../../base/common/event.js';
 import { RunOnceScheduler, timeout } from '../../base/common/async.js';
@@ -121,16 +121,16 @@ export class Workbench extends Layout {
 		this.previousUnexpectedError.time = now;
 		this.previousUnexpectedError.message = message;
 
-		// TARX: Sentry temporarily disabled
-		// try {
-		// 	if (error instanceof Error) {
-		// 		Sentry.captureException(error);
-		// 	} else {
-		// 		Sentry.captureMessage(message, 'error');
-		// 	}
-		// } catch {
-		// 	// Ignore Sentry errors
-		// }
+		// TARX: Capture errors to Sentry (safe — optional chaining on stub)
+		try {
+			if (error instanceof Error) {
+				Sentry.captureException?.(error);
+			} else {
+				Sentry.captureMessage?.(message, 'error');
+			}
+		} catch {
+			// Sentry not initialized or failed — ignore
+		}
 
 		// Log it
 		logService.error(message);

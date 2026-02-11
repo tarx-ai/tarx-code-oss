@@ -8,6 +8,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { DatabaseOperations, ProjectFile } from './database';
 import { RagClient, buildContextString } from './ragClient';
+import { searchMCPKnowledge, getMCPKnowledgeCount } from './mcpKnowledge';
+import { TARX_ACTION_FIRST_PROMPT } from './systemPrompt';
 
 /**
  * Types of file references that can be detected
@@ -259,33 +261,80 @@ export async function loadContext(
 
 	// 2. Use RAG for semantic references and large files
 	if (remainingTokens > 500) {
+		// Embed the user message (used by both local RAG and MCP knowledge)
+		let queryEmbedding: Float32Array | null = null;
 		try {
-			// Embed the user message
-			const queryEmbedding = await ragClient.embed(userMessage);
-
-			// Search for relevant chunks
-			const searchResults = await db.searchEmbeddings(
-				projectId,
-				queryEmbedding,
-				10 // Get top 10 chunks
-			);
-
-			// Filter out chunks from files we already loaded fully
-			const relevantChunks = searchResults.filter(
-				chunk => !usedPaths.has(chunk.filePath)
-			);
-
-			// Add chunks within token budget
-			for (const chunk of relevantChunks) {
-				const tokens = estimateTokens(chunk.content);
-				if (tokens > remainingTokens) continue;
-
-				context.chunks.push(chunk);
-				remainingTokens -= tokens;
-				context.totalTokens += tokens;
-			}
+			queryEmbedding = await ragClient.embed(userMessage);
 		} catch (e) {
-			console.warn('[TARX] RAG search failed:', e);
+			console.warn('[TARX] Query embedding failed:', e);
+		}
+
+		// 2a. Search local project embeddings
+		if (queryEmbedding) {
+			try {
+				const searchResults = await db.searchEmbeddings(
+					projectId,
+					queryEmbedding,
+					10 // Get top 10 chunks
+				);
+
+				// Filter out chunks from files we already loaded fully
+				const relevantChunks = searchResults.filter(
+					chunk => !usedPaths.has(chunk.filePath)
+				);
+
+				// Add chunks within token budget
+				for (const chunk of relevantChunks) {
+					const tokens = estimateTokens(chunk.content);
+					if (tokens > remainingTokens) continue;
+
+					context.chunks.push(chunk);
+					remainingTokens -= tokens;
+					context.totalTokens += tokens;
+				}
+			} catch (e) {
+				console.warn('[TARX] Local RAG search failed:', e);
+			}
+		}
+
+		// 2b. Also search MCP knowledge base (uploaded files via MCP tools)
+		if (queryEmbedding) {
+			try {
+				const mcpKnowledgeCount = await getMCPKnowledgeCount();
+				if (mcpKnowledgeCount > 0) {
+					console.log(`[TARX] Searching MCP knowledge base (${mcpKnowledgeCount} embeddings)`);
+
+					const mcpResults = await searchMCPKnowledge(
+						null, // Search all spaces
+						queryEmbedding,
+						5 // Get top 5 MCP chunks
+					);
+
+					// Add MCP chunks within token budget
+					let addedCount = 0;
+					for (const chunk of mcpResults) {
+						// Skip low-similarity results
+						if (chunk.similarity < 0.5) continue;
+
+						const tokens = estimateTokens(chunk.content);
+						if (tokens > remainingTokens) continue;
+
+						// Add as a chunk with title as path
+						context.chunks.push({
+							content: chunk.content,
+							filePath: chunk.title, // Title includes filename
+							similarity: chunk.similarity
+						});
+						remainingTokens -= tokens;
+						context.totalTokens += tokens;
+						addedCount++;
+					}
+
+					console.log(`[TARX] Added ${addedCount} MCP knowledge chunks`);
+				}
+			} catch (e) {
+				console.warn('[TARX] MCP knowledge search failed:', e);
+			}
 		}
 	}
 
@@ -342,15 +391,8 @@ export function buildPrompt(
 ): string {
 	let prompt = '';
 
-	// Add system instructions
-	const system = systemPrompt || `You are TARX, a local-first AI coding assistant. You have access to the user's project files and can provide context-aware assistance.
-
-When suggesting code changes:
-- Use markdown code blocks with language identifiers
-- If modifying an existing file, show the changes clearly
-- Be concise but thorough
-
-Available context from the user's project is provided below.`;
+	// Add system instructions - use action-first prompt for direct responses
+	const system = systemPrompt || TARX_ACTION_FIRST_PROMPT;
 
 	prompt += system + '\n\n';
 
@@ -437,7 +479,14 @@ export async function applyArtifact(
 		return { success: false, message: 'No file path specified' };
 	}
 
-	const fullPath = path.join(projectRoot, artifact.filePath);
+	// Security: Validate path to prevent traversal attacks
+	const resolvedRoot = path.resolve(projectRoot);
+	const fullPath = path.resolve(projectRoot, artifact.filePath);
+
+	if (!fullPath.startsWith(resolvedRoot + path.sep) && fullPath !== resolvedRoot) {
+		console.error(`[TARX] Path traversal blocked: ${artifact.filePath}`);
+		return { success: false, message: 'Invalid path: outside project root' };
+	}
 
 	try {
 		if (artifact.type === 'diff') {

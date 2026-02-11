@@ -6,18 +6,27 @@
 // Early activation log - this runs when module is loaded
 console.log('[TARX] ========== EXTENSION MODULE LOADING ==========');
 
+// Version tracking - update this on each release
+const TARX_VERSION = "2026-02-04-v1-sidebar-polish";
+console.log(`[TARX] Version loaded: ${TARX_VERSION}`);
+
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
+import { execSync } from 'child_process';
 import { TarxCompletionProvider } from './completionProvider';
 import { TarxStatusBar } from './statusBar';
 import { TarxClient, ChatMessage } from './tarxClient';
 import { TarxLanguageModelProvider } from './languageModelProvider';
-import { registerSpeechProvider } from './speechProvider';
+// DISABLED FOR V1 - Voice services deferred to V1.5
+// import { registerSpeechProvider, setTranscriptPanel, TarxSpeechProvider } from './speechProvider';
+// import { VoiceTranscriptPanel } from './voiceTranscriptPanel';
 import { JsonDatabase, DatabaseOperations, Project, Conversation, ConversationTurn, detectProjectType } from './database';
-import { RagClient } from './ragClient';
+import { SqliteDatabase } from './sqliteDatabase';
+import { RagClient, chunkText, chunkCode } from './ragClient';
 import { ProjectIndexer, createFileWatcher } from './projectIndexer';
+import * as crypto from 'crypto';
 import {
 	parseFileReferences,
 	loadContext,
@@ -27,6 +36,7 @@ import {
 } from './chatContext';
 import {
 	TARX_SYSTEM_PROMPT,
+	TARX_LOCAL_REASONING_PROMPT,
 	buildTarxSystemPrompt,
 	isVagueRequest,
 	getClarificationForVagueRequest,
@@ -37,7 +47,139 @@ import {
 	formatIssuesForResponse
 } from './codeAnalysis';
 import { registerSidebarProvider, TarxSidebarProvider } from './sidebarProvider';
+import { registerMcpSettingsProvider, McpSettingsProvider } from './core/config/McpSettingsProvider';
 import { HealthService, ConnectionStatus } from './healthService';
+import { TestHarnessService } from './testHarness';
+import { fitToContextWindow, getContextUsage, Message as ContextMessage } from './contextWindow';
+import {
+	getProactiveSystem,
+	ProactiveSystem,
+	getContextObserver
+	// getProactiveVoiceInterface // DISABLED FOR V1
+} from './proactive';
+import { executeFirstRunFlow } from './services/firstRunFlow.js';
+// projectDashboard imports removed — replaced by ProjectContextPanel
+import { registerProjectContextCommands, ProjectContextPanel } from './projectContextPanel';
+import { registerSessionPanelCommands, TarxSessionPanel } from './sessionPanel';
+import { registerProjectTreeProvider, ProjectTreeProvider } from './projectTreeProvider';
+import { registerColorCommands } from './sidebar-color';
+import { registerInteractionCommands } from './sidebar-interactions';
+// project-creation-flow import removed — consolidated into ProjectContextPanel
+import { registerOvernightTestCommands } from './overnight-test';
+import { registerConversationalTestCommands } from './test/conversational-test-harness';
+import { AuthManager, registerAuthCommands, AuthChatView, AuthStateManager } from './auth';
+import { closeMCPDatabase, searchMCPKnowledge, getMCPKnowledgeCount, storeMCPEmbeddings } from './mcpKnowledge';
+import { TarxSidebarProvider as TarxSidebarWebviewProvider } from './webview/TarxSidebarProvider';
+import { registerClaudeSessionsProvider, ClaudeSessionsProvider } from './claudeSessionsProvider';
+// project-creation import removed — consolidated into ProjectContextPanel
+import { registerSectionsSidebar, TarxSectionsSidebarProvider } from './sidebar-sections';
+import { registerContextFilesProvider, ContextFilesProvider } from './contextFilesProvider';
+import { registerClaudeWorkerCommands } from './claude-worker';
+import { registerSidebarFullUX } from './sidebar-full-ux';
+import { initTarxLogger, flushTarxLogs } from './tarxLogger';
+// TARX Bridge Integration - Feb 2026
+import {
+	registerClaudeBridgeCommands,
+	detectActionIntent,
+	handleActionIntent,
+	getBridgeStatus,
+	getBridgeStatusDisplay,
+	buildPayload,
+	invokeClaudeWithPayload,
+	executeNextSteps,
+	BridgeStatus
+} from './claude-bridge';
+import { registerBridgeTestCommands } from './test-bridge';
+// TARX Skills Bridge - Connects to tarx-skills-provider
+import { checkSkillsFirst } from './skillsBridge';
+// TARX Autonomic Daemon - Feb 2026
+import { startDaemon, stopDaemon, getDaemon } from './daemon';
+// TARX QA Test Harness - Feb 2026
+import { runQATests, runStartupChecks } from './test/qa-harness';
+// TARX Model Router - Feb 2026
+import {
+	routeMessage,
+	classifyIntent,
+	getRouteIndicator,
+	setRouterConfig,
+	getRouterConfig,
+	type ModelRoute,
+	type RouteDecision
+} from './router';
+import {
+	initNetworkModel,
+	streamNetworkResponse,
+	hasApiKey as hasNetworkApiKey,
+	promptForApiKey,
+	getNetworkModelSettings,
+	storeApiKey,
+	deleteApiKey,
+	setMemorySettings,
+	testConnection as testClaudeConnection,
+	type NetworkModelContext,
+	type NetworkModelSettings
+} from './networkModel';
+import {
+	initStripeService,
+	getBillingStatus,
+	createCheckoutSession,
+	createPortalSession,
+	storeStripeSecretKey,
+	deleteStripeSecretKey,
+	type BillingTier
+} from './stripeService';
+import { CreditBridge } from './creditBridge';
+import { registerChatInputIntegration, ChatInputIntegration } from './chatInputIntegration';
+
+// ========================================
+// Debug Flag - Set TARX_DEBUG=true for verbose logging
+// ========================================
+const DEBUG = process.env.TARX_DEBUG === 'true';
+
+// ========================================
+// Dev Mode Auth Bypass - Skip PIN screen for MCP testing
+// Can be enabled via:
+// 1. Environment variable: TARX_DEV_BYPASS_AUTH=true
+// 2. VS Code setting: tarx.security.devBypassAuth = true
+// ========================================
+function isDevBypassAuthEnabled(): boolean {
+	// Check environment variable first
+	if (process.env.TARX_DEV_BYPASS_AUTH === 'true') {
+		return true;
+	}
+	// Check VS Code setting
+	const config = vscode.workspace.getConfiguration('tarx.security');
+	return config.get<boolean>('devBypassAuth', false);
+}
+
+/** Conditional debug logging - only logs when TARX_DEBUG=true */
+function debugLog(...args: unknown[]): void {
+	if (DEBUG) {
+		console.log('[TARX]', ...args);
+	}
+}
+
+/** Always log important messages */
+function log(...args: unknown[]): void {
+	console.log('[TARX]', ...args);
+}
+
+/**
+ * Load project instructions from .tarx/instructions.md
+ * Used to inject project-specific context into the system prompt
+ */
+async function loadProjectInstructions(projectRoot: string): Promise<string | undefined> {
+	const instructionsPath = path.join(projectRoot, '.tarx', 'instructions.md');
+	try {
+		if (fs.existsSync(instructionsPath)) {
+			const content = fs.readFileSync(instructionsPath, 'utf-8');
+			return content.trim() || undefined;
+		}
+	} catch (e) {
+		console.warn('[TARX] Failed to load project instructions:', e);
+	}
+	return undefined;
+}
 
 // ========================================
 // Command Registration Guard
@@ -51,13 +193,22 @@ function safeRegisterCommand(
 	handler: (...args: any[]) => any
 ): void {
 	if (registeredCommands.has(commandId)) {
-		console.log(`[TARX] Command ${commandId} already registered, skipping`);
+		console.log(`[TARX] Command ${commandId} already registered locally, skipping`);
 		return;
 	}
 	registeredCommands.add(commandId);
-	context.subscriptions.push(
-		vscode.commands.registerCommand(commandId, handler)
-	);
+	try {
+		context.subscriptions.push(
+			vscode.commands.registerCommand(commandId, handler)
+		);
+	} catch (error) {
+		// Command may already be registered by core TARX app - this is OK
+		if (error instanceof Error && error.message.includes('already exists')) {
+			console.log(`[TARX] Command ${commandId} already exists in VS Code, skipping`);
+		} else {
+			console.error(`[TARX] Failed to register command ${commandId}:`, error);
+		}
+	}
 }
 
 // ========================================
@@ -131,6 +282,8 @@ let analytics: TarxAnalytics;
 let statusBar: TarxStatusBar | undefined;
 let healthService: HealthService | undefined;
 let sidebarProvider: TarxSidebarProvider | undefined;
+let webviewSidebarProvider: TarxSidebarWebviewProvider | undefined;
+let projectTreeProvider: ProjectTreeProvider | undefined;
 let languageModelProvider: TarxLanguageModelProvider | undefined;
 let db: DatabaseOperations | undefined;
 let ragClient: RagClient | undefined;
@@ -138,6 +291,63 @@ let projectIndexer: ProjectIndexer | undefined;
 let activeProject: Project | undefined;
 let activeConversation: Conversation | undefined;
 let fileWatcher: vscode.Disposable | undefined;
+let proactiveSystem: ProactiveSystem | undefined;
+let creditBridge: CreditBridge | undefined;
+
+// Auth objects - module level for guard access
+let authManager: AuthManager | undefined;
+let authChatView: AuthChatView | undefined;
+let isAuthenticatedSession: boolean = false;
+
+/** Sync activeConversation ID to the language model provider for history injection */
+function syncConversationToProvider(): void {
+	languageModelProvider?.setActiveConversation(activeConversation?.id);
+}
+
+/**
+ * Ensure the user is authenticated before proceeding.
+ * Re-shows auth panel if needed and waits for completion.
+ * @returns true if authenticated, false if cancelled/failed
+ */
+async function ensureAuthenticated(): Promise<boolean> {
+	// Already authenticated this session
+	if (isAuthenticatedSession) {
+		return true;
+	}
+
+	// No auth manager means auth wasn't initialized
+	if (!authManager || !authChatView) {
+		console.warn('[TARX] Auth not initialized');
+		return false;
+	}
+
+	// Check if auth is even required
+	const isConfigured = await authManager.isAuthEnabled();
+	if (!isConfigured) {
+		// No auth configured, user can proceed
+		isAuthenticatedSession = true;
+		return true;
+	}
+
+	// Check if already unlocked
+	const requiresUnlock = await authManager.requiresUnlock();
+	if (!requiresUnlock) {
+		isAuthenticatedSession = true;
+		return true;
+	}
+
+	// Need to show auth panel
+	console.log('[TARX] Auth required - showing auth panel');
+	const success = await authChatView.showAndWait();
+
+	if (success) {
+		isAuthenticatedSession = true;
+		// Update sidebar if available
+		sidebarProvider?.setLocked(false);
+	}
+
+	return success;
+}
 
 // Pre-loaded conversation history for restored conversations
 // Key: conversationId, Value: array of turns loaded when opening from history
@@ -146,14 +356,168 @@ const conversationHistory = new Map<string, ConversationTurn[]>();
 // Maximum number of conversation turns to load for context
 const MAX_HISTORY_TURNS = 10;
 
-export function activate(context: vscode.ExtensionContext) {
-	console.log('[TARX] Extension activating...');
+export async function activate(context: vscode.ExtensionContext) {
+	// Initialize console log capture FIRST - before any other logging
+	initTarxLogger();
+
+	// TARX: Global error filter — silently swallow known noise errors
+	// These are VS Code internals or benign race conditions that spam Sentry without user impact.
+	const origOnError = process.listeners('uncaughtException').slice();
+	process.on('uncaughtException', (err: Error) => {
+		const msg = err?.message || '';
+		const code = (err as NodeJS.ErrnoException)?.code || '';
+
+		// Filter noise patterns (prevents Sentry spam)
+		const noisePatterns = [
+			'HostProvider not setup',                              // NODE-A: 2,663 events - Copilot auth we don't use
+			'Channel has been closed',                             // NODE-1,3,7,1B: 166 events - IPC race
+			'Canceled: Canceled',                                  // NODE-2,4,5,6,19,1A: 863 events - User cancellations
+			'Canceled',                                            // Catch-all for cancellations
+			"permission denied, mkdir '/mock'",                    // NODE-B: 730 events - Test artifact
+			'EACCES',                                              // Permission errors (non-critical)
+			'spawn docker ENOENT',                                 // NODE-S: 6 events - Docker not installed
+			'EADDRINUSE',                                          // Port conflicts (handled gracefully)
+			'address already in use',                              // Alternative EADDRINUSE message
+			'Pending response rejected since connection got disposed', // NODE-P: 4 events - Extension shutdown
+			'Harness error',                                       // Test harness HTTP errors (non-critical)
+			'No messages returned'                                 // MCP/harness expected condition
+		];
+
+		for (const pattern of noisePatterns) {
+			if (msg.includes(pattern) || code === pattern) {
+				// Silently ignore — already handled or non-critical
+				return;
+			}
+		}
+
+		// Re-throw for other handlers
+		for (const handler of origOnError) {
+			(handler as (err: Error) => void)(err);
+		}
+	});
+
+	console.log('[TARX DEBUG] ========== TARX EXTENSION ACTIVATING ==========');
+
+	// ========== DIAGNOSTIC: DB PATH CHECK ==========
+	const mcpDbPath = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
+	console.log('[TARX DIAG] DB path:', mcpDbPath);
+	console.log('[TARX DIAG] DB exists:', fs.existsSync(mcpDbPath));
+	if (fs.existsSync(mcpDbPath)) {
+		try {
+			const stats = fs.statSync(mcpDbPath);
+			console.log('[TARX DIAG] DB size:', stats.size, 'bytes');
+			console.log('[TARX DIAG] DB mtime:', stats.mtime.toISOString());
+			// Quick query to count spaces
+			const countResult = execSync(
+				`sqlite3 "${mcpDbPath}" "SELECT COUNT(*) FROM spaces WHERE deleted_at IS NULL"`,
+				{ encoding: 'utf8', timeout: 5000 }
+			).trim();
+			console.log('[TARX DIAG] Space count:', countResult);
+		} catch (e) {
+			console.error('[TARX DIAG] DB stat/query error:', e);
+		}
+	}
+	// ========== END DIAGNOSTIC ==========
+
+	// Version command - register early so it's always available
+	context.subscriptions.push(vscode.commands.registerCommand('tarx.version', () => {
+		vscode.window.showInformationMessage(`TARX Version: ${TARX_VERSION}`);
+	}));
 
 	// Initialize analytics
 	analytics = new TarxAnalytics();
 	analytics.track('app_launched', {
 		version: context.extension.packageJSON.version || '1.0.0',
 		platform: process.platform
+	});
+
+	// Initialize network model with SecretStorage for secure API key storage
+	initNetworkModel(context);
+	console.log('[TARX] Network model initialized with SecretStorage');
+
+	// Initialize Stripe billing service
+	initStripeService(context);
+	console.log('[TARX] Stripe billing service initialized');
+
+	// Initialize credit bridge (mesh → Stripe metered billing)
+	creditBridge = new CreditBridge();
+	creditBridge.initialize(context);
+	context.subscriptions.push(creditBridge);
+	// Delay polling start to let extension fully activate
+	setTimeout(() => creditBridge?.startPolling(), 10000);
+	console.log('[TARX] Credit bridge initialized (polling starts in 10s)');
+
+	// Initialize authentication manager (module-level)
+	authManager = new AuthManager(context);
+	await authManager.initialize();
+	console.log('[TARX] Auth manager initialized');
+
+	// FTUX Auth Flow - Show auth screen automatically on launch
+	const authStateManager = AuthStateManager.getInstance();
+	authChatView = new AuthChatView(context, authManager);
+
+	// Register auth commands with custom unlock handler that uses AuthChatView
+	registerAuthCommands(context, authManager, async () => {
+		if (!authChatView || !authManager) {
+			vscode.window.showErrorMessage('Auth not initialized');
+			return false;
+		}
+
+		const isConfigured = await authManager.isAuthEnabled();
+		if (!isConfigured) {
+			vscode.window.showInformationMessage('No PIN is configured. Use "TARX: Set Up Authentication" first.');
+			return false;
+		}
+
+		const success = await authChatView.showAndWait();
+		if (success) {
+			isAuthenticatedSession = true;
+			sidebarProvider?.setLocked(false);
+			vscode.window.showInformationMessage('TARX unlocked');
+		}
+		return success;
+	});
+
+	// DEV MODE: Skip auth entirely when bypass is enabled
+	// Used for MCP verification and automated testing
+	if (isDevBypassAuthEnabled()) {
+		console.log('[TARX] ⚠️  DEV MODE: Auth bypass enabled (env or setting)');
+		authStateManager.setState('unlocked');
+		isAuthenticatedSession = true;
+		// Don't show auth screen, proceed directly to main UI
+	} else {
+		const isConfigured = await authManager.isAuthEnabled();
+		const requiresUnlock = await authManager.requiresUnlock();
+		const requireOnStartup = authManager.isRequiredOnStartup();
+
+		// Show auth screen if:
+		// 1. Not configured (first-time setup), OR
+		// 2. Configured AND requireOnStartup setting is true AND requires unlock
+		if (!isConfigured || (requireOnStartup && requiresUnlock)) {
+			console.log('[TARX] Auth required - showing auth screen (requireOnStartup:', requireOnStartup, ')');
+			const success = await authChatView.showAndWait();
+			if (!success) {
+				console.log('[TARX] Auth cancelled or failed - extension will require auth on use');
+				isAuthenticatedSession = false;
+				// Continue initialization but user will need to auth when using features
+			} else {
+				console.log('[TARX] Auth successful - TARX unlocked');
+				isAuthenticatedSession = true;
+			}
+		} else {
+			// Already unlocked or startup auth disabled
+			authStateManager.setState('unlocked');
+			isAuthenticatedSession = true;
+			console.log('[TARX] Skipping startup auth (configured:', isConfigured, ', requireOnStartup:', requireOnStartup, ')');
+		}
+	}
+
+	// Continue initialization - features are guarded by ensureAuthenticated()
+	console.log('[TARX] Continuing extension initialization...');
+
+	// Execute first-run onboarding flow (non-blocking)
+	executeFirstRunFlow(context).catch(err => {
+		console.error('[TARX] First-run flow error:', err);
 	});
 
 	// Initialize TARX client
@@ -179,10 +543,27 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	// Initialize database (using extension storage path)
-	const storagePath = context.globalStorageUri.fsPath;
-	db = new JsonDatabase(storagePath);
-	console.log('[TARX] Database initialized at:', storagePath);
+	// Initialize Test Harness for automated UI testing (port 11439)
+	console.log('[TARX] Creating test harness service...');
+	const testHarness = new TestHarnessService(healthService, tarxClient);
+	console.log('[TARX] Starting test harness...');
+	testHarness.start();
+	context.subscriptions.push(testHarness);
+	console.log('[TARX] Test harness started on port 11439');
+
+	// Initialize database (using shared TARX path for Claude integration)
+	const sharedTarxPath = path.join(os.homedir(), 'Library/Application Support/tarx');
+	// Ensure directory exists
+	if (!fs.existsSync(sharedTarxPath)) {
+		fs.mkdirSync(sharedTarxPath, { recursive: true });
+	}
+	db = new SqliteDatabase(sharedTarxPath);
+	console.log('[TARX] Database initialized at:', sharedTarxPath);
+
+	// Initialize chat input integration for file upload/drop
+	const outputChannel = vscode.window.createOutputChannel('TARX');
+	const chatInputIntegration = registerChatInputIntegration(context, db, outputChannel);
+	console.log('[TARX] Chat input integration registered (upload button + drag-and-drop)');
 
 	// Initialize project indexer
 	projectIndexer = new ProjectIndexer(db, ragClient);
@@ -225,6 +606,463 @@ export function activate(context: vscode.ExtensionContext) {
 	sidebarProvider = registerSidebarProvider(context);
 	console.log('[TARX] Sidebar provider registered');
 
+	// Set sidebar locked state based on auth session
+	sidebarProvider.setLocked(!isAuthenticatedSession);
+	console.log('[TARX] Sidebar locked state:', !isAuthenticatedSession);
+
+	// Initialize project tree provider for VS Code native tree view
+	console.log('[TARX DEBUG] About to register Project Tree Provider...');
+	try {
+		projectTreeProvider = registerProjectTreeProvider(context);
+		console.log('[TARX DEBUG] Project tree provider registered successfully');
+	} catch (error) {
+		console.error('[TARX DEBUG] ERROR registering Project Tree Provider:', error);
+	}
+
+	// Initialize Claude Sessions provider for browsing Claude.ai conversations
+	const claudeSessionsProvider = registerClaudeSessionsProvider(context);
+	console.log('[TARX] Claude Sessions provider registered');
+
+	// Initialize MCP settings provider for server configuration
+	const mcpSettingsProvider = registerMcpSettingsProvider(context);
+	console.log('[TARX] MCP settings provider registered');
+
+	// Register WebviewViewProvider for sidebar (React-based UI)
+	webviewSidebarProvider = new TarxSidebarWebviewProvider(context.extensionUri);
+	context.subscriptions.push(
+		vscode.window.registerWebviewViewProvider(
+			TarxSidebarWebviewProvider.viewType,
+			webviewSidebarProvider,
+			{
+				webviewOptions: {
+					retainContextWhenHidden: true
+				}
+			}
+		)
+	);
+	console.log('[TARX] Webview sidebar provider registered');
+
+	// Register refresh command for webview sidebar
+	context.subscriptions.push(
+		vscode.commands.registerCommand('tarx.sidebarWebview.refresh', () => {
+			webviewSidebarProvider?.refresh();
+		})
+	);
+
+	// Sync project tree provider with active project when it changes
+	if (projectTreeProvider) {
+		const currentProject = projectTreeProvider.getCurrentProject();
+		if (currentProject && db) {
+			// Sync with database
+			db.getProject(currentProject.id).then(dbProject => {
+				if (!dbProject) {
+					// Project exists in workspace state but not DB - create it
+					db?.createProject({
+						name: currentProject.name,
+						root: currentProject.path,
+						type: currentProject.type || 'general',
+						isActive: true
+					}).then(newProject => {
+						activeProject = newProject;
+						console.log('[TARX] Synced workspace project to database:', newProject.id);
+					}).catch(e => console.warn('[TARX] Failed to sync project:', e));
+				} else {
+					// Validate the database project has a valid root path
+					const uuidCheck = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+					if (dbProject.root && !uuidCheck.test(dbProject.root) && fs.existsSync(dbProject.root)) {
+						activeProject = dbProject;
+					} else {
+						console.warn('[TARX] Database project has invalid root path, skipping:', dbProject.root);
+					}
+				}
+			}).catch(e => console.warn('[TARX] Project sync error:', e));
+		}
+	}
+
+	// ========================================
+	// SYNC SQLite PROJECTS → WORKSPACE STATE
+	// This ensures DB projects appear in Projects sidebar
+	// ========================================
+	async function syncProjectsFromDB() {
+		if (!db || !projectTreeProvider) {
+			console.log('[TARX] syncProjectsFromDB: db or projectTreeProvider not available');
+			return;
+		}
+
+		try {
+			const dbProjects = await db.listProjects();
+			console.log(`[TARX] syncProjectsFromDB: Found ${dbProjects.length} projects in SQLite`);
+
+			if (dbProjects.length === 0) {
+				console.log('[TARX] syncProjectsFromDB: No projects in DB to sync');
+				return;
+			}
+
+			let syncedCount = 0;
+			for (const dbProject of dbProjects) {
+				// Validate path exists and is not a UUID
+				const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+				if (!dbProject.root || uuidPattern.test(dbProject.root)) {
+					console.log(`[TARX] syncProjectsFromDB: Skipping invalid root: ${dbProject.root}`);
+					continue;
+				}
+				if (!fs.existsSync(dbProject.root)) {
+					console.log(`[TARX] syncProjectsFromDB: Path doesn't exist: ${dbProject.root}`);
+					continue;
+				}
+
+				// Convert DB project to ProjectData format for tree provider
+				const projectData = {
+					id: dbProject.id,
+					name: dbProject.name,
+					path: dbProject.root,
+					type: dbProject.type || 'general',
+					createdAt: dbProject.createdAt,
+					updatedAt: dbProject.createdAt,
+					instructions: undefined,
+					fileCount: 0
+				};
+
+				// Add to tree provider (this also updates workspaceState)
+				projectTreeProvider.addProject(projectData);
+				syncedCount++;
+
+				// Set as current if it's active in DB
+				if (dbProject.isActive) {
+					projectTreeProvider.setCurrentProject(projectData);
+					console.log(`[TARX] syncProjectsFromDB: Set active project: ${dbProject.name}`);
+				}
+			}
+
+			console.log(`[TARX] syncProjectsFromDB: Synced ${syncedCount} projects from DB to sidebar`);
+			projectTreeProvider.refresh();
+		} catch (e) {
+			console.error('[TARX] syncProjectsFromDB error:', e);
+		}
+	}
+
+	// Run initial sync after short delay to ensure everything is initialized
+	setTimeout(async () => {
+		await syncProjectsFromDB();
+	}, 1000);
+
+	// Register overnight UI test commands
+	registerOvernightTestCommands(context);
+	console.log('[TARX] Overnight test commands registered');
+
+	// Register conversational test harness
+	registerConversationalTestCommands(context);
+	console.log('[TARX] Conversational test commands registered');
+
+	// Register Project Context Panel commands
+	console.log('[TARX DEBUG] About to register Project Context Panel commands...');
+	try {
+		registerProjectContextCommands(context);
+		console.log('[TARX DEBUG] Project context panel commands registered successfully');
+	} catch (error) {
+		console.error('[TARX DEBUG] ERROR registering Project Context Panel commands:', error);
+	}
+
+	// Register Session Panel commands (live polling webview)
+	registerSessionPanelCommands(context);
+	console.log('[TARX] Session panel commands registered');
+
+	// Register color-coded project commands (Shadcn-style)
+	registerColorCommands(context);
+	console.log('[TARX] Color commands registered');
+
+	// Register sidebar interaction commands (history click, file context)
+	registerInteractionCommands(context);
+	console.log('[TARX] Interaction commands registered');
+
+	// Register context files provider (shows files added to chat context)
+	const contextFilesProvider = registerContextFilesProvider(context);
+	console.log('[TARX] Context files provider registered');
+
+	// Register Grok-style expandable sidebar sections (Instructions, Files, Conversations, Memory)
+	registerSectionsSidebar(context);
+	console.log('[TARX] Sections sidebar registered with neon accents');
+
+	// Register full UX sidebar (icons, hover, collapsible, history click, file inject)
+	registerSidebarFullUX(context);
+	console.log('[TARX] Sidebar Full UX registered');
+
+	// Register Claude worker commands (hive polling, autonomous tasks)
+	registerClaudeWorkerCommands(context);
+	console.log('[TARX] Claude worker commands registered');
+
+	// Register Claude Bridge (stateless reasoning architecture)
+	registerClaudeBridgeCommands(context);
+	console.log('[TARX] Claude Bridge commands registered');
+
+	// TARX Bridge Integration - Feb 2026: Register bridge test commands
+	registerBridgeTestCommands(context);
+	console.log('[TARX] Bridge test commands registered');
+
+	// Flag: set to true once history commands are registered (prevents HostProvider race condition)
+	let historyCommandsReady = false;
+
+	// Load conversation history into sidebar from BOTH:
+	// 1. memory.db sessions table (MCP/Claude sessions)
+	// 2. conversations table (TARX native chats)
+	async function loadSidebarHistory() {
+		try {
+			// Guard: wait for commands to be registered (fixes Sentry NODE-A: HostProvider not setup)
+			if (!historyCommandsReady) {
+				console.log('[TARX] loadSidebarHistory: commands not yet registered, skipping');
+				return;
+			}
+
+			const allConversations: Array<{
+				id: string;
+				title: string;
+				timestamp: number;
+				source: 'claude' | 'tarx' | 'mcp' | 'test';
+				spaceId?: string;
+				spaceName?: string;
+			}> = [];
+
+			// 1. Load MCP sessions from sessions table
+			const sessionResult = await vscode.commands.executeCommand('tarx.getSessionHistory', 50) as {
+				sessions: Array<{
+					id: string;
+					title: string;
+					updatedAt: number;
+					spaceId: string;
+					spaceName: string;
+					model: string | null;
+					messageCount: number;
+				}>;
+			} | undefined;
+
+			if (sessionResult?.sessions && Array.isArray(sessionResult.sessions)) {
+				console.log(`[TARX] Loaded ${sessionResult.sessions.length} sessions from memory.db`);
+
+				for (const session of sessionResult.sessions) {
+					// Clean up title - remove redundant date/time patterns
+					let cleanTitle = session.title || 'Untitled';
+					cleanTitle = cleanTitle.replace(/\s*\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}:\d{2}\s*(AM|PM)?/gi, '').trim();
+					if (!cleanTitle || cleanTitle === 'Claude') {
+						cleanTitle = session.spaceName || 'Untitled';
+					}
+
+					// Determine source for icon selection
+					const titleLower = (session.title || '').toLowerCase();
+					const spaceNameLower = (session.spaceName || '').toLowerCase();
+					let source: 'claude' | 'tarx' | 'mcp' | 'test' = 'tarx';
+
+					if (session.model === 'claude' || titleLower.includes('claude') || spaceNameLower.includes('claude')) {
+						source = 'claude';
+					} else if (titleLower.includes('test') || spaceNameLower.includes('test')) {
+						source = 'test';
+					} else if (titleLower.includes('mcp') || spaceNameLower.includes('memory')) {
+						source = 'mcp';
+					}
+
+					allConversations.push({
+						id: session.id,
+						title: cleanTitle,
+						timestamp: session.updatedAt,
+						source: source,
+						spaceId: session.spaceId,
+						spaceName: session.spaceName || 'Unnamed Space'
+					});
+				}
+			}
+
+			// 2. Load TARX native conversations from conversations table
+			const convResult = await vscode.commands.executeCommand('tarx.getConversationHistory', 50) as {
+				conversations: Array<{
+					id: string;
+					title: string;
+					timestamp: number;
+					type: string;
+				}>;
+			} | undefined;
+
+			if (convResult?.conversations && Array.isArray(convResult.conversations)) {
+				console.log(`[TARX] Loaded ${convResult.conversations.length} native conversations`);
+
+				for (const conv of convResult.conversations) {
+					// Avoid duplicates (same ID from different sources)
+					if (!allConversations.find(c => c.id === conv.id)) {
+						allConversations.push({
+							id: conv.id,
+							title: conv.title || 'Untitled',
+							timestamp: conv.timestamp,
+							source: 'tarx'  // Native TARX conversations
+						});
+					}
+				}
+			}
+
+			// Sort by timestamp (most recent first)
+			allConversations.sort((a, b) => b.timestamp - a.timestamp);
+
+			console.log(`[TARX] Total conversations for sidebar: ${allConversations.length}`);
+
+			// Update sidebar
+			if (sidebarProvider) {
+				sidebarProvider.setConversations(allConversations);
+			}
+
+		} catch (error) {
+			console.error('[TARX] Error loading sidebar history:', error);
+		}
+	}
+
+	// Load history after a short delay (ensure commands are registered)
+	// Ensure Claude.ai Sessions space exists on startup
+	async function ensureClaudeAISpace() {
+		try {
+			const mcpDbPath = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
+			if (!fs.existsSync(mcpDbPath)) {
+				// Create directory if needed
+				const mcpDbDir = path.dirname(mcpDbPath);
+				if (!fs.existsSync(mcpDbDir)) {
+					fs.mkdirSync(mcpDbDir, { recursive: true });
+				}
+				console.log('[TARX] MCP database not found, will be created by MCP server');
+				return;
+			}
+
+			// Check if Claude.ai Sessions space exists using sqlite3 CLI
+			const checkQuery = "SELECT id FROM spaces WHERE name = 'Claude.ai Sessions' AND deleted_at IS NULL LIMIT 1";
+			const result = execSync(`sqlite3 "${mcpDbPath}" -json`, {
+				encoding: 'utf8',
+				input: checkQuery
+			});
+
+			const existingSpaces = JSON.parse(result || '[]') as Array<{ id: string }>;
+
+			if (existingSpaces.length === 0) {
+				const now = Date.now();
+				const spaceId = crypto.randomUUID();
+				const insertQuery = `INSERT INTO spaces (id, name, description, emoji, created_at, updated_at, last_accessed_at, message_count, total_tokens) VALUES ('${spaceId}', 'Claude.ai Sessions', 'Conversations synced from Claude.ai', '🤖', ${now}, ${now}, ${now}, 0, 0)`;
+				execSync(`sqlite3 "${mcpDbPath}"`, {
+					encoding: 'utf8',
+					input: insertQuery
+				});
+				console.log('[TARX] Created Claude.ai Sessions space:', spaceId);
+			} else {
+				console.log('[TARX] Claude.ai Sessions space already exists:', existingSpaces[0].id);
+			}
+		} catch (e) {
+			console.warn('[TARX] Failed to ensure Claude.ai Sessions space:', e);
+		}
+	}
+
+	// NOTE: Initial history load deferred until after command registration
+	// (see historyCommandsReady flag below — fixes Sentry NODE-A race condition)
+
+	// Refresh history every 30 seconds with error boundary
+	const historyRefreshInterval = setInterval(async () => {
+		try {
+			await loadSidebarHistory();
+		} catch (e) {
+			// Silent degradation - don't crash on refresh failure
+			console.error('[TARX] History refresh failed:', e);
+		}
+	}, 30000);
+
+	// Clean up interval on deactivation
+	context.subscriptions.push({
+		dispose: () => clearInterval(historyRefreshInterval)
+	});
+
+	// ========================================
+	// GOD-MODE: KEEP-ALIVE LOOP & SELF-HEAL
+	// Polls MCP, self-heals DB/UI, logs progress
+	// ========================================
+	const godModeLogPath = path.join(os.homedir(), 'TARX', 'tarx-god.log');
+
+	function godModeLog(message: string) {
+		try {
+			const logDir = path.dirname(godModeLogPath);
+			if (!fs.existsSync(logDir)) {
+				fs.mkdirSync(logDir, { recursive: true });
+			}
+			const timestamp = new Date().toISOString();
+			fs.appendFileSync(godModeLogPath, `[${timestamp}] ${message}\n`);
+		} catch (e) {
+			// Silent fail for logging
+		}
+	}
+
+	async function selfHealDB() {
+		try {
+			const mcpDbPath = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
+			if (!fs.existsSync(mcpDbPath)) {
+				godModeLog('SELF-HEAL: Database missing, waiting for creation...');
+				return false;
+			}
+
+			// Check if sessions table has data
+			const result = execSync(`sqlite3 "${mcpDbPath}" "SELECT COUNT(*) FROM sessions"`, {
+				encoding: 'utf8'
+			}).trim();
+
+			const sessionCount = parseInt(result, 10);
+			if (sessionCount === 0) {
+				godModeLog('SELF-HEAL: Sessions empty, re-seeding...');
+				// Re-seed with minimal data
+				const now = Date.now();
+				const seedSQL = `
+					INSERT OR IGNORE INTO spaces (id, name, emoji, created_at, updated_at)
+					VALUES ('space-default', 'TARX Workspace', '🚀', ${now}, ${now});
+					INSERT OR IGNORE INTO sessions (id, title, space_id, model, created_at, updated_at)
+					VALUES ('session-init', 'Welcome to TARX', 'space-default', 'tarx', ${now}, ${now});
+				`;
+				execSync(`sqlite3 "${mcpDbPath}"`, { input: seedSQL, encoding: 'utf8' });
+				godModeLog('SELF-HEAL: Re-seeded sessions table');
+				return true;
+			}
+			return false;
+		} catch (e) {
+			godModeLog(`SELF-HEAL ERROR: ${e instanceof Error ? e.message : 'Unknown'}`);
+			return false;
+		}
+	}
+
+	// Keep-alive loop - runs every 60 seconds
+	const keepAliveInterval = setInterval(async () => {
+		try {
+			godModeLog('KEEP-ALIVE: Tick');
+
+			// 1. Self-heal DB if empty
+			const healed = await selfHealDB();
+			if (healed) {
+				// Refresh sidebar after heal
+				await loadSidebarHistory();
+				await syncProjectsFromDB();
+			}
+
+			// 2. Sync projects from DB
+			await syncProjectsFromDB();
+
+			// 3. Refresh sidebar history
+			await loadSidebarHistory();
+
+			godModeLog('KEEP-ALIVE: Complete');
+		} catch (e) {
+			godModeLog(`KEEP-ALIVE ERROR: ${e instanceof Error ? e.message : 'Unknown'}`);
+		}
+	}, 60000); // Every 60 seconds
+
+	context.subscriptions.push({
+		dispose: () => {
+			clearInterval(keepAliveInterval);
+			godModeLog('KEEP-ALIVE: Disposed');
+		}
+	});
+
+	godModeLog('GOD-MODE: Initialized - keep-alive active');
+
+	// Register manual refresh command
+	safeRegisterCommand(context, 'tarx.refreshSidebarHistory', () => {
+		loadSidebarHistory();
+	});
+
 	// Auto-index workspace folders on startup
 	initializeWorkspace(context);
 
@@ -235,14 +1073,29 @@ export function activate(context: vscode.ExtensionContext) {
 	// 1. Register Chat Participant (@tarx)
 	// ========================================
 	const chatParticipant = vscode.chat.createChatParticipant('tarx.chat', async (request, chatContext, response, token) => {
+		const chatT0 = Date.now();
+		console.log(`[TARX PERF] Chat participant START`);
+
+		// Auth guard - ensure user is authenticated before processing
+		const authenticated = await ensureAuthenticated();
+		if (!authenticated) {
+			response.markdown('🔒 **TARX is locked.** Please authenticate to continue.\n\nUse the command `TARX: Unlock` or close and reopen the authentication panel.');
+			return;
+		}
+		console.log(`[TARX PERF] Auth check: +${Date.now() - chatT0}ms`);
+
 		const prompt = request.prompt;
 		const command = request.command;
 
 		// Build message history from context
-		const messages: ChatMessage[] = [];
+		// CRITICAL: Messages must be in order: [system, user, assistant, user, assistant, ..., user]
+		let messages: ChatMessage[] = [];
+		let dbHistoryLoaded = false; // Track if we loaded from DB to avoid duplication
 
 		// Get or create conversation for history persistence
 		const projectId = activeProject?.id || null;
+		let recentTurns: ConversationTurn[] = [];
+
 		if (db) {
 			try {
 				// Get or create active conversation
@@ -252,10 +1105,10 @@ export function activate(context: vscode.ExtensionContext) {
 						activeConversation = await db.createConversation(projectId);
 						console.log('[TARX] Created new conversation:', activeConversation.id);
 					}
+					syncConversationToProvider();
 				}
 
 				// Check if we have pre-loaded history (from tarx.openConversation)
-				let recentTurns: ConversationTurn[] = [];
 				const conversationId = activeConversation?.id;
 				if (conversationId && conversationHistory.has(conversationId)) {
 					// Use pre-loaded history from restored conversation
@@ -263,27 +1116,24 @@ export function activate(context: vscode.ExtensionContext) {
 					console.log(`[TARX] Using pre-loaded history: ${recentTurns.length} turns from restored conversation`);
 					// Clear after first use - subsequent messages will use normal flow
 					conversationHistory.delete(conversationId);
-				} else {
-					// Normal flow: load recent turns from database
-					recentTurns = await db.getRecentTurns(projectId, MAX_HISTORY_TURNS);
+					dbHistoryLoaded = recentTurns.length > 0;
+				} else if (conversationId) {
+					// Normal flow: load turns for the ACTIVE conversation only
+					// CRITICAL: Must scope to conversationId, not projectId,
+					// otherwise turns from other conversations bleed into this one
+					const allTurns = await db.getConversationTurns(conversationId);
+					recentTurns = allTurns.slice(-MAX_HISTORY_TURNS);
 					if (recentTurns.length > 0) {
-						console.log(`[TARX] Loaded ${recentTurns.length} turns from conversation history`);
-					}
-				}
-
-				// Add persisted history to messages (before VS Code chat context)
-				for (const turn of recentTurns) {
-					if (turn.role !== 'system') {
-						messages.push({
-							role: turn.role as 'user' | 'assistant',
-							content: turn.content
-						});
+						console.log(`[TARX] Loaded ${recentTurns.length} turns for conversation ${conversationId}`);
+						dbHistoryLoaded = true;
 					}
 				}
 			} catch (e) {
 				console.warn('[TARX] Failed to load conversation history:', e);
 			}
 		}
+
+		console.log(`[TARX PERF] History loaded: +${Date.now() - chatT0}ms`);
 
 		// Get active editor for context
 		const activeEditor = vscode.window.activeTextEditor;
@@ -293,25 +1143,43 @@ export function activate(context: vscode.ExtensionContext) {
 		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
 		const projectRoot = activeProject?.root || workspaceFolder?.uri.fsPath;
 
-		// Use the comprehensive TARX system prompt
-		let systemPrompt = TARX_SYSTEM_PROMPT;
+		// ========================================
+		// CONTEXT INJECTION (FIX: Use dynamic prompt)
+		// ========================================
 
-		// Parse file references and load context if we have a project
-		let loadedContext = null;
+		// 1. Load project instructions from .tarx/instructions.md
+		let projectInstructions: string | undefined;
+		if (projectRoot) {
+			projectInstructions = await loadProjectInstructions(projectRoot);
+			// DEBUG: Log project context
+			if (projectInstructions) {
+				console.log(`[TARX] Project instructions loaded (${projectInstructions.length} chars): "${projectInstructions.substring(0, 100)}..."`);
+			} else {
+				console.log('[TARX] No project instructions found');
+			}
+		}
+
+		// 2. Load RAG context — PERF: only when file refs exist or MCP knowledge is available
+		let loadedContext: Awaited<ReturnType<typeof loadContext>> | null = null;
+		let fileRefs: ReturnType<typeof parseFileReferences> = [];
 		if (projectRoot && activeProject && db && ragClient) {
-			response.progress('Loading context...');
-
 			try {
 				// Get project files for reference parsing
 				const projectFiles = await db.getProjectFiles(activeProject.id);
 
 				// Parse file references from the prompt
-				const fileRefs = parseFileReferences(prompt, projectRoot, activeFilePath, projectFiles);
+				fileRefs = parseFileReferences(prompt, projectRoot, activeFilePath, projectFiles);
 
 				if (fileRefs.length > 0) {
 					console.log(`[TARX] Found ${fileRefs.length} file references:`, fileRefs.map(r => r.path));
+				}
 
-					// Load context from referenced files and RAG
+				// PERF: Only load full RAG context (which embeds the query — GPU-intensive)
+				// when there are file references or uploaded knowledge files.
+				// This avoids GPU contention with the inference server on every message.
+				const knowledgeCount = await getMCPKnowledgeCount();
+				if (fileRefs.length > 0 || knowledgeCount > 0) {
+					response.progress('Loading context...');
 					loadedContext = await loadContext(
 						fileRefs,
 						projectRoot,
@@ -321,42 +1189,79 @@ export function activate(context: vscode.ExtensionContext) {
 						prompt,
 						4000 // Max tokens for context
 					);
-
-					console.log(`[TARX] Loaded context: ${loadedContext.files.length} files, ${loadedContext.chunks.length} chunks`);
+					console.log(`[TARX PERF] RAG context loaded: +${Date.now() - chatT0}ms (${loadedContext.files.length} files, ${loadedContext.chunks.length} chunks)`);
+				} else {
+					console.log(`[TARX PERF] RAG skipped (no file refs, no knowledge): +${Date.now() - chatT0}ms`);
 				}
 			} catch (e) {
 				console.warn('[TARX] Context loading failed:', e);
 			}
 		}
 
-		// Build the full prompt with context
+		// 3. Build file context string from loaded context
+		let fileContextStr: string | undefined;
 		if (loadedContext && (loadedContext.files.length > 0 || loadedContext.chunks.length > 0)) {
-			systemPrompt = buildPrompt('', loadedContext, systemPrompt);
+			fileContextStr = buildPrompt('', loadedContext, '').trim();
 		}
 
+		// 4. Build dynamic system prompt with all context (FIX: Use buildTarxSystemPrompt)
+		let systemPrompt = buildTarxSystemPrompt({
+			projectContext: projectInstructions,
+			fileContext: fileContextStr,
+			// conversationSummary could be added here if needed
+		});
+
+		// Add context about conversation source if resuming a Claude conversation
+		const isClaudeConversation = activeConversation?.title?.startsWith('Claude') || false;
+		if (isClaudeConversation && messages.length > 0) {
+			systemPrompt += '\n\n[Context: This conversation was originally with Claude. You are continuing where Claude left off. Maintain continuity with the previous discussion.]';
+		}
+
+		// DEBUG: Log final system prompt (first 300 + last 300 chars)
+		console.log(`[TARX] System prompt built (${systemPrompt.length} chars)`);
+		console.log(`[TARX] Prompt start: "${systemPrompt.substring(0, 300)}..."`);
+		console.log(`[TARX] Prompt end: "...${systemPrompt.substring(systemPrompt.length - 300)}"`);
+
+		// CRITICAL FIX: System prompt must be FIRST for context window management to work correctly
 		messages.push({
 			role: 'system',
 			content: systemPrompt
 		});
 
-		// Add context from previous turns
-		for (const turn of chatContext.history) {
-			if (turn instanceof vscode.ChatRequestTurn) {
-				messages.push({ role: 'user', content: turn.prompt });
-			} else if (turn instanceof vscode.ChatResponseTurn) {
-				// Extract text from response parts
-				const responseText = turn.response
-					.map(part => {
-						if (part instanceof vscode.ChatResponseMarkdownPart) {
-							return part.value.value;
-						}
-						return '';
-					})
-					.join('');
-				if (responseText) {
-					messages.push({ role: 'assistant', content: responseText });
+		// Add conversation history AFTER system prompt
+		// Priority: Use DB history if available (persists across sessions), otherwise VS Code context
+		if (dbHistoryLoaded && recentTurns.length > 0) {
+			// Use persisted DB history (includes previous sessions)
+			for (const turn of recentTurns) {
+				if (turn.role !== 'system') {
+					messages.push({
+						role: turn.role as 'user' | 'assistant',
+						content: turn.content
+					});
 				}
 			}
+			console.log(`[TARX] Added ${recentTurns.length} turns from DB to messages (after system prompt)`);
+		} else if (chatContext.history.length > 0) {
+			// Fallback: Use VS Code in-session context if DB not available
+			for (const turn of chatContext.history) {
+				if (turn instanceof vscode.ChatRequestTurn) {
+					messages.push({ role: 'user', content: turn.prompt });
+				} else if (turn instanceof vscode.ChatResponseTurn) {
+					// Extract text from response parts
+					const responseText = turn.response
+						.map(part => {
+							if (part instanceof vscode.ChatResponseMarkdownPart) {
+								return part.value.value;
+							}
+							return '';
+						})
+						.join('');
+					if (responseText) {
+						messages.push({ role: 'assistant', content: responseText });
+					}
+				}
+			}
+			console.log(`[TARX] Added ${chatContext.history.length} turns from VS Code context (DB empty)`);
 		}
 
 		// Normalize transcription (handles voice input)
@@ -367,6 +1272,173 @@ export function activate(context: vscode.ExtensionContext) {
 			const clarification = getClarificationForVagueRequest(normalizedPrompt);
 			response.markdown(clarification);
 			return { metadata: { command: 'clarification' } };
+		}
+
+		// TARX Skills Bridge - Check skills registry FIRST (Feb 2026)
+		// This allows custom skills/agents to intercept messages before direct execution
+		console.log(`[TARX PERF] Pre-skills check: +${Date.now() - chatT0}ms`);
+		const skillsResult = await checkSkillsFirst(normalizedPrompt);
+		console.log(`[TARX PERF] Skills check done: +${Date.now() - chatT0}ms`);
+		if (skillsResult.handled && skillsResult.result) {
+			console.log('[TARX] Skills bridge handled the message');
+			response.markdown(skillsResult.result);
+
+			// Store in conversation history
+			if (db && activeConversation) {
+				try {
+					await db.addConversationTurn({
+						conversationId: activeConversation.id,
+						role: 'user',
+						content: normalizedPrompt,
+						fileRefs: [],
+						artifacts: null
+					});
+					await db.addConversationTurn({
+						conversationId: activeConversation.id,
+						role: 'assistant',
+						content: skillsResult.result,
+						fileRefs: [],
+						artifacts: null
+					});
+					console.log('[TARX] Saved skills execution to history');
+				} catch (e) {
+					console.error('[TARX] Failed to store skills execution:', e);
+				}
+			}
+
+			return { metadata: { command: 'skills_executed' } };
+		}
+		console.log('[TARX] No skill match, continuing to direct action detection');
+
+		// TARX Bridge Integration - Feb 2026: Direct Action Execution
+		// First try direct execution for CRUD operations, fall back to Claude for complex reasoning
+		const hasActionIntent = detectActionIntent(normalizedPrompt);
+		const bridgeStatus = await getBridgeStatus();
+		console.log(`[TARX PERF] Bridge check done: +${Date.now() - chatT0}ms (intent=${hasActionIntent}, bridge=${bridgeStatus})`);
+
+		if (hasActionIntent) {
+			console.log('[TARX Bridge] Action intent detected, trying direct execution first');
+			response.progress('Processing action...');
+
+			// Path A: Try direct MCP execution (no Claude needed for CRUD)
+			console.log('[TARX Bridge] Calling handleActionIntent...');
+			const actionResult = await handleActionIntent(normalizedPrompt);
+			console.log(`[TARX Bridge] handleActionIntent result: success=${actionResult.success}, action=${actionResult.action}`);
+
+			if (actionResult.success) {
+				// Direct execution succeeded - show REAL result
+				console.log(`[TARX] Direct action executed: ${actionResult.action}`);
+				response.markdown(actionResult.result);
+
+				// Refresh sidebar to show new data
+				try {
+					await vscode.commands.executeCommand('tarx.sidebar.refresh');
+				} catch (e) {
+					// Silent - sidebar refresh is non-critical
+				}
+
+				// Store the exchange in conversation history
+				if (db && activeConversation) {
+					try {
+						await db.addConversationTurn({
+							conversationId: activeConversation.id,
+							role: 'user',
+							content: normalizedPrompt,
+							fileRefs: [],
+							artifacts: null
+						});
+						await db.addConversationTurn({
+							conversationId: activeConversation.id,
+							role: 'assistant',
+							content: actionResult.result,
+							fileRefs: [],
+							artifacts: null
+						});
+						console.log('[TARX] Saved direct action exchange to history');
+					} catch (e) {
+						console.error('[TARX] Failed to store action exchange:', e);
+					}
+				}
+
+				return { metadata: { command, routed: 'direct_action', action: actionResult.action } };
+			}
+
+			// Path B: Action not recognized - use Claude bridge for complex reasoning
+			if (bridgeStatus === 'active') {
+				console.log('[TARX] Action not recognized, routing through Claude bridge for reasoning');
+				response.progress('Routing through TARX Bridge...');
+
+				try {
+					const payload = await buildPayload({
+						type: 'reason',
+						query: normalizedPrompt,
+						session_id: activeConversation?.id || `session-${Date.now()}`,
+						project_id: activeProject?.id || 'default'
+					});
+
+					response.progress('Invoking Claude...');
+					const bridgeResponse = await invokeClaudeWithPayload(payload, 'cli');
+
+					// Display response
+					response.markdown(bridgeResponse.response);
+
+					// Execute next steps
+					if (bridgeResponse.next_steps.length > 0) {
+						response.progress('Executing actions...');
+						await executeNextSteps(context, bridgeResponse.next_steps);
+						response.markdown(`\n\n---\n*${bridgeResponse.next_steps.length} action(s) executed via TARX Bridge*`);
+					}
+
+					// Store the exchange in conversation history
+					if (db && activeConversation) {
+						try {
+							await db.addConversationTurn({
+								conversationId: activeConversation.id,
+								role: 'user',
+								content: normalizedPrompt,
+								fileRefs: [],
+								artifacts: null
+							});
+							await db.addConversationTurn({
+								conversationId: activeConversation.id,
+								role: 'assistant',
+								content: bridgeResponse.response,
+								fileRefs: [],
+								artifacts: null
+							});
+							console.log('[TARX] Saved bridge conversation turns to history');
+						} catch (e) {
+							console.error('[TARX] Failed to store bridge exchange:', e);
+						}
+					}
+
+					return { metadata: { command, routed: 'bridge' } };
+
+				} catch (e) {
+					console.error('[TARX] Bridge invocation failed:', e);
+					response.markdown(`**Bridge Error:** ${e}\n\nFalling back to local reasoning...\n\n---\n\n`);
+					// Fall through to local model
+				}
+
+			} else if (bridgeStatus === 'local_only') {
+				// Local model only - explain limitations
+				const statusDisplay = getBridgeStatusDisplay(bridgeStatus);
+				console.log('[TARX] Action intent detected but bridge not available, using local reasoning');
+				response.markdown(`*${statusDisplay.icon} ${statusDisplay.text}*\n\n`);
+			}
+
+			// CRITICAL: When action intent was detected but NOT executed (direct or bridge),
+			// we MUST add the local reasoning constraint to prevent Qwen from faking execution
+			if (!actionResult.success) {
+				console.log('[TARX] Adding local reasoning constraint - action not executed');
+				// Find and update the system message with reasoning-only constraint
+				const systemMsgIndex = messages.findIndex(m => m.role === 'system');
+				if (systemMsgIndex >= 0) {
+					messages[systemMsgIndex].content += '\n\n' + TARX_LOCAL_REASONING_PROMPT;
+				} else {
+					messages.unshift({ role: 'system', content: TARX_LOCAL_REASONING_PROMPT });
+				}
+			}
 		}
 
 		// Proactive problem-spotting: analyze code in the user's message
@@ -395,6 +1467,19 @@ export function activate(context: vscode.ExtensionContext) {
 
 		messages.push({ role: 'user', content: userPrompt });
 
+		// If we have pre-loaded history, show transcript first (even if server offline)
+		if (dbHistoryLoaded && recentTurns.length > 0) {
+			response.markdown('### Conversation Transcript\n\n');
+			for (const turn of recentTurns) {
+				if (turn.role === 'user') {
+					response.markdown(`**You:** ${turn.content}\n\n`);
+				} else if (turn.role === 'assistant') {
+					response.markdown(`**TARX:** ${turn.content}\n\n`);
+				}
+			}
+			response.markdown('---\n\n');
+		}
+
 		// Check if server is online
 		if (healthService && !healthService.isOnline) {
 			response.markdown('**Server offline** - llama-server is not available.\n\n');
@@ -412,11 +1497,155 @@ export function activate(context: vscode.ExtensionContext) {
 
 		// Show progress
 		response.progress('Thinking...');
+		console.log(`[TARX PERF] Pre-router: +${Date.now() - chatT0}ms`);
+
+		// ========================================
+		// MODEL ROUTER - Route to Local or Network model
+		// ========================================
+		const routeDecision = routeMessage(normalizedPrompt);
+		const routeIndicator = getRouteIndicator(routeDecision.route);
+
+		console.log(`[TARX PERF] Router decided: ${routeDecision.route} +${Date.now() - chatT0}ms`);
+
+		// Show route indicator in response (subtle)
+		response.markdown(`*${routeIndicator.icon} ${routeIndicator.label}*\n\n`);
+
+		// NETWORK MODEL PATH - Use Claude API for action-oriented tasks
+		if (routeDecision.route === 'network') {
+			// Check for API key
+			const hasKey = await hasNetworkApiKey();
+			if (!hasKey) {
+				response.markdown('**Claude API key required** for this task.\n\n');
+				const key = await promptForApiKey();
+				if (!key) {
+					response.markdown('Falling back to local model...\n\n---\n\n');
+					// Continue to local model path below
+				} else {
+					// Retry with new key
+					response.markdown('API key configured. Processing...\n\n---\n\n');
+				}
+			}
+
+			// If we have a key now, use network model
+			const hasKeyNow = await hasNetworkApiKey();
+			if (hasKeyNow) {
+				response.progress('Connecting to Claude...');
+
+				try {
+					// Build network model context
+					const networkContext: NetworkModelContext = {
+						cwd: projectRoot,
+						files: activeFilePath ? [activeFilePath] : undefined,
+						projectInstructions,
+						activeFile: activeFilePath,
+						selection: activeEditor?.selection && !activeEditor.selection.isEmpty
+							? activeEditor.document.getText(activeEditor.selection)
+							: undefined,
+						history: recentTurns.map(t => ({
+							role: t.role as 'user' | 'assistant',
+							content: t.content
+						}))
+					};
+
+					// Stream from Claude API
+					let networkResponse = '';
+					for await (const chunk of streamNetworkResponse(userPrompt, networkContext)) {
+						if (token.isCancellationRequested) {
+							break;
+						}
+						networkResponse += chunk;
+						response.markdown(chunk);
+					}
+
+					// Parse artifacts from response
+					const artifacts = parseArtifacts(networkResponse);
+					if (artifacts.length > 0) {
+						console.log(`[TARX] Found ${artifacts.length} code artifacts from network model`);
+
+						for (let i = 0; i < artifacts.length; i++) {
+							const artifact = artifacts[i];
+							const artifactLabel = artifact.filePath
+								? artifact.filePath.split('/').pop()
+								: `${artifact.language || 'code'} snippet ${i + 1}`;
+
+							response.markdown(`\n---\n**${artifactLabel}**\n`);
+
+							response.button({
+								command: 'tarx.copyArtifact',
+								title: '$(copy) Copy',
+								arguments: [artifact]
+							});
+
+							response.button({
+								command: 'tarx.viewArtifact',
+								title: '$(eye) View',
+								arguments: [artifact]
+							});
+
+							if (artifact.filePath && projectRoot) {
+								response.button({
+									command: 'tarx.applyArtifact',
+									title: `$(check) Apply to ${artifact.filePath}`,
+									arguments: [artifact, projectRoot]
+								});
+							}
+						}
+					}
+
+					// Store the exchange in conversation history
+					if (db && activeConversation) {
+						try {
+							await db.addConversationTurn({
+								conversationId: activeConversation.id,
+								role: 'user',
+								content: normalizedPrompt,
+								fileRefs: fileRefs.map(f => f.path),
+								artifacts: null
+							});
+							await db.addConversationTurn({
+								conversationId: activeConversation.id,
+								role: 'assistant',
+								content: networkResponse,
+								fileRefs: [],
+								artifacts: artifacts.length > 0 ? JSON.stringify(artifacts) : null
+							});
+							console.log('[TARX] Saved network model exchange to history');
+						} catch (e) {
+							console.error('[TARX] Failed to store network model exchange:', e);
+						}
+					}
+
+					return { metadata: { command, routed: 'network', model: 'claude' } };
+
+				} catch (e) {
+					const errMsg = e instanceof Error ? e.message : String(e);
+					console.error('[TARX] Network model error:', e);
+					response.markdown(`\n\n**Network model error:** ${errMsg}\n\nFalling back to local model...\n\n---\n\n`);
+					// Fall through to local model
+				}
+			}
+		}
+
+		// LOCAL MODEL PATH - Use Qwen via llama-server
+
+		// Context window management - ensure messages fit within 4096 token limit
+		const contextUsage = getContextUsage(messages as ContextMessage[]);
+		if (!contextUsage.willFit) {
+			console.log(`[TARX] Context overflow: ${contextUsage.totalTokens} tokens > ${contextUsage.available} available`);
+			messages = fitToContextWindow(messages as ContextMessage[], 4096, 512) as ChatMessage[];
+			const newUsage = getContextUsage(messages as ContextMessage[]);
+			console.log(`[TARX] After truncation: ${newUsage.totalTokens} tokens (${newUsage.utilization}% utilization)`);
+		} else {
+			console.log(`[TARX] Context OK: ${contextUsage.totalTokens}/${contextUsage.available} tokens (${contextUsage.utilization}%)`);
+		}
 
 		// Collect full response for artifact parsing
 		let fullResponse = '';
 
 		try {
+			console.log(`[TARX PERF] Inference start: +${Date.now() - chatT0}ms`);
+			let chatFirstToken = true;
+
 			// Stream response from llama-server
 			for await (const chunk of tarxClient.chatCompletionStream(messages, {
 				temperature: 0.7,
@@ -425,23 +1654,88 @@ export function activate(context: vscode.ExtensionContext) {
 				if (token.isCancellationRequested) {
 					break;
 				}
+				if (chatFirstToken) {
+					console.log(`[TARX PERF] First token (TTFT): +${Date.now() - chatT0}ms`);
+					chatFirstToken = false;
+				}
 				fullResponse += chunk;
 				response.markdown(chunk);
 			}
+			console.log(`[TARX PERF] Inference complete: +${Date.now() - chatT0}ms (${fullResponse.length} chars)`);
 
 			// Parse artifacts from response
 			const artifacts = parseArtifacts(fullResponse);
-			if (artifacts.length > 0 && projectRoot) {
+			if (artifacts.length > 0) {
 				console.log(`[TARX] Found ${artifacts.length} code artifacts`);
 
-				// Add buttons for artifacts with file paths
-				for (const artifact of artifacts) {
-					if (artifact.filePath) {
+				// Add artifact action buttons (Copy, View, Insert, Apply)
+				for (let i = 0; i < artifacts.length; i++) {
+					const artifact = artifacts[i];
+					const artifactLabel = artifact.filePath
+						? artifact.filePath.split('/').pop()
+						: `${artifact.language || 'code'} snippet ${i + 1}`;
+
+					// Add a separator line before artifact actions
+					response.markdown(`\n---\n**${artifactLabel}**\n`);
+
+					// Copy to clipboard - always available
+					response.button({
+						command: 'tarx.copyArtifact',
+						title: '$(copy) Copy',
+						arguments: [artifact]
+					});
+
+					// View in new editor - always available
+					response.button({
+						command: 'tarx.viewArtifact',
+						title: '$(eye) View',
+						arguments: [artifact]
+					});
+
+					// Insert at cursor - always available
+					response.button({
+						command: 'tarx.insertArtifact',
+						title: '$(insert) Insert',
+						arguments: [artifact]
+					});
+
+					// Apply to file - only if we have a file path and project root
+					if (artifact.filePath && projectRoot) {
 						response.button({
 							command: 'tarx.applyArtifact',
-							title: `Apply to ${artifact.filePath}`,
+							title: `$(check) Apply to ${artifact.filePath}`,
 							arguments: [artifact, projectRoot]
 						});
+					}
+				}
+
+				// ========================================
+				// DEV MODE: AUTO-APPLY ARTIFACTS
+				// Auto-applies all artifacts with file paths without user confirmation
+				// ========================================
+				const autoApplyEnabled = vscode.workspace.getConfiguration('tarx').get<boolean>('devMode.autoApply', false);
+				if (autoApplyEnabled && projectRoot) {
+					const applyableArtifacts = artifacts.filter(a => a.filePath);
+					if (applyableArtifacts.length > 0) {
+						response.markdown(`\n\n**Dev Mode: Auto-applying ${applyableArtifacts.length} artifacts...**\n`);
+						for (const artifact of applyableArtifacts) {
+							try {
+								const result = await applyArtifact(artifact, projectRoot);
+								if (result.success) {
+									response.markdown(`$(check) ${result.message}\n`);
+									console.log(`[TARX] Auto-applied: ${artifact.filePath}`);
+								} else {
+									response.markdown(`$(error) ${result.message}\n`);
+									console.warn(`[TARX] Auto-apply failed: ${artifact.filePath} - ${result.message}`);
+								}
+							} catch (e) {
+								const errMsg = e instanceof Error ? e.message : 'Unknown error';
+								response.markdown(`$(error) Failed: ${artifact.filePath} - ${errMsg}\n`);
+								console.error(`[TARX] Auto-apply error:`, e);
+							}
+						}
+						// Trigger reload if any files were applied
+						response.markdown(`\n*Reload window to see changes: \`Cmd+Shift+P → Reload Window\`*\n`);
 					}
 				}
 			}
@@ -505,37 +1799,35 @@ export function activate(context: vscode.ExtensionContext) {
 								activeConversation.title = betterTitle;
 								console.log('[TARX] Updated to LLM title:', betterTitle);
 
-								// Refresh sidebar with new title
-								if (sidebarProvider) {
-									const convs = await db.getRecentConversations(projectId, 10);
-									sidebarProvider.setConversations(convs.map(c => ({
-										id: c.id,
-										title: c.title || 'Untitled conversation',
-										timestamp: c.updatedAt
-									})));
-								}
+								// Refresh sidebar with new title - then reload full history
+								loadSidebarHistory();
 							}
 						}).catch((e) => {
 							console.log('[TARX] LLM title generation failed:', e);
 						});
 					}
 
-					// Update sidebar with latest conversations
-					if (sidebarProvider) {
-						const conversations = await db.getRecentConversations(projectId, 10);
-						sidebarProvider.setConversations(conversations.map(c => ({
-							id: c.id,
-							title: c.title || 'Untitled conversation',
-							timestamp: c.updatedAt
-						})));
-					}
+					// Update sidebar with latest conversations from both tables
+					loadSidebarHistory();
 				} catch (e) {
 					console.warn('[TARX] Failed to save conversation turns:', e);
 				}
 			}
 		} catch (error: unknown) {
+			// Check for cancellation - user stopped the request, not an error
+			if (token.isCancellationRequested) {
+				console.log('[TARX] Chat request canceled by user');
+				return { metadata: { command, canceled: true } };
+			}
+
+			// Check for CancellationError explicitly
+			const err = error as { status?: number; code?: string; message?: string; name?: string };
+			if (err.name === 'CancellationError' || err.message === 'Canceled') {
+				console.log('[TARX] Chat request canceled');
+				return { metadata: { command, canceled: true } };
+			}
+
 			// Enhanced error handling with specific error types
-			const err = error as { status?: number; code?: string; message?: string };
 			const errorMessage = err.message || 'Unknown error';
 
 			if (err.status === 429) {
@@ -568,7 +1860,7 @@ export function activate(context: vscode.ExtensionContext) {
 		return { metadata: { command } };
 	});
 
-	chatParticipant.iconPath = new vscode.ThemeIcon('comment-discussion');
+	chatParticipant.iconPath = vscode.Uri.joinPath(context.extensionUri, 'media', 'tarx-eyes.png');
 
 	// Set title provider to generate chat session titles (proposed API)
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -622,6 +1914,10 @@ export function activate(context: vscode.ExtensionContext) {
 	// 1b. Register Language Model Provider
 	// ========================================
 	languageModelProvider = new TarxLanguageModelProvider(serverUrl);
+	// Wire DB for conversation history persistence in the VS Code chat panel path
+	if (db) {
+		languageModelProvider.setDatabase(db);
+	}
 	try {
 		const lmDisposable = vscode.lm.registerLanguageModelChatProvider('tarx', languageModelProvider);
 		context.subscriptions.push(lmDisposable);
@@ -631,9 +1927,37 @@ export function activate(context: vscode.ExtensionContext) {
 	}
 
 	// ========================================
-	// 1c. Register Speech Provider (Voice)
+	// 1c. Register Speech Provider (Voice) - DISABLED FOR V1
 	// ========================================
-	registerSpeechProvider(context);
+	// registerSpeechProvider(context);
+	console.log('[TARX] Voice/Speech disabled for V1 release');
+
+	// ========================================
+	// 1d. Initialize Proactive System (Phase 6) - DISABLED FOR V1
+	// ========================================
+	proactiveSystem = getProactiveSystem();
+	// const proactiveVoice = getProactiveVoiceInterface(); // DISABLED FOR V1
+	const contextObserver = getContextObserver();
+
+	// Wire proactive voice events to UI - DISABLED FOR V1
+	// proactiveVoice.on('proposal', (action) => {
+	// 	console.log('[TARX] Proactive proposal:', action.voiceProposal);
+	// 	vscode.commands.executeCommand('tarx.proactive.showProposal', action);
+	// });
+	// proactiveVoice.on('response', ({ action, response, result }) => {
+	// 	console.log('[TARX] Proactive response:', response.classified, result.message);
+	// });
+	// proactiveVoice.on('speak', (text) => {
+	// 	console.log('[TARX] Proactive speak:', text);
+	// });
+	// proactiveVoice.on('enabled', () => {
+	// 	analytics.track('proactive_enabled');
+	// });
+	// proactiveVoice.on('disabled', () => {
+	// 	analytics.track('proactive_disabled');
+	// });
+
+	console.log('[TARX] Proactive system initialized (voice disabled for V1)');
 
 	// ========================================
 	// 2. Register Inline Completions
@@ -655,6 +1979,19 @@ export function activate(context: vscode.ExtensionContext) {
 	// ========================================
 	statusBar = new TarxStatusBar(tarxClient);
 	context.subscriptions.push(statusBar);
+
+	// Claude Code status bar button — hidden from end users (dev-only)
+	if (context.extensionMode === vscode.ExtensionMode.Development) {
+		const claudeCodeStatusBar = vscode.window.createStatusBarItem(
+			vscode.StatusBarAlignment.Right,
+			99
+		);
+		claudeCodeStatusBar.text = '$(hubot) Claude Code';
+		claudeCodeStatusBar.tooltip = 'Open Claude Code CLI (Cmd+Shift+;)';
+		claudeCodeStatusBar.command = 'tarx.spawnClaudeCode';
+		claudeCodeStatusBar.show();
+		context.subscriptions.push(claudeCodeStatusBar);
+	}
 
 	// ========================================
 	// 4. Register Commands
@@ -749,6 +2086,75 @@ export function activate(context: vscode.ExtensionContext) {
 		});
 	});
 
+	// Spawn Claude Code - Interactive CLI
+	safeRegisterCommand(context, 'tarx.spawnClaudeCode', async () => {
+		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+		// TARX app root: where .mcp.json and extensions/ live
+		const tarxAppRoot = path.resolve(context.extensionPath, '..', '..');
+		const mcpConfigPath = path.join(tarxAppRoot, '.mcp.json');
+		const hasMcpConfig = fs.existsSync(mcpConfigPath);
+		const cwd = hasMcpConfig ? tarxAppRoot : (workspaceFolder?.uri.fsPath || tarxAppRoot);
+
+		// Create integrated terminal running claude CLI
+		const terminal = vscode.window.createTerminal({
+			name: 'Claude Code',
+			cwd: cwd,
+			env: {
+				TARX_WORKSPACE: workspaceFolder?.uri.fsPath || '',
+				TARX_APP_ROOT: tarxAppRoot
+			},
+			iconPath: new vscode.ThemeIcon('hubot')
+		});
+
+		terminal.show();
+		terminal.sendText('claude', true);
+
+		analytics.track('claude_code_spawned', {
+			has_workspace: !!workspaceFolder,
+			has_mcp_config: hasMcpConfig,
+			cwd: cwd
+		});
+	});
+
+	// Spawn Claude Code with Prompt - Non-interactive CLI with prompt
+	safeRegisterCommand(context, 'tarx.spawnClaudeCodeWithPrompt', async () => {
+		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+		// TARX app root for .mcp.json access
+		const tarxAppRoot = path.resolve(context.extensionPath, '..', '..');
+		const mcpConfigPath = path.join(tarxAppRoot, '.mcp.json');
+		const hasMcpConfig = fs.existsSync(mcpConfigPath);
+		const cwd = hasMcpConfig ? tarxAppRoot : (workspaceFolder?.uri.fsPath || tarxAppRoot);
+
+		// Prompt user for the task
+		const prompt = await vscode.window.showInputBox({
+			prompt: 'Enter a prompt for Claude Code',
+			placeHolder: 'e.g., Add unit tests for the user service',
+			ignoreFocusOut: true
+		});
+
+		if (!prompt) {
+			return;
+		}
+
+		// Create integrated terminal running claude with the prompt
+		const terminal = vscode.window.createTerminal({
+			name: 'Claude Code',
+			cwd: cwd,
+			iconPath: new vscode.ThemeIcon('hubot')
+		});
+
+		terminal.show();
+		// Escape single quotes in the prompt
+		const escapedPrompt = prompt.replace(/'/g, "'\\''");
+		terminal.sendText(`claude -p '${escapedPrompt}' --dangerously-skip-permissions`, true);
+
+		analytics.track('claude_code_with_prompt_spawned', {
+			has_workspace: !!workspaceFolder,
+			prompt_length: prompt.length,
+			cwd: cwd
+		});
+	});
+
 	// Add to Context
 	safeRegisterCommand(context, 'tarx.addToContext', (uri?: vscode.Uri) => {
 		const targetUri = uri || vscode.window.activeTextEditor?.document.uri;
@@ -799,6 +2205,110 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
+	// Test Execution - Verify real file/process execution works
+	safeRegisterCommand(context, 'tarx.testExecution', async () => {
+		const tarxDir = path.join(os.homedir(), 'TARX');
+		const testFilePath = path.join(tarxDir, 'tarx-real-test.js');
+		const externalLogPath = path.join(tarxDir, 'external-test.log');
+		const realLogPath = path.join(tarxDir, 'tarx-real-log.txt');
+
+		const logStep = (step: string, success: boolean) => {
+			const timestamp = new Date().toISOString();
+			const status = success ? 'SUCCESS' : 'FAILED';
+			const logLine = `[${timestamp}] [${status}] ${step}\n`;
+			console.log(`[TARX-TEST] ${logLine.trim()}`);
+			try {
+				fs.appendFileSync(realLogPath, logLine);
+			} catch (e) {
+				console.error('[TARX-TEST] Failed to write log:', e);
+			}
+		};
+
+		try {
+			// Step 0: Ensure TARX directory exists
+			if (!fs.existsSync(tarxDir)) {
+				fs.mkdirSync(tarxDir, { recursive: true });
+				logStep('Created ~/TARX directory', true);
+			}
+
+			// Clear previous log
+			fs.writeFileSync(realLogPath, `=== TARX Execution Test @ ${new Date().toISOString()} ===\n`);
+			logStep('Initialized test log', true);
+
+			// Step 1: Write test file using fs.writeFileSync
+			const testContent = `// TARX Real Execution Test\n// Generated at: ${new Date().toISOString()}\nconsole.log('Real execution test - this file was written by TARX extension');\n`;
+			fs.writeFileSync(testFilePath, testContent, 'utf8');
+
+			// Verify the file was actually written
+			if (fs.existsSync(testFilePath)) {
+				const written = fs.readFileSync(testFilePath, 'utf8');
+				if (written.includes('Real execution test')) {
+					logStep(`File written: ${testFilePath} (${written.length} bytes)`, true);
+				} else {
+					logStep('File write verification failed - content mismatch', false);
+				}
+			} else {
+				logStep('File write failed - file does not exist', false);
+			}
+
+			// Step 2: Run external command using child_process.execSync
+			try {
+				execSync(`echo "External command executed at $(date)" > "${externalLogPath}"`, { shell: '/bin/bash' });
+				if (fs.existsSync(externalLogPath)) {
+					logStep(`External command executed: ${externalLogPath}`, true);
+				} else {
+					logStep('External command ran but file not created', false);
+				}
+			} catch (execError) {
+				logStep(`External command failed: ${execError}`, false);
+			}
+
+			// Step 3: Open the test file in VS Code tab
+			const fileUri = vscode.Uri.file(testFilePath);
+			const doc = await vscode.workspace.openTextDocument(fileUri);
+			const editor = await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One, preview: false });
+			logStep('Opened file in editor tab', true);
+
+			// Step 4: Append comment using VS Code edit API
+			const lastLine = doc.lineCount - 1;
+			const lastChar = doc.lineAt(lastLine).text.length;
+			const appendPosition = new vscode.Position(lastLine, lastChar);
+
+			const edit = new vscode.WorkspaceEdit();
+			edit.insert(fileUri, appendPosition, '\n// Test passed - VS Code edit API works!');
+			const editApplied = await vscode.workspace.applyEdit(edit);
+			logStep(`Applied VS Code edit: ${editApplied}`, editApplied);
+
+			// Step 5: Save the document
+			const saved = await doc.save();
+			logStep(`Saved document: ${saved}`, saved);
+
+			// Step 6: Verify final file content
+			const finalContent = fs.readFileSync(testFilePath, 'utf8');
+			const hasAppendedComment = finalContent.includes('Test passed');
+			logStep(`Final verification - has appended content: ${hasAppendedComment}`, hasAppendedComment);
+
+			// Show success message with results
+			const result = await vscode.window.showInformationMessage(
+				`TARX Execution Test Complete! Check ~/TARX/ for output files.`,
+				'Reload Window',
+				'Open Log'
+			);
+
+			if (result === 'Reload Window') {
+				await vscode.commands.executeCommand('workbench.action.reloadWindow');
+			} else if (result === 'Open Log') {
+				const logUri = vscode.Uri.file(realLogPath);
+				await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(logUri));
+			}
+
+		} catch (error) {
+			logStep(`FATAL ERROR: ${error}`, false);
+			vscode.window.showErrorMessage(`TARX Execution Test Failed: ${error}`);
+		}
+	});
+	console.log('[TARX] Registered tarx.testExecution command');
+
 	// Get Connection Status - For programmatic access
 	safeRegisterCommand(context, 'tarx.getConnectionStatus', () => {
 		if (!healthService) {
@@ -816,44 +2326,888 @@ export function activate(context: vscode.ExtensionContext) {
 		};
 	});
 
+	// Inject Daemon Status - Display daemon status in chat/notification
+	safeRegisterCommand(context, 'tarx.injectDaemonStatus', async (message: string) => {
+		console.log('[TARX] Injecting daemon status:', message);
+
+		// Open chat panel and show status as information message
+		await vscode.commands.executeCommand('workbench.action.chat.open');
+
+		// Show status as an information message with action button
+		const action = await vscode.window.showInformationMessage(
+			message,
+			'Open Dashboard'
+		);
+
+		if (action === 'Open Dashboard') {
+			// Open daemon dashboard in browser
+			vscode.env.openExternal(vscode.Uri.parse('http://localhost:11439'));
+		}
+	});
+	console.log('[TARX] Registered tarx.injectDaemonStatus command');
+
+	// Inject Session Context - Display loaded session context in chat
+	safeRegisterCommand(context, 'tarx.injectSessionContext', async (message: string) => {
+		console.log('[TARX] Injecting session context');
+
+		// Show context as information message
+		vscode.window.showInformationMessage(message);
+
+		// Store context in workspace state so chat participant can access it
+		await context.workspaceState.update('tarx.sessionContext', {
+			message,
+			timestamp: Date.now()
+		});
+	});
+	console.log('[TARX] Registered tarx.injectSessionContext command');
+
 	// ========================================
-	// 4b. SIDEBAR NAV COMMANDS
+	// 4b. FILE UPLOAD COMMANDS
 	// ========================================
 
-	// Voice Start - Start voice input
-	safeRegisterCommand(context, 'tarx.voice.start', async () => {
-		analytics.track('voice_used');
+	// File operations — persistent via MCP server's SQLite database (memory.db)
+	const tarxFilesDir = path.join(os.homedir(), 'Library/Application Support/tarx/files');
+
+	// Upload File — persists to disk + SQLite via MCP database
+	safeRegisterCommand(context, 'tarx.uploadFile', async (params: { filename: string; content: string; size: number; mimeType: string }) => {
+		console.log('[TARX] Uploading file:', params.filename);
+
 		try {
-			// Try native VS Code voice chat first
-			await vscode.commands.executeCommand('workbench.action.chat.startVoiceChat');
-			console.log('[TARX] Voice started via native VS Code');
+			const mcpDbPath = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
+			const contentHash = crypto.createHash('sha256').update(params.content).digest('hex');
+
+			// Dedup check — skip if identical content already exists
+			if (fs.existsSync(mcpDbPath)) {
+				try {
+					const dupCheck = execSync(
+						`sqlite3 "${mcpDbPath}" "SELECT id, filename FROM files WHERE sha256_hash = '${contentHash}' AND deleted_at IS NULL LIMIT 1;"`,
+						{ encoding: 'utf8' }
+					).trim();
+					if (dupCheck) {
+						console.log(`[TARX] Duplicate file detected (hash match), skipping: ${params.filename}`);
+						return { id: dupCheck.split('|')[0], success: true, duplicate: true };
+					}
+				} catch {}
+			}
+
+			const fileId = crypto.randomUUID();
+			const storagePath = `${fileId}-${params.filename}`;
+			const now = Date.now();
+
+			// Write file to disk
+			if (!fs.existsSync(tarxFilesDir)) {
+				fs.mkdirSync(tarxFilesDir, { recursive: true });
+			}
+			fs.writeFileSync(path.join(tarxFilesDir, storagePath), params.content, 'utf8');
+
+			// Insert into SQLite
+			const escapedFilename = params.filename.replace(/'/g, "''");
+			const sql = `INSERT INTO files (id, filename, mime_type, size_bytes, storage_path, sha256_hash, created_at, last_accessed_at, reference_count, source_type) VALUES ('${fileId}', '${escapedFilename}', '${params.mimeType || 'text/plain'}', ${params.content.length}, '${storagePath}', '${contentHash}', ${now}, ${now}, 1, 'upload');`;
+			execSync(`sqlite3 "${mcpDbPath}" "${sql.replace(/"/g, '\\"')}"`, { encoding: 'utf8' });
+
+			// Add file to context for chat
+			const uploadedFileUri = vscode.Uri.parse(`tarx-upload:/${params.filename}`);
+			if (!contextFiles.some(f => f.toString() === uploadedFileUri.toString())) {
+				contextFiles.push(uploadedFileUri);
+			}
+
+			// RAG embedding (fire-and-forget via local embedding server)
+			try {
+				const config = vscode.workspace.getConfiguration('tarx');
+				const ragUrl = config.get<string>('ragUrl', 'http://localhost:11437');
+				const ragClient = new RagClient(ragUrl);
+				const health = await ragClient.checkHealth();
+				if (health.healthy) {
+					const ext = path.extname(params.filename).slice(1).toLowerCase();
+					const codeExtensions = ['ts', 'tsx', 'js', 'jsx', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'hpp'];
+					const isCode = codeExtensions.includes(ext);
+					const chunks = isCode
+						? chunkCode(params.content, ext, 512, 128)
+						: chunkText(params.content, 512, 128);
+					if (chunks.length > 0) {
+						const chunkContents = chunks.map(c => c.content);
+						const embeddings = await ragClient.embedBatch(chunkContents);
+						await storeMCPEmbeddings(fileId, params.filename, chunks, embeddings);
+						// Mark as indexed
+						try {
+							execSync(`sqlite3 "${mcpDbPath}" "UPDATE files SET indexed_at = ${Date.now()} WHERE id = '${fileId}';"`, { encoding: 'utf8' });
+						} catch {}
+						console.log(`[TARX] Embedded ${params.filename}: ${embeddings.length} chunks`);
+					}
+				}
+			} catch (ragError) {
+				console.error('[TARX] RAG pipeline error (non-fatal):', ragError);
+			}
+
+			analytics.track('file_uploaded', { filename: params.filename, size: params.size, hash: contentHash.slice(0, 16) });
+			return { id: fileId, success: true, hash: contentHash };
 		} catch (e) {
-			// Fallback notification
-			vscode.window.showInformationMessage('Voice input starting...');
-			console.log('[TARX] Voice start (fallback)');
+			console.error('[TARX] Upload failed:', e);
+			return { success: false, error: e instanceof Error ? e.message : 'Upload failed' };
 		}
 	});
 
-	// Voice Stop - Stop voice input
-	safeRegisterCommand(context, 'tarx.voice.stop', async () => {
+	// Get Uploaded Files — reads from SQLite (persistent across restarts)
+	safeRegisterCommand(context, 'tarx.getUploadedFiles', () => {
 		try {
-			await vscode.commands.executeCommand('workbench.action.chat.stopVoiceChat');
-			console.log('[TARX] Voice stopped');
+			const mcpDbPath = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
+			if (!fs.existsSync(mcpDbPath)) return [];
+
+			const result = execSync(
+				`sqlite3 "${mcpDbPath}" -json "SELECT id, filename, size_bytes as size, created_at as uploadedAt, source_type as sourceType, original_path as originalPath, COALESCE(is_reference, 0) as isReference FROM files WHERE deleted_at IS NULL ORDER BY created_at DESC;"`,
+				{ encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 }
+			);
+			return JSON.parse(result || '[]');
 		} catch (e) {
-			console.log('[TARX] Voice stop (fallback)');
+			console.error('[TARX] Failed to get files:', e);
+			return [];
 		}
 	});
 
-	// Chat New - Start a new chat conversation
+	// Delete Uploaded File — soft-deletes in SQLite, removes embeddings
+	safeRegisterCommand(context, 'tarx.deleteUploadedFile', (fileId: string) => {
+		try {
+			const mcpDbPath = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
+			const now = Date.now();
+
+			// Get file info first
+			const fileResult = execSync(
+				`sqlite3 "${mcpDbPath}" -json "SELECT id, storage_path, COALESCE(is_reference, 0) as is_reference FROM files WHERE id = '${fileId}' AND deleted_at IS NULL;"`,
+				{ encoding: 'utf8' }
+			);
+			const files = JSON.parse(fileResult || '[]') as Array<{ id: string; storage_path: string; is_reference: number }>;
+			if (files.length === 0) return { success: false, error: 'File not found' };
+
+			// Soft-delete + remove embeddings from ALL tables
+			execSync(`sqlite3 "${mcpDbPath}" "UPDATE files SET deleted_at = ${now} WHERE id = '${fileId}'; DELETE FROM chunk_embeddings WHERE file_id = '${fileId}'; DELETE FROM knowledge_embeddings WHERE source_type = 'file' AND source_id = '${fileId}'; DELETE FROM space_files WHERE file_id = '${fileId}';"`, { encoding: 'utf8' });
+
+			// Remove from disk if not a reference file
+			if (!files[0].is_reference && files[0].storage_path && !files[0].storage_path.startsWith('ref:')) {
+				const fullPath = path.join(tarxFilesDir, files[0].storage_path);
+				try { if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath); } catch {}
+			}
+
+			console.log('[TARX] Deleted file:', fileId);
+			return { success: true };
+		} catch (e) {
+			console.error('[TARX] Delete failed:', e);
+			return { success: false, error: e instanceof Error ? e.message : 'Delete failed' };
+		}
+	});
+
+	// Scan Directory — scans a directory, indexes files as references, and embeds for RAG
+	safeRegisterCommand(context, 'tarx.scanDirectory', async (dirPath: string) => {
+		console.log('[TARX] Scanning directory:', dirPath);
+		try {
+			const mcpDbPath = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
+			if (!fs.existsSync(mcpDbPath)) return { success: false, error: 'Database not found' };
+
+			const IGNORED = new Set(['node_modules', '.git', '.build', 'dist', 'out', '.cache', '.next', 'coverage', '.yarn', 'vendor']);
+			const TEXT_EXTS = new Set(['.txt', '.md', '.json', '.yaml', '.yml', '.ts', '.tsx', '.js', '.jsx', '.py', '.rs', '.go', '.html', '.css', '.sh', '.sql', '.csv', '.xml', '.toml', '.env', '.gitignore']);
+			const CODE_EXTS = new Set(['ts', 'tsx', 'js', 'jsx', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'hpp']);
+			let indexed = 0;
+			let embedded = 0;
+
+			// Collect files that need embedding
+			const filesToEmbed: Array<{ fileId: string; filename: string; fullPath: string; ext: string }> = [];
+
+			function walk(dir: string, depth: number): void {
+				if (depth > 3) return;
+				let entries: string[];
+				try { entries = fs.readdirSync(dir); } catch { return; }
+				for (const entry of entries) {
+					if (IGNORED.has(entry) || entry.startsWith('.')) continue;
+					const full = path.join(dir, entry);
+					let stat;
+					try { stat = fs.statSync(full); } catch { continue; }
+					if (stat.isDirectory()) { walk(full, depth + 1); continue; }
+					if (!stat.isFile() || stat.size > 1024 * 1024) continue;
+					const ext = path.extname(entry).toLowerCase();
+					if (!TEXT_EXTS.has(ext)) continue;
+
+					// Check if already indexed
+					const escapedPath = full.replace(/'/g, "''");
+					try {
+						const existing = execSync(
+							`sqlite3 "${mcpDbPath}" "SELECT COUNT(*) FROM files WHERE original_path = '${escapedPath}' AND deleted_at IS NULL;"`,
+							{ encoding: 'utf8' }
+						).trim();
+						if (parseInt(existing) > 0) continue;
+					} catch { continue; }
+
+					// Hash from content (not just metadata) for proper dedup
+					let content = '';
+					let hash = '';
+					try {
+						content = fs.readFileSync(full, 'utf8');
+						hash = crypto.createHash('sha256').update(content).digest('hex');
+					} catch {
+						hash = crypto.createHash('sha256').update(`${full}:${stat.size}:${stat.mtimeMs}`).digest('hex');
+					}
+
+					// Check hash dedup
+					try {
+						const dup = execSync(
+							`sqlite3 "${mcpDbPath}" "SELECT COUNT(*) FROM files WHERE sha256_hash = '${hash}' AND deleted_at IS NULL;"`,
+							{ encoding: 'utf8' }
+						).trim();
+						if (parseInt(dup) > 0) continue;
+					} catch {}
+
+					const fileId = crypto.randomUUID();
+					const escapedName = entry.replace(/'/g, "''");
+					const now = Date.now();
+
+					try {
+						execSync(
+							`sqlite3 "${mcpDbPath}" "INSERT INTO files (id, filename, mime_type, size_bytes, storage_path, sha256_hash, created_at, last_accessed_at, reference_count, source_type, original_path, is_reference, last_modified) VALUES ('${fileId}', '${escapedName}', 'text/plain', ${stat.size}, 'ref:${escapedPath}', '${hash}', ${now}, ${now}, 1, 'scan', '${escapedPath}', 1, ${Math.floor(stat.mtimeMs)});"`,
+							{ encoding: 'utf8' }
+						);
+						indexed++;
+						// Queue for embedding if we have content
+						if (content.trim().length > 0) {
+							filesToEmbed.push({ fileId, filename: entry, fullPath: full, ext: ext.slice(1) });
+						}
+					} catch {}
+				}
+			}
+
+			walk(dirPath, 0);
+			console.log(`[TARX] Scanned ${dirPath}: ${indexed} files indexed, ${filesToEmbed.length} queued for embedding`);
+
+			// RAG embedding pass — embed all scanned text files into knowledge_embeddings
+			if (filesToEmbed.length > 0) {
+				try {
+					const config = vscode.workspace.getConfiguration('tarx');
+					const ragUrl = config.get<string>('ragUrl', 'http://localhost:11437');
+					const ragClient = new RagClient(ragUrl);
+					const health = await ragClient.checkHealth();
+
+					if (health.healthy) {
+						for (const file of filesToEmbed) {
+							try {
+								const content = fs.readFileSync(file.fullPath, 'utf8');
+								const isCode = CODE_EXTS.has(file.ext);
+								const chunks = isCode
+									? chunkCode(content, file.ext, 512, 128)
+									: chunkText(content, 512, 128);
+
+								if (chunks.length > 0) {
+									const chunkContents = chunks.map(c => c.content);
+									const embeddings = await ragClient.embedBatch(chunkContents);
+									const stored = await storeMCPEmbeddings(file.fileId, file.filename, chunks, embeddings);
+									if (stored > 0) {
+										embedded++;
+										// Mark indexed_at
+										try {
+											execSync(
+												`sqlite3 "${mcpDbPath}" "UPDATE files SET indexed_at = ${Date.now()} WHERE id = '${file.fileId}';"`,
+												{ encoding: 'utf8' }
+											);
+										} catch {}
+									}
+								}
+							} catch (embedErr) {
+								console.error(`[TARX] Embed failed for ${file.filename}:`, embedErr);
+							}
+						}
+						console.log(`[TARX] Embedded ${embedded}/${filesToEmbed.length} scanned files into knowledge_embeddings`);
+					} else {
+						console.warn('[TARX] Embedding server offline — files indexed but not embedded');
+					}
+				} catch (ragError) {
+					console.error('[TARX] RAG pipeline error during scan (non-fatal):', ragError);
+				}
+			}
+
+			return { success: true, filesIndexed: indexed, filesEmbedded: embedded, path: dirPath };
+		} catch (e) {
+			console.error('[TARX] Scan failed:', e);
+			return { success: false, error: e instanceof Error ? e.message : 'Scan failed' };
+		}
+	});
+
+	// Attach File to Chat - Opens file picker and attaches selected files to active chat
+	safeRegisterCommand(context, 'tarx.attachFileToChat', async () => {
+		try {
+			// Open file picker dialog
+			const fileUris = await vscode.window.showOpenDialog({
+				canSelectMany: true,
+				canSelectFiles: true,
+				canSelectFolders: false,
+				openLabel: 'Attach to Chat',
+				filters: {
+					'All Files': ['*'],
+					'Text Files': ['txt', 'md'],
+					'Code Files': ['ts', 'tsx', 'js', 'jsx', 'py', 'rs', 'go', 'java'],
+					'Config Files': ['json', 'yaml', 'yml', 'xml', 'toml']
+				}
+			});
+
+			if (!fileUris || fileUris.length === 0) {
+				return;
+			}
+
+			console.log(`[TARX] Attaching ${fileUris.length} files to chat`);
+
+			// Process each file through the RAG pipeline and attach to chat
+			for (const uri of fileUris) {
+				const filePath = uri.fsPath;
+				const filename = path.basename(filePath);
+
+				// Read file content
+				const content = await vscode.workspace.fs.readFile(uri);
+				const text = Buffer.from(content).toString('utf8');
+
+				// Upload file (triggers RAG pipeline)
+				const uploadResult = await vscode.commands.executeCommand('tarx.uploadFile', {
+					filename,
+					content: text,
+					size: text.length,
+					mimeType: 'text/plain'
+				}) as { id: string; success: boolean };
+
+				if (uploadResult.success) {
+					// Attach to VS Code chat
+					await vscode.commands.executeCommand('workbench.action.chat.attachFile', uri);
+					console.log(`[TARX] ✓ Attached ${filename} to chat`);
+				}
+			}
+
+			vscode.window.showInformationMessage(
+				`Attached ${fileUris.length} file(s) to chat`
+			);
+
+		} catch (error) {
+			console.error('[TARX] Error attaching files to chat:', error);
+			vscode.window.showErrorMessage('Failed to attach files to chat');
+		}
+	});
+
+	// Attach Uploaded File to Chat - Attach a previously uploaded file from the sidebar
+	safeRegisterCommand(context, 'tarx.attachUploadedFileToChat', async (fileId: string) => {
+		try {
+			const mcpDbPath = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
+			const escapedId = fileId.replace(/'/g, "''");
+			const row = execSync(`sqlite3 -json "${mcpDbPath}" "SELECT filename, storage_path, is_reference, original_path FROM files WHERE id='${escapedId}' AND deleted_at IS NULL LIMIT 1;"`, { encoding: 'utf8' }).trim();
+			const rows = row ? JSON.parse(row) : [];
+			if (rows.length === 0) {
+				vscode.window.showErrorMessage('File not found');
+				return;
+			}
+			const file = rows[0];
+			const filename = file.filename as string;
+
+			// Create a virtual URI for the uploaded file
+			const uri = vscode.Uri.parse(`tarx-upload:/${filename}`);
+
+			// Attach to VS Code chat
+			await vscode.commands.executeCommand('workbench.action.chat.attachFile', uri);
+
+			console.log(`[TARX] Attached uploaded file ${filename} to chat`);
+			vscode.window.showInformationMessage(`Attached ${filename} to chat`);
+		} catch (error) {
+			console.error('[TARX] Error attaching uploaded file:', error);
+			vscode.window.showErrorMessage('Failed to attach file to chat');
+		}
+	});
+
+	// ========================================
+	// 4c. CHAT MESSAGE COMMAND (for Session Panel)
+	// ========================================
+
+	// Send message from Session Panel with attached files
+	// PERF FIX: Switched from non-streaming chatCompletion to streaming chatCompletionStream,
+	// skipped RAG health check (check knowledge count first), batched DB writes into single execSync.
+	safeRegisterCommand(context, 'tarx.chat.sendMessage', async (params: {
+		sessionId: string;
+		message: string;
+		fileRefs?: string[];
+	}) => {
+		const { sessionId, message, fileRefs = [] } = params;
+		const t0 = Date.now();
+		console.log(`[TARX PERF] Session Panel message START: sessionId=${sessionId}, files=${fileRefs.length}`);
+
+		try {
+			const mcpDbPath = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
+
+			if (!fs.existsSync(mcpDbPath)) {
+				vscode.window.showErrorMessage('TARX database not found');
+				return { success: false, error: 'Database not found' };
+			}
+
+			// 1. Load session message history (last 10 messages)
+			const historyQuery = `
+				SELECT id, role, content, created_at
+				FROM messages
+				WHERE session_id = '${sessionId.replace(/'/g, "''")}'
+				ORDER BY created_at DESC
+				LIMIT 10;
+			`;
+			const historyResult = execSync(`sqlite3 "${mcpDbPath}" -json`, {
+				encoding: 'utf8',
+				input: historyQuery
+			});
+			const historyMessages = JSON.parse(historyResult || '[]').reverse();
+			console.log(`[TARX PERF] History loaded: +${Date.now() - t0}ms (${historyMessages.length} messages)`);
+
+			// 2. RAG context injection - PERF: skip health check, check knowledge count first
+			let ragContext = '';
+			if (ragClient) {
+				try {
+					const knowledgeCount = await getMCPKnowledgeCount();
+					if (knowledgeCount > 0) {
+						console.log(`[TARX PERF] RAG: ${knowledgeCount} embeddings, starting embed +${Date.now() - t0}ms`);
+						const queryEmbedding = await ragClient.embed(`search_query: ${message}`);
+						console.log(`[TARX PERF] RAG embed done: +${Date.now() - t0}ms`);
+
+						const ragResults = await searchMCPKnowledge(null, queryEmbedding, 5);
+						const relevantResults = ragResults.filter(r => r.similarity > 0.5);
+
+						if (relevantResults.length > 0) {
+							ragContext = '\n\n<relevant_context>\n';
+							for (const result of relevantResults) {
+								ragContext += `[File: ${result.title}] (similarity: ${result.similarity.toFixed(2)})\n`;
+								ragContext += result.content + '\n\n';
+							}
+							ragContext += '</relevant_context>';
+							console.log(`[TARX PERF] RAG injected ${relevantResults.length} chunks: +${Date.now() - t0}ms`);
+						}
+					} else {
+						console.log(`[TARX PERF] RAG skipped (0 embeddings): +${Date.now() - t0}ms`);
+					}
+				} catch (ragErr) {
+					console.warn('[TARX] Session Panel RAG search failed (non-fatal):', ragErr);
+				}
+			}
+
+			// 3. Build messages array
+			const messages: ChatMessage[] = [];
+
+			// System prompt (with RAG context if available)
+			messages.push({
+				role: 'system',
+				content: buildTarxSystemPrompt({}) + ragContext
+			});
+
+			// History (alternating user/assistant)
+			for (const msg of historyMessages) {
+				messages.push({
+					role: msg.role as 'user' | 'assistant',
+					content: msg.content
+				});
+			}
+
+			// Current user message
+			messages.push({
+				role: 'user',
+				content: message
+			});
+
+			console.log(`[TARX PERF] Pre-inference: +${Date.now() - t0}ms (${messages.length} messages)`);
+
+			// 4. Call LLM with STREAMING — stream tokens to Session Panel in real-time
+			let assistantContent = '';
+			let firstToken = true;
+			const activePanel = TarxSessionPanel.currentPanel;
+
+			for await (const chunk of tarxClient.chatCompletionStream(messages, {
+				temperature: 0.7,
+				maxTokens: 2048
+			})) {
+				if (firstToken) {
+					console.log(`[TARX PERF] First token (TTFT): +${Date.now() - t0}ms`);
+					firstToken = false;
+				}
+				assistantContent += chunk;
+				// Stream token to webview for real-time display
+				if (activePanel) {
+					activePanel.postStreamToken(chunk);
+				}
+			}
+
+			if (!assistantContent) {
+				assistantContent = 'No response generated.';
+			}
+
+			// Signal streaming complete — webview replaces streaming element with final message
+			if (activePanel) {
+				activePanel.postStreamEnd(assistantContent);
+			}
+
+			console.log(`[TARX PERF] Inference complete: +${Date.now() - t0}ms (${assistantContent.length} chars)`);
+
+			// 5. Store user message + assistant message + update session in ONE execSync call
+			const userMsgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+			const assistantMsgId = `msg_${Date.now() + 1}_${Math.random().toString(36).slice(2, 8)}`;
+			const nowTimestamp = Math.floor(Date.now() / 1000);
+			const escapedSessionId = sessionId.replace(/'/g, "''");
+			const escapedMessage = message.replace(/'/g, "''");
+			const escapedAssistant = assistantContent.replace(/'/g, "''");
+
+			const batchSql = `
+				INSERT INTO messages (id, session_id, role, content, created_at)
+				VALUES ('${userMsgId}', '${escapedSessionId}', 'user', '${escapedMessage}', ${nowTimestamp});
+				INSERT INTO messages (id, session_id, role, content, created_at)
+				VALUES ('${assistantMsgId}', '${escapedSessionId}', 'assistant', '${escapedAssistant}', ${nowTimestamp});
+				UPDATE sessions SET updated_at = ${nowTimestamp}, message_count = message_count + 2 WHERE id = '${escapedSessionId}';
+			`;
+			execSync(`sqlite3 "${mcpDbPath}"`, { encoding: 'utf8', input: batchSql });
+
+			console.log(`[TARX PERF] DB writes done: +${Date.now() - t0}ms`);
+			console.log(`[TARX PERF] Session Panel TOTAL: ${Date.now() - t0}ms`);
+
+			return { success: true, response: assistantContent };
+
+		} catch (error) {
+			console.error('[TARX] Session Panel message error:', error);
+			console.log(`[TARX PERF] Session Panel FAILED: +${Date.now() - t0}ms`);
+			vscode.window.showErrorMessage('Failed to process message');
+			return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+		}
+	});
+
+	// ========================================
+	// 4d. SIDEBAR NAV COMMANDS
+	// ========================================
+
+	// ========================================
+	// VOICE COMMANDS - DISABLED FOR V1 RELEASE
+	// Re-enable in V1.5 when voice services are ready
+	// ========================================
+	// Voice commands disabled - register stub commands to prevent errors
+	safeRegisterCommand(context, 'tarx.voice.start', () => {
+		vscode.window.showInformationMessage('Voice features coming in V1.5');
+	});
+	safeRegisterCommand(context, 'tarx.voice.stop', () => {});
+	safeRegisterCommand(context, 'tarx.voice.test', () => {
+		vscode.window.showInformationMessage('Voice features coming in V1.5');
+	});
+	safeRegisterCommand(context, 'tarx.voice.testStop', () => {});
+	safeRegisterCommand(context, 'tarx.voice.showTranscript', () => {
+		vscode.window.showInformationMessage('Voice features coming in V1.5');
+	});
+	safeRegisterCommand(context, 'tarx.voice.toggleTranscript', () => {
+		vscode.window.showInformationMessage('Voice features coming in V1.5');
+	});
+
+	// ========================================
+	// SETTINGS COMMANDS - Claude API & Memory
+	// ========================================
+
+	// Get all settings for webview
+	safeRegisterCommand(context, 'tarx.settings.get', async () => {
+		try {
+			const settings = await getNetworkModelSettings();
+			// Update local model status from health service
+			if (healthService) {
+				settings.localModelStatus = healthService.healthStatus.status === 'online' ? 'connected' : 'disconnected';
+			}
+			return settings;
+		} catch (e) {
+			console.error('[TARX] Failed to get settings:', e);
+			return null;
+		}
+	});
+
+	// Save Claude API key securely
+	safeRegisterCommand(context, 'tarx.settings.saveApiKey', async (key: string) => {
+		try {
+			await storeApiKey(key);
+			console.log('[TARX] API key saved securely');
+		} catch (e) {
+			console.error('[TARX] Failed to save API key:', e);
+			throw e;
+		}
+	});
+
+	// Delete Claude API key
+	safeRegisterCommand(context, 'tarx.settings.deleteApiKey', async () => {
+		try {
+			await deleteApiKey();
+			console.log('[TARX] API key deleted');
+		} catch (e) {
+			console.error('[TARX] Failed to delete API key:', e);
+			throw e;
+		}
+	});
+
+	// Test Claude API connection
+	safeRegisterCommand(context, 'tarx.settings.testConnection', async () => {
+		try {
+			const result = await testClaudeConnection();
+			return result;
+		} catch (e) {
+			console.error('[TARX] Failed to test connection:', e);
+			return { success: false, error: String(e) };
+		}
+	});
+
+	// Set memory settings
+	safeRegisterCommand(context, 'tarx.settings.setMemory', async (settings: { enabled?: boolean; threadConversations?: boolean }) => {
+		try {
+			await setMemorySettings(settings);
+			console.log('[TARX] Memory settings updated:', settings);
+		} catch (e) {
+			console.error('[TARX] Failed to set memory settings:', e);
+			throw e;
+		}
+	});
+
+	// Clear all memory
+	safeRegisterCommand(context, 'tarx.settings.clearMemory', async () => {
+		try {
+			// TODO: Implement memory clearing via memory service
+			console.log('[TARX] Memory cleared');
+			return true;
+		} catch (e) {
+			console.error('[TARX] Failed to clear memory:', e);
+			return false;
+		}
+	});
+
+	// ========================================
+	// 4c. BILLING COMMANDS
+	// ========================================
+
+	safeRegisterCommand(context, 'tarx.billing.getStatus', async () => {
+		try {
+			return await getBillingStatus();
+		} catch (e) {
+			console.error('[TARX] Failed to get billing status:', e);
+			return null;
+		}
+	});
+
+	safeRegisterCommand(context, 'tarx.billing.createCheckout', async (tier: BillingTier) => {
+		try {
+			const url = await createCheckoutSession(tier);
+			if (url) {
+				await vscode.env.openExternal(vscode.Uri.parse(url));
+			}
+			return url;
+		} catch (e) {
+			console.error('[TARX] Failed to create checkout session:', e);
+			throw e;
+		}
+	});
+
+	safeRegisterCommand(context, 'tarx.billing.openPortal', async () => {
+		try {
+			const url = await createPortalSession();
+			if (url) {
+				await vscode.env.openExternal(vscode.Uri.parse(url));
+			}
+			return url;
+		} catch (e) {
+			console.error('[TARX] Failed to open billing portal:', e);
+			throw e;
+		}
+	});
+
+	safeRegisterCommand(context, 'tarx.billing.saveKey', async (key: string) => {
+		try {
+			await storeStripeSecretKey(key);
+			// Restart credit bridge polling with new key
+			creditBridge?.startPolling();
+			return true;
+		} catch (e) {
+			console.error('[TARX] Failed to save Stripe key:', e);
+			throw e;
+		}
+	});
+
+	safeRegisterCommand(context, 'tarx.billing.deleteKey', async () => {
+		try {
+			await deleteStripeSecretKey();
+			// Stop credit bridge polling
+			creditBridge?.stopPolling();
+			return true;
+		} catch (e) {
+			console.error('[TARX] Failed to delete Stripe key:', e);
+			throw e;
+		}
+	});
+
+	// ========================================
+	// 4d. QA TEST HARNESS COMMANDS
+	// ========================================
+
+	// QA Output Channel for test results
+	const qaOutputChannel = vscode.window.createOutputChannel('TARX QA');
+	context.subscriptions.push(qaOutputChannel);
+
+	// Run QA Tests - Executes the automated test harness
+	safeRegisterCommand(context, 'tarx.runQA', async () => {
+		qaOutputChannel.show(true);
+		qaOutputChannel.appendLine('');
+		qaOutputChannel.appendLine('═══════════════════════════════════════════════════════════════');
+		qaOutputChannel.appendLine('TARX QA Test Suite');
+		qaOutputChannel.appendLine(`Started at: ${new Date().toISOString()}`);
+		qaOutputChannel.appendLine('═══════════════════════════════════════════════════════════════');
+		qaOutputChannel.appendLine('');
+
+		try {
+			const results = await runQATests(qaOutputChannel);
+			const passed = results.filter(r => r.passed).length;
+			const failed = results.filter(r => !r.passed).length;
+
+			vscode.window.showInformationMessage(
+				`TARX QA: ${passed}/${results.length} tests passed, ${failed} failed`
+			);
+		} catch (error) {
+			qaOutputChannel.appendLine(`ERROR: ${error}`);
+			vscode.window.showErrorMessage(`TARX QA Error: ${error}`);
+		}
+	});
+
+	// ========================================
+	// 4d. PROACTIVE INTELLIGENCE COMMANDS (Phase 6)
+	// ========================================
+
+	// Proactive Start - Enable proactive mode
+	safeRegisterCommand(context, 'tarx.proactive.start', async () => {
+		if (!proactiveSystem) {
+			vscode.window.showErrorMessage('Proactive system not initialized');
+			return;
+		}
+		proactiveSystem.start();
+		vscode.window.showInformationMessage('TARX Proactive mode enabled');
+		console.log('[TARX] Proactive mode started');
+	});
+
+	// Proactive Stop - Disable proactive mode
+	safeRegisterCommand(context, 'tarx.proactive.stop', async () => {
+		if (!proactiveSystem) {
+			return;
+		}
+		proactiveSystem.stop();
+		vscode.window.showInformationMessage('TARX Proactive mode disabled');
+		console.log('[TARX] Proactive mode stopped');
+	});
+
+	// Proactive Toggle - Toggle proactive mode
+	safeRegisterCommand(context, 'tarx.proactive.toggle', async () => {
+		if (!proactiveSystem) {
+			vscode.window.showErrorMessage('Proactive system not initialized');
+			return;
+		}
+		const isRunning = proactiveSystem.toggle();
+		vscode.window.showInformationMessage(
+			isRunning ? 'TARX Proactive mode enabled' : 'TARX Proactive mode disabled'
+		);
+		return isRunning;
+	});
+
+	// Proactive Show Proposal - Display a proposal in UI
+	safeRegisterCommand(context, 'tarx.proactive.showProposal', (action: any) => {
+		// This command is called when a proposal is generated
+		// The sidebar provider handles displaying it
+		console.log('[TARX] Showing proposal:', action?.title);
+		if (sidebarProvider) {
+			sidebarProvider.setProactiveAction(action);
+		}
+	});
+
+	// Proactive Approve - Approve current proposal
+	safeRegisterCommand(context, 'tarx.proactive.approve', async (optionId?: string) => {
+		if (!proactiveSystem) return;
+
+		const proposal = proactiveSystem.services.actionProposer.getActiveProposal();
+		if (!proposal) {
+			console.log('[TARX] No active proposal to approve');
+			return;
+		}
+
+		const result = await proactiveSystem.services.actionExecutor.handleResponse(
+			proposal,
+			'approve',
+			optionId
+		);
+		console.log('[TARX] Proposal approved:', result.message);
+		return result;
+	});
+
+	// Proactive Reject - Reject current proposal
+	safeRegisterCommand(context, 'tarx.proactive.reject', async () => {
+		if (!proactiveSystem) return;
+
+		const proposal = proactiveSystem.services.actionProposer.getActiveProposal();
+		if (!proposal) {
+			return;
+		}
+
+		const result = await proactiveSystem.services.actionExecutor.handleResponse(
+			proposal,
+			'reject'
+		);
+		console.log('[TARX] Proposal rejected');
+		return result;
+	});
+
+	// Proactive Explain - Get explanation for current proposal
+	safeRegisterCommand(context, 'tarx.proactive.explain', async () => {
+		if (!proactiveSystem) return;
+
+		const proposal = proactiveSystem.services.actionProposer.getActiveProposal();
+		if (!proposal) {
+			return;
+		}
+
+		const result = await proactiveSystem.services.actionExecutor.handleResponse(
+			proposal,
+			'explain'
+		);
+		console.log('[TARX] Proposal explanation requested');
+		return result;
+	});
+
+	// Proactive Undo - Undo last proactive action
+	safeRegisterCommand(context, 'tarx.proactive.undo', async () => {
+		if (!proactiveSystem) return;
+
+		const result = await proactiveSystem.services.actionExecutor.undo();
+		if (result.success) {
+			vscode.window.showInformationMessage(result.message);
+		} else {
+			vscode.window.showWarningMessage(result.message);
+		}
+		return result;
+	});
+
+	// Proactive Status - Get current proactive status
+	safeRegisterCommand(context, 'tarx.proactive.status', () => {
+		if (!proactiveSystem) {
+			return { running: false, hasProposal: false };
+		}
+
+		const proposal = proactiveSystem.services.actionProposer.getActiveProposal();
+		const pattern = proactiveSystem.services.patternDetector.getCurrentPattern();
+
+		return {
+			running: proactiveSystem.running,
+			hasProposal: !!proposal,
+			proposal: proposal?.title,
+			pattern: pattern?.pattern,
+			confidence: pattern?.confidence,
+			canUndo: proactiveSystem.services.actionExecutor.canUndo()
+		};
+	});
+
+	console.log('[TARX] Proactive commands registered');
+
+	// Chat New - Start a new chat conversation in a NEW TAB
 	safeRegisterCommand(context, 'tarx.chat.new', async () => {
 		// Clear current conversation state
 		activeConversation = undefined;
+		syncConversationToProvider();
 
 		// Create a new conversation in the database
 		if (db) {
 			try {
 				const projectId = activeProject?.id || null;
 				activeConversation = await db.createConversation(projectId);
+				syncConversationToProvider();
 				console.log('[TARX] Created new conversation:', activeConversation.id);
 
 				// Trigger history refresh so sidebar shows the new conversation
@@ -863,9 +3217,9 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		}
 
-		// Open chat panel with @tarx
-		await vscode.commands.executeCommand('workbench.action.chat.open', { query: '@tarx ' });
-		console.log('[TARX] New chat started');
+		// Open a NEW chat session (in a new tab, doesn't replace existing)
+		await vscode.commands.executeCommand('workbench.action.chat.newChat');
+		console.log('[TARX] New chat started in new tab');
 	});
 
 	// History Show All - Show conversation history panel
@@ -923,32 +3277,187 @@ export function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 
+			// Determine if this is a Claude conversation
+			const isClaudeConversation = conversation.title?.startsWith('Claude') || false;
+			const source = isClaudeConversation ? 'Claude' : 'TARX';
+
 			// Load ALL turns for this conversation
 			const turns = await db.getConversationTurns(conversationId);
-			console.log(`[TARX] Loading conversation "${conversation.title}" with ${turns.length} turns`);
+			console.log(`[TARX] Loading ${source} conversation "${conversation.title}" with ${turns.length} turns`);
 
 			// Store turns in pre-loaded history map
 			conversationHistory.set(conversationId, turns);
 
 			// Set as active conversation
 			activeConversation = conversation;
+			syncConversationToProvider();
 
-			// Open chat panel
+			// Convert turns to message format for session panel
+			const messagesForDisplay = turns.map(turn => ({
+				id: turn.id,
+				role: turn.role,
+				content: turn.content,
+				created_at: turn.createdAt
+			}));
+
+			// Open session panel to display full conversation history (user + assistant messages)
+			TarxSessionPanel.createOrShowWithMessages(
+				context.extensionUri,
+				conversationId,
+				conversation.title || 'Conversation',
+				messagesForDisplay
+			);
+
+			// Also open native chat for continuing the conversation
 			await vscode.commands.executeCommand('workbench.action.chat.open', {
 				query: '@tarx '
 			});
 
-			// Show notification with conversation context
+			// Show notification with conversation context and source
 			const turnCount = turns.length;
 			const title = conversation.title || 'Conversation';
 			vscode.window.showInformationMessage(
-				`Resumed: ${title} (${turnCount} messages)`
+				`Resumed ${source} conversation: ${title} (${turnCount} messages) - History visible in panel`
 			);
 
 			console.log(`[TARX] Conversation ${conversationId} loaded and ready`);
 		} catch (e) {
 			console.error('[TARX] Failed to open conversation:', e);
 			vscode.window.showErrorMessage('Failed to load conversation');
+		}
+	});
+
+	// Get Recent Conversations — used by TARX Dashboard in workbench
+	safeRegisterCommand(context, 'tarx.getRecentConversations', async () => {
+		if (!db) { return []; }
+		try {
+			const dbRef = db;
+			const projectId = activeProject?.id || null;
+			const conversations = await dbRef.getRecentConversations(projectId, 10);
+			// Return summaries with message count for dashboard display
+			const summaries = await Promise.all(conversations.map(async (c) => {
+				const turns = await dbRef.getConversationTurns(c.id);
+				return {
+					id: c.id,
+					title: c.title || 'Untitled',
+					updatedAt: c.updatedAt,
+					messageCount: turns.filter(t => t.role !== 'system').length,
+				};
+			}));
+			return summaries;
+		} catch (e) {
+			console.error('[TARX] getRecentConversations failed:', e);
+			return [];
+		}
+	});
+
+	// Open Session - Load a session from the sessions table (MCP-based data)
+	safeRegisterCommand(context, 'tarx.openSession', async (sessionId: string, spaceId?: string) => {
+		if (!sessionId) {
+			console.log('[TARX] openSession: No sessionId provided');
+			return;
+		}
+
+		try {
+			console.log(`[TARX] Opening session: ${sessionId} from space: ${spaceId}`);
+
+			// Read from MCP server's memory.db database (same as getSessionHistory)
+			const mcpDbPath = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
+
+			if (!fs.existsSync(mcpDbPath)) {
+				console.log('[TARX] openSession: MCP database not found at', mcpDbPath);
+				vscode.window.showErrorMessage('Memory database not found');
+				return;
+			}
+
+			// Get session details using sqlite3 CLI
+			const sessionQuery = `
+				SELECT s.id, s.title, s.space_id, s.model, sp.name as space_name, sp.emoji as space_emoji
+				FROM sessions s
+				LEFT JOIN spaces sp ON s.space_id = sp.id
+				WHERE s.id = '${sessionId}'
+			`;
+			const sessionResult = execSync(`sqlite3 "${mcpDbPath}" -json`, {
+				encoding: 'utf8',
+				input: sessionQuery
+			});
+
+			const sessions = JSON.parse(sessionResult || '[]') as Array<{
+				id: string;
+				title: string;
+				space_id: string;
+				model: string | null;
+				space_name: string | null;
+				space_emoji: string | null;
+			}>;
+
+			if (sessions.length === 0) {
+				vscode.window.showErrorMessage('Session not found');
+				return;
+			}
+
+			const session = sessions[0];
+
+			// Load messages for this session
+			const messagesQuery = `
+				SELECT id, role, content, created_at
+				FROM messages
+				WHERE session_id = '${sessionId}'
+				ORDER BY created_at ASC
+			`;
+			const messagesResult = execSync(`sqlite3 "${mcpDbPath}" -json`, {
+				encoding: 'utf8',
+				input: messagesQuery
+			});
+
+			const messages = JSON.parse(messagesResult || '[]') as Array<{
+				id: string;
+				role: string;
+				content: string;
+				created_at: number;
+			}>;
+
+			console.log(`[TARX] Loaded session "${session.title}" with ${messages.length} messages`);
+
+			// Convert messages to turns format for compatibility
+			const turns = messages.map(m => ({
+				id: m.id,
+				conversationId: sessionId,
+				role: m.role as 'user' | 'assistant' | 'system',
+				content: m.content,
+				createdAt: m.created_at,
+				fileRefs: [],
+				artifacts: null
+			}));
+
+			// Store in pre-loaded history map (using same mechanism as openConversation)
+			conversationHistory.set(sessionId, turns);
+
+			// Create a pseudo-conversation object for compatibility
+			activeConversation = {
+				id: sessionId,
+				projectId: null,
+				title: session.title,
+				createdAt: Date.now(),
+				updatedAt: Date.now()
+			};
+			syncConversationToProvider();
+
+			// Open session panel to display full conversation history (user + assistant messages)
+			const displayTitle = session.title || 'Session';
+			const spaceName = session.space_name ? ` (${session.space_name})` : '';
+
+			TarxSessionPanel.createOrShowWithMessages(
+				context.extensionUri,
+				sessionId,
+				`${displayTitle}${spaceName}`,
+				messages
+			);
+
+			console.log(`[TARX] Session ${sessionId} opened in session panel with ${messages.length} messages`);
+		} catch (e) {
+			console.error('[TARX] Failed to open session:', e);
+			vscode.window.showErrorMessage('Failed to load session');
 		}
 	});
 
@@ -1003,139 +3512,102 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	// Projects New - Create a new TARX project
+	// Projects New — redirect to full-tab create mode
 	safeRegisterCommand(context, 'tarx.projects.new', async () => {
-		// Ask for project name first (better UX - no folder picker)
-		const projectName = await vscode.window.showInputBox({
-			prompt: 'Project name',
-			placeHolder: 'my-awesome-project',
-			title: 'Create New TARX Project',
-			validateInput: (value) => {
-				if (!value || value.trim().length === 0) {
-					return 'Project name is required';
-				}
-				if (!/^[a-zA-Z0-9-_]+$/.test(value)) {
-					return 'Use only letters, numbers, hyphens and underscores';
-				}
-				return null;
-			}
-		});
-
-		if (!projectName) {
-			return;
-		}
-
-		// Create in ~/TARX/ folder by default
-		const tarxHome = path.join(os.homedir(), 'TARX');
-		const folderPath = path.join(tarxHome, projectName);
-
-		// Create directories if needed
-		if (!fs.existsSync(tarxHome)) {
-			fs.mkdirSync(tarxHome, { recursive: true });
-		}
-
-		if (fs.existsSync(folderPath)) {
-			vscode.window.showErrorMessage(`Project "${projectName}" already exists at ${folderPath}`);
-			return;
-		}
-
-		// Create project folder and basic structure
-		fs.mkdirSync(folderPath, { recursive: true });
-		fs.writeFileSync(
-			path.join(folderPath, 'README.md'),
-			`# ${projectName}\n\nCreated with TARX\n`
-		);
-
-		// Create .tarx directory for project config
-		const tarxDir = path.join(folderPath, '.tarx');
-		fs.mkdirSync(tarxDir, { recursive: true });
-
-		// Create project.md overview file
-		const projectType = 'general';
-		const createdDate = new Date().toISOString();
-		const projectMd = `---
-name: ${projectName}
-created: ${createdDate}
-type: ${projectType}
----
-
-# ${projectName}
-
-## Instructions
-_Add project-specific instructions for TARX here. These will be included in the AI context._
-
-## Quick Links
-- [README](../README.md)
-
-## Notes
-_Add any project notes here_
-`;
-		fs.writeFileSync(path.join(tarxDir, 'project.md'), projectMd);
-
-		// Create config.json for structured data
-		const projectConfig = {
-			name: projectName,
-			created: Date.now(),
-			type: projectType,
-			instructions: '',
-			pinnedFiles: [],
-			conversationIds: []
-		};
-		fs.writeFileSync(path.join(tarxDir, 'config.json'), JSON.stringify(projectConfig, null, 2));
-
-		console.log('[TARX] Created .tarx folder with project.md and config.json');
-
-		// Save project to database
-		if (db) {
-			try {
-				const newProject = await db.createProject({
-					name: projectName,
-					root: folderPath,
-					type: projectType,
-					isActive: true
-				});
-
-				activeProject = newProject;
-				await db.setActiveProject(newProject.id);
-				analytics.track('project_created', { project_id: newProject.id });
-				console.log('[TARX] Created project:', newProject.id, projectName, folderPath);
-				vscode.window.showInformationMessage(`Project "${projectName}" created in ~/TARX/`);
-
-				// Trigger sidebar refresh
-				await vscode.commands.executeCommand('tarx.projects.refresh');
-			} catch (e) {
-				console.error('[TARX] Failed to create project:', e);
-				vscode.window.showErrorMessage('Failed to create project');
-			}
-		}
-
-		// Open the folder as workspace
-		await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(folderPath));
+		await vscode.commands.executeCommand('tarx.openCreateProject');
 	});
 
-	// Projects List - Get all projects (for sidebar)
-	safeRegisterCommand(context, 'tarx.projects.list', async () => {
-		if (!db) {
-			return [];
+	// Projects Select - Set active project/space (for sidebar filtering)
+	safeRegisterCommand(context, 'tarx.projects.select', async (projectId: string) => {
+		console.log('[TARX] tarx.projects.select called with projectId:', projectId);
+
+		// Store selected project in workspace state
+		await context.workspaceState.update('tarx.selectedProjectId', projectId);
+
+		// Update status bar if it exists
+		const statusBar = context.workspaceState.get('tarx.statusBar') as vscode.StatusBarItem | undefined;
+		if (statusBar) {
+			// Fetch project name from MCP
+			try {
+				const mcpDbPath = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
+				if (fs.existsSync(mcpDbPath)) {
+					const query = `SELECT name FROM spaces WHERE id = '${projectId}'`;
+					const result = execSync(`sqlite3 "${mcpDbPath}" -json`, {
+						encoding: 'utf8',
+						input: query
+					});
+					const rows = JSON.parse(result || '[]') as Array<{ name: string }>;
+					if (rows.length > 0) {
+						statusBar.text = `$(folder) ${rows[0].name}`;
+						statusBar.show();
+					}
+				}
+			} catch (e) {
+				console.error('[TARX] Failed to update status bar:', e);
+			}
 		}
 
+		console.log('[TARX] Project selected:', projectId);
+	});
+
+	// Projects List - Get all projects/spaces (for sidebar)
+	// Reads from MCP memory.db spaces table
+	safeRegisterCommand(context, 'tarx.projects.list', async () => {
+		console.log('[TARX DIAG] tarx.projects.list CALLED');
 		try {
-			const projects = await db.listProjects();
-			return projects.map(p => ({
-				id: p.id,
-				name: p.name,
-				path: p.root,
-				type: p.type,
-				isActive: p.isActive,
-				createdAt: p.createdAt
+			const mcpDbPath = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
+			console.log('[TARX DIAG] projects.list: DB path:', mcpDbPath);
+			console.log('[TARX DIAG] projects.list: DB exists:', fs.existsSync(mcpDbPath));
+
+			if (!fs.existsSync(mcpDbPath)) {
+				console.log('[TARX] projects.list: MCP database not found');
+				return [];
+			}
+
+			const query = `
+				SELECT id, name, emoji, created_at as createdAt, updated_at as updatedAt
+				FROM spaces
+				WHERE deleted_at IS NULL
+				ORDER BY last_accessed_at DESC
+				LIMIT 50
+			`;
+			console.log('[TARX DIAG] projects.list: Running query');
+
+			const result = execSync(`sqlite3 "${mcpDbPath}" -json`, {
+				encoding: 'utf8',
+				input: query
+			});
+			console.log('[TARX DIAG] projects.list: Raw result length:', result?.length || 0);
+
+			const rows = JSON.parse(result || '[]') as Array<{
+				id: string;
+				name: string;
+				emoji: string | null;
+				createdAt: number;
+				updatedAt: number;
+			}>;
+			console.log('[TARX DIAG] projects.list: Parsed', rows.length, 'rows');
+
+			const projects = rows.map(row => ({
+				id: row.id,
+				name: row.name,
+				path: row.id, // Use space ID so sidebar can open it correctly
+				type: null,
+				isActive: false,
+				createdAt: row.createdAt
 			}));
+
+			console.log('[TARX] Loaded', projects.length, 'spaces from MCP memory.db');
+			return projects;
 		} catch (e) {
 			console.error('[TARX] Failed to list projects:', e);
+			console.error('[TARX DIAG] projects.list error details:', e instanceof Error ? e.message : e);
 			return [];
 		}
 	});
 
-	// Projects Open - Open a specific project
-	safeRegisterCommand(context, 'tarx.projects.open', async (projectId: string) => {
+	// Projects Select - Switch to a project (simpler than open, no dashboard)
+	safeRegisterCommand(context, 'tarx.projects.select', async (projectId: string) => {
 		if (!db) {
 			return false;
 		}
@@ -1143,7 +3615,7 @@ _Add any project notes here_
 		try {
 			const project = await db.getProject(projectId);
 			if (!project) {
-				vscode.window.showErrorMessage('Project not found');
+				console.error('[TARX] Project not found:', projectId);
 				return false;
 			}
 
@@ -1151,42 +3623,119 @@ _Add any project notes here_
 			await db.setActiveProject(projectId);
 			activeProject = project;
 
-			// Check if project overview exists, create if not (migration)
-			const overviewPath = path.join(project.root, '.tarx', 'project.md');
-			if (!fs.existsSync(overviewPath)) {
-				// Migrate: create .tarx folder for existing project
-				const tarxDir = path.join(project.root, '.tarx');
-				if (!fs.existsSync(tarxDir)) {
-					fs.mkdirSync(tarxDir, { recursive: true });
+			console.log('[TARX] Switched to project:', project.name);
+			return true;
+		} catch (e) {
+			console.error('[TARX] Failed to select project:', e);
+			return false;
+		}
+	});
+
+	// Projects Open - Open a specific project with rich dashboard
+	// Handles both file paths (from sidebar) and project IDs (from tree view)
+	safeRegisterCommand(context, 'tarx.projects.open', async (projectIdOrPath: string) => {
+		if (!projectIdOrPath) {
+			vscode.window.showErrorMessage('No project specified');
+			return false;
+		}
+
+		// Check if this looks like a space ID (UUID format or space-* prefix)
+		const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+		const spacePrefix = /^space-/i;
+		const sessionPrefix = /^session-/i;
+		const cleanPath = projectIdOrPath.replace(/^\//, ''); // Remove leading slash if present
+		const isSpaceId = uuidPattern.test(cleanPath) || spacePrefix.test(cleanPath) || sessionPrefix.test(cleanPath);
+
+		if (isSpaceId) {
+			// This is a space/session ID - open the space's most recent session
+			console.log('[TARX] Opening space:', projectIdOrPath);
+			try {
+				const mcpDbPath = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
+				if (fs.existsSync(mcpDbPath)) {
+					// Get the most recent session in this space
+					const query = `
+						SELECT id FROM sessions
+						WHERE space_id = '${projectIdOrPath}' AND deleted_at IS NULL
+						ORDER BY updated_at DESC LIMIT 1
+					`;
+					const result = execSync(`sqlite3 "${mcpDbPath}" -json`, {
+						encoding: 'utf8',
+						input: query
+					});
+					const sessions = JSON.parse(result || '[]') as Array<{ id: string }>;
+
+					if (sessions.length > 0) {
+						// Open the most recent session in this space
+						await vscode.commands.executeCommand('tarx.openSession', sessions[0].id, projectIdOrPath);
+					} else {
+						// No sessions in this space - open chat with space context
+						await vscode.commands.executeCommand('workbench.action.chat.open', { query: '@tarx ' });
+						vscode.window.showInformationMessage('No sessions in this space yet. Start a new conversation!');
+					}
+					return true;
 				}
-				const projectMd = `---
-name: ${project.name}
-created: ${new Date(project.createdAt).toISOString()}
-type: ${project.type || 'general'}
----
+			} catch (e) {
+				console.error('[TARX] Failed to open space:', e);
+			}
+			// Fallback: just open chat
+			await vscode.commands.executeCommand('workbench.action.chat.open', { query: '@tarx ' });
+			return true;
+		}
 
-# ${project.name}
+		// Detect if this is a file path (starts with / on Mac/Linux or contains drive letter on Windows)
+		const isFilePath = projectIdOrPath.startsWith('/') || /^[a-zA-Z]:/.test(projectIdOrPath);
 
-## Instructions
-_Add project-specific instructions for TARX here._
-
-## Quick Links
-- [README](../README.md)
-
-## Notes
-_Add any project notes here_
-`;
-				fs.writeFileSync(overviewPath, projectMd);
-				console.log('[TARX] Created project overview for existing project:', project.name);
+		if (isFilePath) {
+			// Verify the path actually exists before trying to open
+			if (!fs.existsSync(projectIdOrPath)) {
+				console.error('[TARX] Project path does not exist:', projectIdOrPath);
+				vscode.window.showErrorMessage(`Project folder not found: "${projectIdOrPath}"`);
+				return false;
 			}
 
-			// Open the folder (this will reload the window)
-			const uri = vscode.Uri.file(project.root);
-			await vscode.commands.executeCommand('vscode.openFolder', uri, { forceNewWindow: false });
+			// It's a file path - just open the folder
+			console.log('[TARX] Opening project folder:', projectIdOrPath);
+			const uri = vscode.Uri.file(projectIdOrPath);
+			await vscode.commands.executeCommand('vscode.openFolder', uri);
+			return true;
+		}
 
-			// Note: Opening the overview file after openFolder won't work because
-			// the window reloads. Instead, we'll open it on workspace init.
-			// For now, show info message
+		// It's a project ID - use dashboard flow
+		if (!db) {
+			return false;
+		}
+
+		try {
+			const project = await db.getProject(projectIdOrPath);
+			if (!project) {
+				vscode.window.showErrorMessage('Project not found');
+				return false;
+			}
+
+			// Validate project.root is a valid file path (not a UUID)
+			const uuidCheck = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+			if (!project.root || uuidCheck.test(project.root) || uuidCheck.test(project.root.replace(/^\//, ''))) {
+				console.error('[TARX] Project has invalid root path:', project.root);
+				vscode.window.showErrorMessage(
+					`Project "${project.name}" has an invalid root path. ` +
+					`Please remove and re-create the project.`
+				);
+				return false;
+			}
+
+			// Verify the root path exists
+			if (!fs.existsSync(project.root)) {
+				console.error('[TARX] Project root does not exist:', project.root);
+				vscode.window.showErrorMessage(`Project folder not found: "${project.root}"`);
+				return false;
+			}
+
+			// Set as active project
+			await db.setActiveProject(projectIdOrPath);
+			activeProject = project;
+
+			// Open the Project Context Panel (full tab)
+			ProjectContextPanel.createOrShow(context.extensionUri, project.id);
 			console.log('[TARX] Project opened:', project.name);
 			return true;
 		} catch (e) {
@@ -1231,11 +3780,14 @@ _Add any project notes here_
 		}
 	});
 
-	// Projects Refresh - Signal sidebar to reload projects list
+	// Projects Refresh - Reload projects list in tree provider
 	safeRegisterCommand(context, 'tarx.projects.refresh', async () => {
 		console.log('[TARX] Projects refresh command triggered');
-		// This is a signal command - the sidebar Part listens for this
-		// and calls loadProjects() when it fires
+		// First sync from SQLite to ensure we have latest DB data
+		await syncProjectsFromDB();
+		if (projectTreeProvider) {
+			projectTreeProvider.refresh();
+		}
 	});
 
 	// History Refresh - Signal sidebar to reload history list
@@ -1291,6 +3843,176 @@ _Add any project notes here_
 		}
 	});
 
+	// Projects - Refresh Dashboard (now opens ProjectContextPanel)
+	safeRegisterCommand(context, 'tarx.projects.refreshDashboard', async () => {
+		if (!activeProject) {
+			vscode.window.showWarningMessage('No active project');
+			return;
+		}
+		ProjectContextPanel.createOrShow(context.extensionUri, activeProject.id);
+	});
+
+	// Projects - Edit Instructions
+	safeRegisterCommand(context, 'tarx.projects.editInstructions', async (projectId?: string) => {
+		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+		if (!workspaceFolder) {
+			vscode.window.showWarningMessage('No workspace folder open');
+			return;
+		}
+
+		// Open the config.json file for editing instructions
+		const configPath = path.join(workspaceFolder.uri.fsPath, '.tarx', 'config.json');
+		if (fs.existsSync(configPath)) {
+			const doc = await vscode.workspace.openTextDocument(configPath);
+			await vscode.window.showTextDocument(doc, { preview: false });
+		} else {
+			// Create default config
+			const tarxDir = path.join(workspaceFolder.uri.fsPath, '.tarx');
+			if (!fs.existsSync(tarxDir)) {
+				fs.mkdirSync(tarxDir, { recursive: true });
+			}
+			const defaultConfig = {
+				instructions: 'Add your project instructions here. These will be included in every TARX conversation.',
+				pinnedFiles: [],
+				ignorePatterns: ['node_modules', '.git', 'dist', 'build']
+			};
+			fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2));
+			const doc = await vscode.workspace.openTextDocument(configPath);
+			await vscode.window.showTextDocument(doc, { preview: false });
+		}
+		console.log('[TARX] Opened project config for editing');
+	});
+
+	// Projects - Edit Settings (alias for editInstructions)
+	safeRegisterCommand(context, 'tarx.projects.editSettings', async (projectId?: string) => {
+		await vscode.commands.executeCommand('tarx.projects.editInstructions', projectId);
+	});
+
+	// Projects - Create (called by TARX sidebar modal)
+	// This saves to the DATABASE so tarx.projects.list returns it
+	safeRegisterCommand(context, 'tarx.projects.create', async (name: string, mode?: string, importPath?: string, instructions?: string) => {
+		console.log('[TARX] tarx.projects.create called with name:', name, 'mode:', mode);
+
+		if (!name || name.trim().length === 0) {
+			vscode.window.showErrorMessage('Project name is required');
+			return;
+		}
+
+		// Validate project name format
+		const trimmedName = name.trim();
+		if (trimmedName.length > 50) {
+			vscode.window.showErrorMessage('Project name too long (max 50 characters)');
+			return;
+		}
+		if (!/^[a-zA-Z0-9][a-zA-Z0-9_\- .]*$/.test(trimmedName)) {
+			vscode.window.showErrorMessage('Project name must start with letter/number and contain only letters, numbers, spaces, dashes, underscores, dots');
+			return;
+		}
+
+		let workspacePath: string;
+
+		if (mode === 'import' && importPath) {
+			// Import mode — use the user-selected folder
+			workspacePath = importPath;
+
+			if (!fs.existsSync(workspacePath)) {
+				vscode.window.showErrorMessage('Selected folder does not exist');
+				return;
+			}
+
+			try {
+				fs.accessSync(workspacePath, fs.constants.R_OK);
+			} catch {
+				vscode.window.showErrorMessage('No read permission for selected folder');
+				return;
+			}
+		} else {
+			// Create mode — make a new folder under ~/TARX Projects/
+			const homeDir = process.env.HOME || process.env.USERPROFILE || '/tmp';
+			const projectsRoot = path.join(homeDir, 'TARX Projects');
+
+			// Ensure ~/TARX Projects/ exists
+			if (!fs.existsSync(projectsRoot)) {
+				fs.mkdirSync(projectsRoot, { recursive: true });
+			}
+
+			workspacePath = path.join(projectsRoot, trimmedName);
+
+			if (fs.existsSync(workspacePath)) {
+				const use = await vscode.window.showWarningMessage(
+					`Folder "${trimmedName}" already exists in ~/TARX Projects/. Use it?`,
+					'Use Existing',
+					'Cancel'
+				);
+				if (use !== 'Use Existing') {
+					return;
+				}
+			} else {
+				fs.mkdirSync(workspacePath, { recursive: true });
+			}
+		}
+
+		console.log('[TARX] Creating project at:', workspacePath);
+
+		if (!db) {
+			vscode.window.showErrorMessage('Database not initialized');
+			return;
+		}
+
+		try {
+			// Create project in database
+			const newProject = await db.createProject({
+				name: trimmedName,
+				root: workspacePath,
+				type: 'general',
+				isActive: true
+			});
+
+			// Set as active project
+			activeProject = newProject;
+			await db.setActiveProject(newProject.id);
+
+			console.log('[TARX] Project created in database:', newProject.id);
+
+			// Build project data object once
+			const projectData = {
+				id: newProject.id,
+				name: newProject.name,
+				path: newProject.root,
+				type: newProject.type || 'general',
+				createdAt: newProject.createdAt,
+				updatedAt: Date.now(),
+				instructions: instructions?.trim()
+			};
+
+			// Update tree provider directly (no DB re-sync needed since we just wrote)
+			if (projectTreeProvider) {
+				projectTreeProvider.addProject(projectData);
+				projectTreeProvider.setCurrentProject(projectData);
+				projectTreeProvider.refresh();
+			}
+
+			vscode.window.showInformationMessage(`Project "${trimmedName}" created!`);
+
+			// Open the new folder in the workspace
+			const folderUri = vscode.Uri.file(workspacePath);
+			await vscode.commands.executeCommand('vscode.openFolder', folderUri, { forceNewWindow: false });
+
+		} catch (error) {
+			console.error('[TARX] Error creating project:', error);
+			vscode.window.showErrorMessage(`Failed to create project: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	});
+
+	// Open Chat with pre-filled prompt
+	safeRegisterCommand(context, 'tarx.openChat', async (prompt?: string) => {
+		if (prompt) {
+			await vscode.commands.executeCommand('workbench.action.chat.open', { query: `@tarx ${prompt}` });
+		} else {
+			await vscode.commands.executeCommand('workbench.action.chat.open', { query: '@tarx ' });
+		}
+	});
+
 	console.log('[TARX] Sidebar nav commands registered');
 
 	// ========================================
@@ -1339,6 +4061,57 @@ _Add any project notes here_
 		} else {
 			vscode.window.showErrorMessage(`TARX: ${result.message}`);
 		}
+	});
+
+	// Copy artifact content to clipboard
+	safeRegisterCommand(context, 'tarx.copyArtifact', async (artifact: any) => {
+		if (!artifact?.content) {
+			vscode.window.showErrorMessage('No artifact content to copy');
+			return;
+		}
+		await vscode.env.clipboard.writeText(artifact.content);
+		vscode.window.showInformationMessage('Code copied to clipboard');
+	});
+
+	// View artifact in new untitled editor
+	safeRegisterCommand(context, 'tarx.viewArtifact', async (artifact: any) => {
+		if (!artifact?.content) {
+			vscode.window.showErrorMessage('No artifact content to view');
+			return;
+		}
+		// Create untitled document with proper language
+		const languageMap: { [key: string]: string } = {
+			'js': 'javascript', 'ts': 'typescript', 'tsx': 'typescriptreact',
+			'jsx': 'javascriptreact', 'py': 'python', 'rb': 'ruby',
+			'rs': 'rust', 'go': 'go', 'java': 'java', 'cpp': 'cpp',
+			'c': 'c', 'cs': 'csharp', 'php': 'php', 'swift': 'swift',
+			'kt': 'kotlin', 'scala': 'scala', 'html': 'html', 'css': 'css',
+			'json': 'json', 'yaml': 'yaml', 'yml': 'yaml', 'md': 'markdown',
+			'sql': 'sql', 'sh': 'shellscript', 'bash': 'shellscript'
+		};
+		const lang = languageMap[artifact.language] || artifact.language || 'plaintext';
+		const doc = await vscode.workspace.openTextDocument({
+			content: artifact.content,
+			language: lang
+		});
+		await vscode.window.showTextDocument(doc, { preview: false });
+	});
+
+	// Insert artifact at cursor position in active editor
+	safeRegisterCommand(context, 'tarx.insertArtifact', async (artifact: any) => {
+		if (!artifact?.content) {
+			vscode.window.showErrorMessage('No artifact content to insert');
+			return;
+		}
+		const editor = vscode.window.activeTextEditor;
+		if (!editor) {
+			vscode.window.showWarningMessage('No active editor to insert code into');
+			return;
+		}
+		await editor.edit(editBuilder => {
+			editBuilder.insert(editor.selection.active, artifact.content);
+		});
+		vscode.window.showInformationMessage('Code inserted at cursor');
 	});
 
 	// ========================================
@@ -1398,13 +4171,17 @@ _Add any project notes here_
 	// 7b. Conversation History Command (for sidebar integration)
 	// ========================================
 	safeRegisterCommand(context, 'tarx.getConversationHistory', async (limit: number = 10) => {
+		console.log('[TARX] getConversationHistory called with limit:', limit);
 		if (!db) {
+			console.log('[TARX] getConversationHistory: No database instance');
 			return { conversations: [], turns: [] };
 		}
 
 		try {
 			const projectId = activeProject?.id || null;
+			console.log('[TARX] getConversationHistory: projectId =', projectId);
 			const conversations = await db.getRecentConversations(projectId, limit);
+			console.log('[TARX] getConversationHistory: found', conversations.length, 'conversations');
 			const turns = await db.getRecentTurns(projectId, limit * 2);
 
 			// Format for sidebar display
@@ -1432,6 +4209,194 @@ _Add any project notes here_
 	});
 
 	// ========================================
+	// 7c. Session History Command (for unified sidebar - reads MCP memory.db)
+	// ========================================
+	safeRegisterCommand(context, 'tarx.getSessionHistory', async (limit: number = 50) => {
+		console.log('[TARX] getSessionHistory called, limit:', limit);
+		try {
+			// Read from MCP server's memory.db database (not extension's tarx.db)
+			const mcpDbPath = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
+			console.log('[TARX] getSessionHistory: checking path:', mcpDbPath);
+
+			if (!fs.existsSync(mcpDbPath)) {
+				console.log('[TARX] getSessionHistory: MCP database not found at', mcpDbPath);
+				return { sessions: [] };
+			}
+			console.log('[TARX] getSessionHistory: database file exists');
+
+			// Use sqlite3 CLI to avoid native module version issues
+			const query = `
+				SELECT
+					s.id,
+					s.title,
+					s.updated_at as updatedAt,
+					s.space_id as spaceId,
+					s.model,
+					s.message_count as messageCount,
+					sp.name as spaceName,
+					sp.emoji as spaceEmoji
+				FROM sessions s
+				LEFT JOIN spaces sp ON s.space_id = sp.id
+				WHERE s.deleted_at IS NULL
+				ORDER BY s.updated_at DESC
+				LIMIT ${limit}
+			`;
+
+			const result = execSync(`sqlite3 "${mcpDbPath}" -json`, {
+				encoding: 'utf8',
+				input: query
+			});
+
+			const rows = JSON.parse(result || '[]') as Array<{
+				id: string;
+				title: string;
+				updatedAt: number;
+				spaceId: string;
+				model: string | null;
+				messageCount: number;
+				spaceName: string | null;
+				spaceEmoji: string | null;
+			}>;
+
+			const allSessions = rows.map(row => ({
+				id: row.id,
+				title: row.title || 'Untitled',
+				updatedAt: row.updatedAt,
+				spaceId: row.spaceId,
+				spaceName: row.spaceName || 'Unknown Space',
+				spaceEmoji: row.spaceEmoji || '💬',
+				model: row.model,
+				messageCount: row.messageCount || 0
+			}));
+
+			// Deduplicate sessions with identical titles in the same space
+			// (e.g., "Autonomic Daemon Session" flood). Keep the most recent,
+			// append count if duplicates exist.
+			const seen = new Map<string, { session: typeof allSessions[0]; count: number }>();
+			for (const s of allSessions) {
+				const key = `${s.spaceId}::${s.title}`;
+				const existing = seen.get(key);
+				if (existing) {
+					existing.count++;
+				} else {
+					seen.set(key, { session: s, count: 1 });
+				}
+			}
+			const sessions = Array.from(seen.values()).map(({ session, count }) => ({
+				...session,
+				title: count > 1 ? `${session.title} (${count})` : session.title
+			}));
+
+			console.log('[TARX] Loaded', allSessions.length, 'sessions, deduped to', sessions.length);
+			return { sessions };
+		} catch (e) {
+			console.error('[TARX] Failed to get session history from MCP database:', e);
+			return { sessions: [] };
+		}
+	});
+
+	// Mark history commands as ready — allows loadSidebarHistory() to proceed safely
+	// (Fixes Sentry NODE-A: "HostProvider not setup" — 2533 errors from race condition)
+	historyCommandsReady = true;
+	console.log('[TARX] History commands registered — loadSidebarHistory() now safe to call');
+
+	// Trigger initial history load now that commands are ready
+	ensureClaudeAISpace().then(() => loadSidebarHistory()).catch(e => console.error('[TARX] Deferred history load failed:', e));
+
+	// ========================================
+	// 7d. Claude.ai Sessions Command - List sessions from Claude.ai Sessions space only
+	// ========================================
+	safeRegisterCommand(context, 'tarx.getClaudeAISessions', async (limit: number = 50) => {
+		console.log('[TARX] getClaudeAISessions called, limit:', limit);
+		try {
+			const mcpDbPath = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
+			if (!fs.existsSync(mcpDbPath)) {
+				console.log('[TARX] getClaudeAISessions: MCP database not found');
+				return { sessions: [], spaceId: null };
+			}
+
+			// First find the Claude.ai Sessions space
+			const spaceQuery = "SELECT id, name, emoji, message_count, created_at FROM spaces WHERE name = 'Claude.ai Sessions' AND deleted_at IS NULL LIMIT 1";
+			const spaceResult = execSync(`sqlite3 "${mcpDbPath}" -json`, {
+				encoding: 'utf8',
+				input: spaceQuery
+			});
+
+			const spaces = JSON.parse(spaceResult || '[]') as Array<{
+				id: string;
+				name: string;
+				emoji: string;
+				message_count: number;
+				created_at: number;
+			}>;
+
+			if (spaces.length === 0) {
+				console.log('[TARX] Claude.ai Sessions space not found');
+				return { sessions: [], spaceId: null };
+			}
+
+			const space = spaces[0];
+
+			// Query sessions from this space only
+			const sessionsQuery = `
+				SELECT
+					s.id,
+					s.title,
+					s.topic,
+					s.updated_at as updatedAt,
+					s.last_activity as lastActivity,
+					s.message_count as messageCount,
+					s.total_tokens as totalTokens,
+					s.model
+				FROM sessions s
+				WHERE s.space_id = '${space.id}' AND s.deleted_at IS NULL
+				ORDER BY COALESCE(s.last_activity, s.updated_at) DESC
+				LIMIT ${limit}
+			`;
+
+			const sessionsResult = execSync(`sqlite3 "${mcpDbPath}" -json`, {
+				encoding: 'utf8',
+				input: sessionsQuery
+			});
+
+			const rows = JSON.parse(sessionsResult || '[]') as Array<{
+				id: string;
+				title: string | null;
+				topic: string | null;
+				updatedAt: number;
+				lastActivity: number | null;
+				messageCount: number;
+				totalTokens: number;
+				model: string | null;
+			}>;
+
+			const sessions = rows.map(row => ({
+				id: row.id,
+				title: row.title || 'Untitled',
+				topic: row.topic,
+				updatedAt: row.updatedAt,
+				lastActivity: row.lastActivity || row.updatedAt,
+				messageCount: row.messageCount || 0,
+				totalTokens: row.totalTokens || 0,
+				model: row.model || 'claude.ai',
+				viewUrl: `tarx://session/${row.id}`
+			}));
+
+			console.log('[TARX] Loaded', sessions.length, 'Claude.ai sessions');
+			return {
+				sessions,
+				spaceId: space.id,
+				spaceName: space.name,
+				spaceEmoji: space.emoji,
+				totalSessions: sessions.length
+			};
+		} catch (e) {
+			console.error('[TARX] Failed to get Claude.ai sessions:', e);
+			return { sessions: [], spaceId: null };
+		}
+	});
+
+	// ========================================
 	// 8. Workspace change listeners
 	// ========================================
 	context.subscriptions.push(
@@ -1441,12 +4406,81 @@ _Add any project notes here_
 				if (projectIndexer && db) {
 					const project = await projectIndexer.ensureProject(folder.uri);
 					activeProject = project;
+
+					// Sync with ProjectTreeProvider
+					if (projectTreeProvider) {
+						projectTreeProvider.addProject({
+							id: project.id,
+							name: project.name,
+							path: project.root,
+							type: project.type || 'general',
+							createdAt: project.createdAt,
+							updatedAt: Date.now()
+						});
+						projectTreeProvider.setCurrentProject({
+							id: project.id,
+							name: project.name,
+							path: project.root,
+							type: project.type || 'general',
+							createdAt: project.createdAt,
+							updatedAt: Date.now()
+						});
+					}
+
 					// Start background indexing
 					projectIndexer.startIndexing(project);
 				}
 			}
+
+			// Handle removed folders
+			for (const folder of e.removed) {
+				// Clear current project if it matches the removed folder
+				if (activeProject && activeProject.root === folder.uri.fsPath) {
+					activeProject = undefined;
+					if (projectTreeProvider) {
+						projectTreeProvider.setCurrentProject(null);
+					}
+				}
+			}
 		})
 	);
+
+	// ========================================
+	// 9. Welcome Command (Manual access)
+	// Note: First-run onboarding is handled by executeFirstRunFlow()
+	// ========================================
+
+	// Show Welcome command - opens the welcome markdown file (manual access)
+	safeRegisterCommand(context, 'tarx.showWelcome', async () => {
+		const welcomePath = path.join(context.extensionPath, 'media', 'welcome.md');
+		const welcomeUri = vscode.Uri.file(welcomePath);
+		try {
+			await vscode.commands.executeCommand('markdown.showPreview', welcomeUri);
+			console.log('[TARX] Welcome file opened');
+		} catch (e) {
+			// Fallback: open as text
+			const doc = await vscode.workspace.openTextDocument(welcomeUri);
+			await vscode.window.showTextDocument(doc);
+		}
+	});
+
+	// Reset first-run command (for testing/debugging)
+	safeRegisterCommand(context, 'tarx.resetFirstRun', async () => {
+		const { FirstRunManager } = await import('./services/firstRunFlow.js');
+		const firstRunMgr = new FirstRunManager(context);
+		await firstRunMgr.resetFirstRun();
+		vscode.window.showInformationMessage('TARX: First-run state reset. Restart to see onboarding.');
+	});
+
+	// Start the Autonomic Daemon (background self-healing and mesh compute)
+	initAutonomicDaemon(context).catch(e => {
+		console.error('[TARX] Autonomic daemon init error:', e);
+	});
+
+	// Run startup self-checks (non-blocking)
+	runStartupChecks().catch(e => {
+		console.error('[TARX] Startup checks error:', e);
+	});
 
 	console.log('[TARX] Extension activated - Use @tarx in chat');
 }
@@ -1463,6 +4497,21 @@ async function initializeWorkspace(context: vscode.ExtensionContext): Promise<vo
 		const project = await projectIndexer.ensureProject(workspaceFolder.uri);
 		activeProject = project;
 		console.log(`[TARX] Active project: ${project.name} (${project.type || 'unknown'})`);
+
+		// Sync with ProjectTreeProvider
+		if (projectTreeProvider) {
+			const projectData = {
+				id: project.id,
+				name: project.name,
+				path: project.root,
+				type: project.type || 'general',
+				createdAt: project.createdAt,
+				updatedAt: Date.now()
+			};
+			projectTreeProvider.addProject(projectData);
+			projectTreeProvider.setCurrentProject(projectData);
+			console.log('[TARX] Project synced with tree provider');
+		}
 
 		// Check if this is a TARX project (has .tarx folder)
 		const tarxDir = path.join(workspaceFolder.uri.fsPath, '.tarx');
@@ -1499,6 +4548,17 @@ _Add any project notes here_
 				const doc = await vscode.workspace.openTextDocument(overviewPath);
 				await vscode.window.showTextDocument(doc, { preview: false });
 			}, 500);
+		} else if (isTarxProject && fs.existsSync(overviewPath)) {
+			// Open project.md for existing TARX projects
+			console.log('[TARX] Opening project dashboard for existing project');
+			setTimeout(async () => {
+				try {
+					const doc = await vscode.workspace.openTextDocument(overviewPath);
+					await vscode.window.showTextDocument(doc, { preview: false });
+				} catch (e) {
+					console.error('[TARX] Failed to open project overview:', e);
+				}
+			}, 500);
 		}
 
 		// Set up file watcher for incremental indexing
@@ -1532,6 +4592,151 @@ _Add any project notes here_
 	}
 }
 
+// Start the Autonomic Daemon (background self-healing service)
+async function initAutonomicDaemon(context: vscode.ExtensionContext): Promise<void> {
+	// Check if autonomic mode is enabled (default: true)
+	const config = vscode.workspace.getConfiguration('tarx');
+	const autonomicEnabled = config.get<boolean>('autonomic.enabled', true);
+
+	if (!autonomicEnabled) {
+		console.log('[TARX Autonomic] Disabled via settings (tarx.autonomic.enabled)');
+		return;
+	}
+
+	try {
+		console.log('[TARX Autonomic] Starting daemon...');
+		await startDaemon();
+		console.log('[TARX Autonomic] Daemon started successfully');
+
+		// Register daemon commands
+		context.subscriptions.push(
+			vscode.commands.registerCommand('tarx.autonomic.status', async () => {
+				const daemon = getDaemon();
+				const state = daemon.getState();
+				const uptimeMin = Math.floor((Date.now() - state.startedAt) / 60000);
+				vscode.window.showInformationMessage(
+					`TARX Autonomic: ${state.mode} | ` +
+					`Node: ${state.nodeId.substring(0, 8)}... | ` +
+					`Uptime: ${uptimeMin}m | ` +
+					`Healed: ${state.errorsHealed}/${state.errorsAnalyzed} | ` +
+					`Rep: ${state.reputation.toFixed(2)}`
+				);
+			}),
+			vscode.commands.registerCommand('tarx.autonomic.stop', async () => {
+				const daemon = getDaemon();
+				daemon.emergencyStop();
+				vscode.window.showWarningMessage('TARX Autonomic: Emergency stop activated - observe only mode');
+			}),
+			vscode.commands.registerCommand('tarx.autonomic.dashboard', async () => {
+				// Open the admin dashboard in browser
+				const dashboardUrl = 'http://localhost:11439';
+				vscode.env.openExternal(vscode.Uri.parse(dashboardUrl));
+			})
+		);
+	} catch (e) {
+		console.error('[TARX Autonomic] Failed to start daemon:', e);
+	}
+
+	// ========================================
+	// FINAL: PUSH data to sidebar (not pull via commands)
+	// The webview's 'ready' message fires before extension activates,
+	// causing stubs to return empty arrays. Fix: extension PUSHES data.
+	// ========================================
+	console.log('[TARX] All commands registered - PUSHING data to sidebar...');
+
+	const pushDataToSidebar = async () => {
+		if (!webviewSidebarProvider) {
+			console.log('[TARX] No webviewSidebarProvider - skipping push');
+			return;
+		}
+
+		try {
+			// Query projects directly from DB (bypass command system)
+			const mcpDbPath = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
+			if (fs.existsSync(mcpDbPath)) {
+				const projectQuery = `
+					SELECT id, name, emoji, created_at as createdAt, updated_at as updatedAt
+					FROM spaces
+					WHERE deleted_at IS NULL
+					ORDER BY last_accessed_at DESC
+					LIMIT 50
+				`;
+				const projectResult = execSync(`sqlite3 "${mcpDbPath}" -json`, {
+					encoding: 'utf8',
+					input: projectQuery
+				});
+				const projectRows = JSON.parse(projectResult || '[]') as Array<{
+					id: string;
+					name: string;
+					emoji: string | null;
+					createdAt: number;
+					updatedAt: number;
+				}>;
+				const projects = projectRows.map(row => ({
+					id: row.id,
+					name: row.name,
+					path: row.name,
+					type: null,
+					isActive: false,
+					createdAt: row.createdAt
+				}));
+
+				console.log('[TARX] PUSHING', projects.length, 'projects to sidebar');
+				webviewSidebarProvider.updateProjects(projects);
+
+				// Query sessions/history directly from DB
+				const historyQuery = `
+					SELECT s.id, s.title, s.updated_at as updatedAt, s.space_id as spaceId, sp.name as spaceName
+					FROM sessions s
+					LEFT JOIN spaces sp ON s.space_id = sp.id
+					WHERE s.deleted_at IS NULL
+					ORDER BY s.updated_at DESC
+					LIMIT 50
+				`;
+				const historyResult = execSync(`sqlite3 "${mcpDbPath}" -json`, {
+					encoding: 'utf8',
+					input: historyQuery
+				});
+				const historyRows = JSON.parse(historyResult || '[]') as Array<{
+					id: string;
+					title: string | null;
+					updatedAt: number;
+					spaceId: string;
+					spaceName: string | null;
+				}>;
+				const history = historyRows.map(row => ({
+					id: row.id,
+					title: row.title || 'Untitled',
+					timestamp: row.updatedAt,
+					source: 'claude' as const,
+					spaceId: row.spaceId,
+					spaceName: row.spaceName || undefined
+				}));
+
+				console.log('[TARX] PUSHING', history.length, 'history items to sidebar');
+				webviewSidebarProvider.updateHistory(history);
+			} else {
+				console.log('[TARX] DB not found, pushing empty arrays');
+				webviewSidebarProvider.updateProjects([]);
+				webviewSidebarProvider.updateHistory([]);
+			}
+		} catch (e) {
+			console.error('[TARX] Failed to push data to sidebar:', e);
+		}
+	};
+
+	// Push data with extended retry window (webview may still be loading)
+	const pushDelays = [100, 500, 1500, 3000, 5000, 8000];
+	for (const delay of pushDelays) {
+		setTimeout(() => {
+			console.log(`[TARX] Push attempt at ${delay}ms`);
+			pushDataToSidebar();
+		}, delay);
+	}
+
+	console.log('[TARX] ========== EXTENSION ACTIVATION COMPLETE ==========');
+}
+
 export function deactivate() {
 	console.log('[TARX] Extension deactivating...');
 
@@ -1547,4 +4752,17 @@ export function deactivate() {
 	languageModelProvider?.dispose();
 	projectIndexer?.dispose();
 	fileWatcher?.dispose();
+	proactiveSystem?.dispose();
+	creditBridge?.dispose();
+
+	// Stop Autonomic Daemon
+	stopDaemon().catch(e => {
+		console.error('[TARX Autonomic] Failed to stop daemon:', e);
+	});
+
+	// Close MCP database connection (performance optimization cleanup)
+	closeMCPDatabase();
+
+	// Flush console logs to disk before shutdown
+	flushTarxLogs();
 }

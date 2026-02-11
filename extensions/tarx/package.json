@@ -1,24 +1,34 @@
 {
-  "name": "tarx",
+  "name": "tarx-code",
   "displayName": "TARX",
-  "description": "Local-first AI assistant with GPU-accelerated inference",
-  "version": "0.1.0",
+  "description": "Local-first AI coding assistant powered by TARX Desktop. Your code stays private.",
+  "version": "1.0.0",
   "publisher": "tarx-ai",
   "license": "MIT",
+  "icon": "media/tarx-icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tarx-ai/tarx-code"
+  },
+  "homepage": "https://tarx.ai",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
     "AI",
-    "Machine Learning"
+    "Machine Learning",
+    "Programming Languages",
+    "Other"
   ],
   "keywords": [
     "ai",
     "llm",
     "local",
-    "inference",
+    "privacy",
     "copilot",
-    "code completion"
+    "code assistant",
+    "tarx",
+    "offline"
   ],
   "activationEvents": [
     "onStartupFinished"
@@ -27,8 +37,7 @@
   "enabledApiProposals": [
     "defaultChatParticipant",
     "chatParticipantAdditions",
-    "chatProvider",
-    "speech"
+    "chatProvider"
   ],
   "contributes": {
     "languageModelChatProviders": [
@@ -111,6 +120,11 @@
         "title": "TARX: Show Connection Status"
       },
       {
+        "command": "tarx.billing.manage",
+        "title": "TARX: Manage Billing",
+        "icon": "$(credit-card)"
+      },
+      {
         "command": "tarx.indexProject",
         "title": "TARX: Index Current Project"
       },
@@ -121,9 +135,202 @@
       {
         "command": "tarx.applyArtifact",
         "title": "TARX: Apply Code Artifact"
+      },
+      {
+        "command": "tarx.showWelcome",
+        "title": "TARX: Show Welcome"
+      },
+      {
+        "command": "tarx.testExecution",
+        "title": "TARX: Test Execution",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "tarx.runOvernightTests",
+        "title": "TARX: Run Overnight Tests (50 conversations)",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "tarx.stopOvernightTests",
+        "title": "TARX: Stop Overnight Tests",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "tarx.test.runConversationalSuite",
+        "title": "TARX: Run Conversational Test Suite",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "tarx.test.runSmokeTest",
+        "title": "TARX: Run Smoke Test",
+        "icon": "$(play)"
+      },
+      {
+        "command": "tarx.test.testSingleAction",
+        "title": "TARX: Test Single Action Intent",
+        "icon": "$(debug-console)"
+      },
+      {
+        "command": "tarx.runQA",
+        "title": "TARX: Run QA Test Suite",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "tarx.projects.refresh",
+        "title": "TARX: Refresh Projects",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "tarx.projects.createFromWorkspace",
+        "title": "TARX: Initialize Project",
+        "icon": "$(add)"
+      },
+      {
+        "command": "tarx.projects.create",
+        "title": "TARX: Create Project (Modal)",
+        "icon": "$(add)"
+      },
+      {
+        "command": "tarx.openProjectContext",
+        "title": "TARX: Open Project Context",
+        "icon": "$(folder)"
+      },
+      {
+        "command": "tarx.openCreateProject",
+        "title": "TARX: Create Project",
+        "icon": "$(add)"
+      },
+      {
+        "command": "tarx.projects.remove",
+        "title": "Remove from Recent Projects",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "tarx.changeProjectColor",
+        "title": "TARX: Change Project Color",
+        "icon": "$(symbol-color)"
+      },
+      {
+        "command": "tarx.setActiveProject",
+        "title": "Set as Active Project",
+        "icon": "$(check)"
+      },
+      {
+        "command": "tarx.openSession",
+        "title": "Open Conversation",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "tarx.newSession",
+        "title": "TARX: New Conversation",
+        "icon": "$(add)"
+      },
+      {
+        "command": "tarx.exportSession",
+        "title": "Export Conversation as Markdown",
+        "icon": "$(export)"
+      },
+      {
+        "command": "tarx.deleteSession",
+        "title": "Delete Conversation",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "tarx.injectFile",
+        "title": "Add File to Chat Context",
+        "icon": "$(add)"
+      },
+      {
+        "command": "tarx.attachFileToChat",
+        "title": "TARX: Attach File to Chat",
+        "icon": "$(attach)"
+      },
+      {
+        "command": "tarx.attachUploadedFileToChat",
+        "title": "TARX: Attach Uploaded File to Chat",
+        "icon": "$(attach)"
+      },
+      {
+        "command": "tarx.injectSelection",
+        "title": "TARX: Add Selection to Chat",
+        "icon": "$(add)"
+      },
+      {
+        "command": "tarx.clearFileContext",
+        "title": "TARX: Clear File Context",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "tarx.showCreateProject",
+        "title": "TARX: Create New Project",
+        "icon": "$(folder-add)"
+      },
+      {
+        "command": "tarx.showProjectDashboard",
+        "title": "TARX: Open Project Dashboard",
+        "icon": "$(dashboard)"
+      },
+      {
+        "command": "tarx.context.refresh",
+        "title": "TARX: Refresh Context Files",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "tarx.context.removeFile",
+        "title": "Remove from Context",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "tarx.refreshMcpSettings",
+        "title": "TARX: Refresh MCP Servers",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "tarx.openMcpConfig",
+        "title": "TARX: Open MCP Config",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "tarx.toggleMcpServer",
+        "title": "Toggle MCP Server"
+      },
+      {
+        "command": "tarx.viewMcpServerTools",
+        "title": "View Server Tools"
+      },
+      {
+        "command": "tarx.refreshClaudeSessions",
+        "title": "TARX: Refresh Claude Sessions",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "tarx.openClaudeSession",
+        "title": "TARX: Open Claude Session"
+      },
+      {
+        "command": "tarx.continueInClaude",
+        "title": "TARX: Continue in Claude.ai",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "tarx.spawnClaudeCode",
+        "title": "TARX: Open Claude Code",
+        "icon": "$(hubot)"
+      },
+      {
+        "command": "tarx.spawnClaudeCodeWithPrompt",
+        "title": "TARX: Run Claude Code with Prompt",
+        "icon": "$(run)"
       }
     ],
     "menus": {
+      "chat/input/toolbar": [
+        {
+          "command": "tarx.attachFileToChat",
+          "group": "navigation",
+          "when": "chatLocation == 'panel'"
+        }
+      ],
       "editor/context": [
         {
           "submenu": "tarx.submenu",
@@ -154,6 +361,80 @@
           "command": "tarx.addToContext",
           "group": "tarx@1",
           "when": "resourceScheme == file"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "tarx.projects.refresh",
+          "when": "view == tarx.projects",
+          "group": "navigation"
+        },
+        {
+          "command": "tarx.openCreateProject",
+          "when": "view == tarx.projects",
+          "group": "navigation"
+        },
+        {
+          "command": "tarx.refreshMcpSettings",
+          "when": "view == tarx.mcpSettings",
+          "group": "navigation"
+        },
+        {
+          "command": "tarx.openMcpConfig",
+          "when": "view == tarx.mcpSettings",
+          "group": "navigation"
+        },
+        {
+          "command": "tarx.refreshClaudeSessions",
+          "when": "view == tarx.claudeSessions",
+          "group": "navigation"
+        },
+        {
+          "command": "tarx.context.refresh",
+          "when": "view == tarx.contextFiles",
+          "group": "navigation"
+        },
+        {
+          "command": "tarx.clearFileContext",
+          "when": "view == tarx.contextFiles",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "tarx.openProjectContext",
+          "when": "view == tarx.projects && viewItem == currentProject",
+          "group": "inline"
+        },
+        {
+          "command": "tarx.projects.remove",
+          "when": "view == tarx.projects && viewItem == project",
+          "group": "navigation"
+        },
+        {
+          "command": "tarx.toggleMcpServer",
+          "when": "view == tarx.mcpSettings && viewItem == mcpServer",
+          "group": "inline"
+        },
+        {
+          "command": "tarx.viewMcpServerTools",
+          "when": "view == tarx.mcpSettings && viewItem == mcpServer",
+          "group": "navigation"
+        },
+        {
+          "command": "tarx.changeProjectColor",
+          "when": "view == tarx.projects && viewItem =~ /project|currentProject/",
+          "group": "navigation"
+        },
+        {
+          "command": "tarx.setActiveProject",
+          "when": "view == tarx.projects && viewItem == project",
+          "group": "navigation"
+        },
+        {
+          "command": "tarx.context.removeFile",
+          "when": "view == tarx.contextFiles && viewItem =~ /contextFile|contextSelection/",
+          "group": "inline"
         }
       ]
     },
@@ -192,58 +473,102 @@
         "key": "ctrl+k ctrl+f",
         "mac": "cmd+k cmd+f",
         "when": "editorHasSelection"
+      },
+      {
+        "command": "tarx.spawnClaudeCode",
+        "key": "ctrl+shift+;",
+        "mac": "cmd+shift+;"
       }
     ],
-    "configuration": {
-      "title": "TARX",
-      "properties": {
-        "tarx.serverUrl": {
-          "type": "string",
-          "default": "http://localhost:11435",
-          "description": "TARX llama-server URL"
-        },
-        "tarx.ragUrl": {
-          "type": "string",
-          "default": "http://localhost:11437",
-          "description": "TARX RAG embedding server URL (nomic-embed)"
-        },
-        "tarx.model": {
-          "type": "string",
-          "default": "local",
-          "description": "Model to use for chat and completions"
-        },
-        "tarx.completions.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable inline code completions"
-        },
-        "tarx.completions.debounceMs": {
-          "type": "number",
-          "default": 300,
-          "description": "Debounce delay for completions (milliseconds)"
-        },
-        "tarx.voiceUrl": {
-          "type": "string",
-          "default": "ws://127.0.0.1:11438",
-          "description": "TARX voice service WebSocket URL"
-        },
-        "tarx.voiceEnabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable voice input features"
-        },
-        "tarx.telemetry": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable TARX analytics and event tracking. No PII is collected.",
-          "tags": ["telemetry"]
-        }
-      }
-    },
-    "speechProviders": [
+    "configuration": [
       {
-        "name": "tarx",
-        "description": "TARX Voice (Moshi)"
+        "title": "TARX",
+        "properties": {
+          "tarx.serverUrl": {
+            "type": "string",
+            "default": "http://localhost:11435",
+            "description": "TARX llama-server URL"
+          },
+          "tarx.ragUrl": {
+            "type": "string",
+            "default": "http://localhost:11437",
+            "description": "TARX RAG embedding server URL (nomic-embed)"
+          },
+          "tarx.model": {
+            "type": "string",
+            "default": "local",
+            "description": "Model to use for chat and completions"
+          },
+          "tarx.completions.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable inline code completions"
+          },
+          "tarx.completions.debounceMs": {
+            "type": "number",
+            "default": 300,
+            "description": "Debounce delay for completions (milliseconds)"
+          },
+          "tarx.voiceUrl": {
+            "type": "string",
+            "default": "ws://127.0.0.1:11438",
+            "description": "TARX voice service WebSocket URL"
+          },
+          "tarx.voiceEnabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Enable voice input features (V1.5)"
+          },
+          "tarx.telemetry": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable TARX analytics and event tracking. No PII is collected.",
+            "tags": [
+              "telemetry"
+            ]
+          },
+          "tarx.thinking.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable thinking tokens display for Qwen 8.2B reasoning models"
+          },
+          "tarx.thinking.autoCollapse": {
+            "type": "boolean",
+            "default": false,
+            "description": "Automatically collapse thinking blocks (false = show for transparency)"
+          }
+        }
+      },
+      {
+        "title": "TARX Security",
+        "properties": {
+          "tarx.security.autoLockMinutes": {
+            "type": "number",
+            "default": 30,
+            "minimum": 1,
+            "maximum": 480,
+            "description": "Auto-lock TARX after this many minutes of inactivity",
+            "order": 1
+          },
+          "tarx.security.requireOnStartup": {
+            "type": "boolean",
+            "default": true,
+            "description": "Require PIN authentication when VS Code starts",
+            "order": 2
+          },
+          "tarx.security.enable2FA": {
+            "type": "boolean",
+            "default": false,
+            "description": "Enable SMS two-factor authentication for extra security",
+            "order": 3
+          },
+          "tarx.security.devBypassAuth": {
+            "type": "boolean",
+            "default": false,
+            "description": "[DEV ONLY] Skip PIN authentication for MCP testing and automated verification",
+            "order": 4
+          }
+        }
       }
     ],
     "viewsContainers": {
@@ -251,36 +576,131 @@
         {
           "id": "tarx-sidebar",
           "title": "TARX",
-          "icon": "$(comment-discussion)"
+          "icon": "$(comment-discussion)",
+          "order": 10
         }
       ]
     },
     "views": {
       "tarx-sidebar": [
         {
-          "id": "tarx.sidebar",
+          "type": "webview",
+          "id": "tarx.sidebarWebview",
           "name": "TARX",
-          "type": "tree"
+          "visibility": "visible"
+        },
+        {
+          "id": "tarx.projects",
+          "name": "Projects",
+          "type": "tree",
+          "visibility": "collapsed"
+        },
+        {
+          "id": "tarx.projectSections",
+          "name": "Project Explorer",
+          "type": "tree",
+          "visibility": "visible"
+        },
+        {
+          "id": "tarx.sidebar",
+          "name": "Conversations",
+          "type": "tree",
+          "visibility": "collapsed"
+        },
+        {
+          "id": "tarx.claudeSessions",
+          "name": "Claude.ai Sessions",
+          "type": "tree",
+          "visibility": "collapsed"
+        },
+        {
+          "id": "tarx.contextFiles",
+          "name": "Context Files",
+          "type": "tree",
+          "visibility": "collapsed"
+        },
+        {
+          "id": "tarx.mcpSettings",
+          "name": "MCP Servers",
+          "type": "tree",
+          "visibility": "collapsed"
         }
       ]
     },
     "viewsWelcome": [
       {
+        "view": "tarx.projects",
+        "contents": "No project initialized.\n\n[Initialize Project](command:tarx.openCreateProject)"
+      },
+      {
         "view": "tarx.sidebar",
-        "contents": "Welcome to TARX!\n\n[Start Conversation](command:workbench.action.chat.open)\n\nLocal-first AI assistant with GPU-accelerated inference."
+        "contents": "Welcome to Workbench!\n\n**Local. Private. Proactive.**\n\n[Start Conversation](command:workbench.action.chat.open)\n\nYour AI-powered development environment that runs entirely on your machine."
+      },
+      {
+        "view": "tarx.claudeSessions",
+        "contents": "Browse your Claude.ai conversations.\n\nSessions are synced from ~/.tarx/memory.db\n\n[Refresh Sessions](command:tarx.refreshClaudeSessions)"
+      },
+      {
+        "view": "tarx.mcpSettings",
+        "contents": "No MCP servers configured.\n\n[Open MCP Config](command:tarx.openMcpConfig)\n\nConfigure MCP servers to extend Claude.ai with local tools.",
+        "when": "tarx.noMcpServers"
+      },
+      {
+        "view": "tarx.contextFiles",
+        "contents": "No files in context.\n\nRight-click a file in Explorer and select \"Add File to Context\"\n\nor use @ in chat to reference files."
+      }
+    ],
+    "chatViewsWelcome": [
+      {
+        "icon": "$(tarx-icon)",
+        "title": "What are we working on?",
+        "content": "TARX is ready to assist with your code.\n\n**Local. Private. Proactive.**\n\n[Start New Chat](command:workbench.action.chat.open)"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "tarx.welcome",
+        "title": "Welcome to TARX",
+        "description": "Local-first AI. Your machine. Your data. Your control.",
+        "steps": [
+          {
+            "id": "tarx.openChat",
+            "title": "Open TARX Chat",
+            "description": "Press Cmd+Shift+T to start a conversation with TARX.\n\n[Open Chat](command:tarx.openChat)",
+            "media": {
+              "markdown": "media/welcome.md"
+            }
+          }
+        ]
       }
     ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
+    "compile": "tsc -p ./ && npm run compile:webview",
+    "compile:webview": "node esbuild.webview.js --production",
     "watch": "tsc -watch -p ./",
+    "watch:webview": "node esbuild.webview.js --watch",
     "lint": "eslint src --ext ts"
   },
+  "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "mic": "^2.1.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "sql.js": "^1.13.0",
+    "stripe": "^17.5.0",
+    "ws": "^8.16.0"
+  },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/minimatch": "^5.1.2",
     "@types/node": "^20.0.0",
+    "@types/react": "^18.3.27",
+    "@types/react-dom": "^18.3.7",
     "@types/vscode": "^1.85.0",
+    "@types/ws": "^8.5.10",
+    "esbuild": "^0.20.2",
     "typescript": "^5.3.0"
   }
 }

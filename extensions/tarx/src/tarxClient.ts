@@ -28,6 +28,20 @@ export interface HealthResponse {
 	model?: string;
 }
 
+/** Sanitize model path to a user-friendly display name (never expose raw file paths) */
+function sanitizeModelName(raw?: string): string {
+	if (!raw) { return 'Local AI'; }
+	// If it's a file path (contains / or \), extract just the filename
+	if (raw.includes('/') || raw.includes('\\')) {
+		const basename = raw.split(/[/\\]/).pop() || raw;
+		// Ollama blobs are like "sha256-2bada8a..." — show "Local Model"
+		if (basename.startsWith('sha256-')) { return 'Local Model'; }
+		// GGUF files: strip extension, e.g. "qwen2.5-coder-7b-q4.gguf" → "qwen2.5-coder-7b-q4"
+		return basename.replace(/\.gguf$/i, '');
+	}
+	return raw;
+}
+
 /**
  * HTTP client for communicating with TARX llama-server
  * Default port: 11435
@@ -48,28 +62,37 @@ export class TarxClient {
 	 */
 	async checkHealth(): Promise<{ healthy: boolean; latencyMs: number; model?: string }> {
 		const start = Date.now();
+		const healthUrl = `${this.serverUrl}/health`;
+		console.log(`[TARX Client] Health check: ${healthUrl}`);
+
 		try {
 			const controller = new AbortController();
 			const timeoutId = setTimeout(() => controller.abort(), 3000);
 
-			const response = await fetch(`${this.serverUrl}/health`, {
+			const response = await fetch(healthUrl, {
 				signal: controller.signal
 			});
 
 			clearTimeout(timeoutId);
 			const latencyMs = Date.now() - start;
 
+			console.log(`[TARX Client] Health response: ${response.status} (${latencyMs}ms)`);
+
 			if (response.ok) {
 				try {
 					const data = await response.json() as HealthResponse;
-					return { healthy: true, latencyMs, model: data.model || 'llama-server' };
+					console.log(`[TARX Client] Health OK: ${JSON.stringify(data)}`);
+					return { healthy: true, latencyMs, model: sanitizeModelName(data.model) };
 				} catch {
 					return { healthy: true, latencyMs, model: 'llama-server' };
 				}
 			}
+			console.log(`[TARX Client] Health failed: status ${response.status}`);
 			return { healthy: false, latencyMs };
-		} catch {
-			return { healthy: false, latencyMs: Date.now() - start };
+		} catch (error) {
+			const latencyMs = Date.now() - start;
+			console.log(`[TARX Client] Health error: ${error instanceof Error ? error.message : 'unknown'}`);
+			return { healthy: false, latencyMs };
 		}
 	}
 
@@ -85,23 +108,39 @@ export class TarxClient {
 			stream?: boolean;
 		} = {}
 	): Promise<ChatCompletionResponse> {
-		const response = await fetch(`${this.serverUrl}/v1/chat/completions`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				model: options.model || 'local',
-				messages,
-				temperature: options.temperature ?? 0.7,
-				max_tokens: options.maxTokens ?? 2048,
-				stream: options.stream ?? false
-			})
-		});
+		try {
+			const response = await fetch(`${this.serverUrl}/v1/chat/completions`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					messages,
+					temperature: options.temperature ?? 0.7,
+					max_tokens: options.maxTokens ?? 2048,
+					stream: options.stream ?? false,
+					repeat_penalty: 1.15,
+					presence_penalty: 0.3,
+					frequency_penalty: 0.1
+				})
+			});
 
-		if (!response.ok) {
-			throw new Error(`Chat completion failed: ${response.status} ${response.statusText}`);
+			if (!response.ok) {
+				if (response.status === 503) {
+					throw new Error('TARX is busy processing another request. Please wait and try again.');
+				}
+				throw new Error(`TARX inference failed: ${response.status} ${response.statusText}`);
+			}
+
+			return response.json() as Promise<ChatCompletionResponse>;
+		} catch (error: any) {
+			// Provide user-friendly error messages
+			if (error.cause?.code === 'ECONNREFUSED' || error.message?.includes('ECONNREFUSED')) {
+				throw new Error('TARX Desktop is not running. Please start TARX Desktop first.');
+			}
+			if (error.name === 'AbortError' || error.message?.includes('timeout')) {
+				throw new Error('TARX request timed out. The model may be overloaded.');
+			}
+			throw error;
 		}
-
-		return response.json() as Promise<ChatCompletionResponse>;
 	}
 
 	/**
@@ -115,20 +154,33 @@ export class TarxClient {
 			maxTokens?: number;
 		} = {}
 	): AsyncGenerator<string, void, unknown> {
-		const response = await fetch(`${this.serverUrl}/v1/chat/completions`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				model: options.model || 'local',
-				messages,
-				temperature: options.temperature ?? 0.7,
-				max_tokens: options.maxTokens ?? 2048,
-				stream: true
-			})
-		});
+		let response: Response;
+		try {
+			response = await fetch(`${this.serverUrl}/v1/chat/completions`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					messages,
+					temperature: options.temperature ?? 0.7,
+					max_tokens: options.maxTokens ?? 2048,
+					stream: true,
+					repeat_penalty: 1.15,
+					presence_penalty: 0.3,
+					frequency_penalty: 0.1
+				})
+			});
+		} catch (error: any) {
+			if (error.cause?.code === 'ECONNREFUSED' || error.message?.includes('ECONNREFUSED')) {
+				throw new Error('TARX Desktop is not running. Please start TARX Desktop first.');
+			}
+			throw error;
+		}
 
 		if (!response.ok) {
-			throw new Error(`Chat completion failed: ${response.status} ${response.statusText}`);
+			if (response.status === 503) {
+				throw new Error('TARX is busy processing another request. Please wait and try again.');
+			}
+			throw new Error(`TARX inference failed: ${response.status} ${response.statusText}`);
 		}
 
 		const reader = response.body?.getReader();

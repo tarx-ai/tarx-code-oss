@@ -52,7 +52,7 @@ export interface ISentryConfig {
 }
 
 /**
- * Default Sentry DSN for TARX Code (workbench project)
+ * Default Sentry DSN for Workbench (workbench project)
  * Project: workbench (Electron)
  * Project ID: 4510756453679104
  * Org: tarx-fo

@@ -14,7 +14,7 @@ import { PanelPart } from './parts/panel/panelPart.js';
 import { Position, Parts, PartOpensMaximizedOptions, IWorkbenchLayoutService, positionFromString, positionToString, partOpensMaximizedFromString, PanelAlignment, ActivityBarPosition, LayoutSettings, MULTI_WINDOW_PARTS, SINGLE_WINDOW_PARTS, ZenModeSettings, EditorTabsMode, EditorActionsLocation, shouldShowCustomTitleBar, isHorizontal, isMultiWindowPart } from '../services/layout/browser/layoutService.js';
 import { isTemporaryWorkspace, IWorkspaceContextService, WorkbenchState } from '../../platform/workspace/common/workspace.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../platform/storage/common/storage.js';
-import { IConfigurationChangeEvent, IConfigurationService, isConfigured } from '../../platform/configuration/common/configuration.js';
+import { IConfigurationChangeEvent, IConfigurationService } from '../../platform/configuration/common/configuration.js';
 import { ITitleService } from '../services/title/browser/titleService.js';
 import { ServicesAccessor } from '../../platform/instantiation/common/instantiation.js';
 import { StartupKind, ILifecycleService } from '../services/lifecycle/common/lifecycle.js';
@@ -633,7 +633,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 	private initLayoutState(lifecycleService: ILifecycleService, fileService: IFileService): void {
 		this._mainContainerDimension = getClientArea(this.parent, this.contextService.getWorkbenchState() === WorkbenchState.EMPTY ? DEFAULT_EMPTY_WINDOW_DIMENSIONS : DEFAULT_WORKSPACE_WINDOW_DIMENSIONS); // running with fallback to ensure no error is thrown (https://github.com/microsoft/vscode/issues/240242)
 
-		this.stateModel = new LayoutStateModel(this.storageService, this.configurationService, this.contextService, this.environmentService);
+		this.stateModel = new LayoutStateModel(this.storageService, this.configurationService, this.contextService);
 		this.stateModel.load({
 			mainContainerDimension: this._mainContainerDimension,
 			resetLayout: Boolean(this.layoutOptions?.resetLayout)
@@ -742,9 +742,8 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 			const viewContainerToRestore = this.storageService.get(AuxiliaryBarPart.activeViewSettingsKey, StorageScope.WORKSPACE, this.viewDescriptorService.getDefaultViewContainer(ViewContainerLocation.AuxiliaryBar)?.id);
 			if (viewContainerToRestore) {
 				this.state.initialization.views.containerToRestore.auxiliaryBar = viewContainerToRestore;
-			} else {
-				this.stateModel.setRuntimeValue(LayoutStateKeys.AUXILIARYBAR_HIDDEN, true);
 			}
+			// TARX: Don't hide auxiliary bar if no container - keep it visible for chat
 		}
 
 		// Window border
@@ -1084,13 +1083,19 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 			// Restoring views could mean that auxbar already
 			// restored, as such we need to test again
 			await restoreDefaultViewsPromise;
-			if (!this.state.initialization.views.containerToRestore.auxiliaryBar) {
+
+			// TARX: Always open auxiliary bar with chat if visible
+			let containerToRestore = this.state.initialization.views.containerToRestore.auxiliaryBar;
+			if (!containerToRestore && this.isVisible(Parts.AUXILIARYBAR_PART)) {
+				containerToRestore = this.viewDescriptorService.getDefaultViewContainer(ViewContainerLocation.AuxiliaryBar)?.id;
+			}
+			if (!containerToRestore) {
 				return;
 			}
 
 			mark('code/willRestoreAuxiliaryBar');
 
-			await this.openViewContainer(ViewContainerLocation.AuxiliaryBar, this.state.initialization.views.containerToRestore.auxiliaryBar);
+			await this.openViewContainer(ViewContainerLocation.AuxiliaryBar, containerToRestore);
 
 			mark('code/didRestoreAuxiliaryBar');
 		})());
@@ -2759,7 +2764,7 @@ const LayoutStateKeys = {
 	SIDEBAR_HIDDEN: new RuntimeStateKey<boolean>('sideBar.hidden', StorageScope.WORKSPACE, StorageTarget.MACHINE, false),
 	EDITOR_HIDDEN: new RuntimeStateKey<boolean>('editor.hidden', StorageScope.WORKSPACE, StorageTarget.MACHINE, false),
 	PANEL_HIDDEN: new RuntimeStateKey<boolean>('panel.hidden', StorageScope.WORKSPACE, StorageTarget.MACHINE, true),
-	AUXILIARYBAR_HIDDEN: new RuntimeStateKey<boolean>('auxiliaryBar.hidden', StorageScope.WORKSPACE, StorageTarget.MACHINE, true),
+	AUXILIARYBAR_HIDDEN: new RuntimeStateKey<boolean>('auxiliaryBar.hidden', StorageScope.WORKSPACE, StorageTarget.MACHINE, false), // TARX: Chat sidebar visible by default
 	STATUSBAR_HIDDEN: new RuntimeStateKey<boolean>('statusBar.hidden', StorageScope.WORKSPACE, StorageTarget.MACHINE, false, true)
 
 } as const;
@@ -2809,7 +2814,6 @@ class LayoutStateModel extends Disposable {
 		private readonly storageService: IStorageService,
 		private readonly configurationService: IConfigurationService,
 		private readonly contextService: IWorkspaceContextService,
-		private readonly environmentService: IBrowserWorkbenchEnvironmentService,
 	) {
 		super();
 
@@ -2872,44 +2876,11 @@ class LayoutStateModel extends Disposable {
 		this.stateCache.set(LayoutStateKeys.SIDEBAR_POSITON.name, positionFromString(this.configurationService.getValue(LegacyWorkbenchLayoutSettings.SIDEBAR_POSITION) ?? 'left'));
 
 		// Set dynamic defaults: part sizing and side bar visibility
-		const workbenchState = this.contextService.getWorkbenchState();
 		const mainContainerDimension = configuration.mainContainerDimension;
 		LayoutStateKeys.SIDEBAR_SIZE.defaultValue = Math.min(300, mainContainerDimension.width / 4);
-		LayoutStateKeys.SIDEBAR_HIDDEN.defaultValue = workbenchState === WorkbenchState.EMPTY;
+		LayoutStateKeys.SIDEBAR_HIDDEN.defaultValue = false; // TARX: Primary sidebar always visible by default (FTUX)
 		LayoutStateKeys.AUXILIARYBAR_SIZE.defaultValue = Math.min(300, mainContainerDimension.width / 4);
-		LayoutStateKeys.AUXILIARYBAR_HIDDEN.defaultValue = (() => {
-			if (isWeb && !this.environmentService.remoteAuthority) {
-				return true; // not required in web if unsupported
-			}
-
-			const configuration = this.configurationService.inspect(WorkbenchLayoutSettings.AUXILIARYBAR_DEFAULT_VISIBILITY);
-
-			// Unless auxiliary bar visibility is explicitly configured, make
-			// sure to not force open it in case we know it was empty before.
-			if (configuration.defaultValue !== 'hidden' && !isConfigured(configuration) && this.stateCache.get(LayoutStateKeys.AUXILIARYBAR_EMPTY.name)) {
-				return true;
-			}
-
-			// New users: Show auxiliary bar even in empty workspaces
-			// but not if the user explicitly hides it
-			if (
-				this.isNew[StorageScope.APPLICATION] &&
-				configuration.value !== 'hidden'
-			) {
-				return false;
-			}
-
-			// Existing users: respect visibility setting
-			switch (configuration.value) {
-				case 'hidden':
-					return true;
-				case 'visibleInWorkspace':
-				case 'maximizedInWorkspace':
-					return workbenchState === WorkbenchState.EMPTY;
-				default:
-					return false;
-			}
-		})();
+		LayoutStateKeys.AUXILIARYBAR_HIDDEN.defaultValue = false; // TARX: Chat sidebar always visible by default
 		LayoutStateKeys.PANEL_SIZE.defaultValue = (this.stateCache.get(LayoutStateKeys.PANEL_POSITION.name) ?? isHorizontal(LayoutStateKeys.PANEL_POSITION.defaultValue)) ? mainContainerDimension.height / 3 : mainContainerDimension.width / 4;
 		LayoutStateKeys.PANEL_POSITION.defaultValue = positionFromString(this.configurationService.getValue(WorkbenchLayoutSettings.PANEL_POSITION) ?? 'bottom');
 

@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TARX Autonomic Daemon</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --card: #12121a;
+      --border: #1e1e2e;
+      --neon-green: #00ff88;
+      --neon-purple: #a855f7;
+      --neon-blue: #00d4ff;
+      --neon-red: #ff4444;
+      --neon-orange: #ff9900;
+      --text: #e0e0e0;
+      --text-muted: #888;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .header h1 {
+      font-size: 24px;
+      color: var(--neon-green);
+      text-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+    }
+
+    .header .status {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .status-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    .status-dot.active {
+      background: var(--neon-green);
+      box-shadow: 0 0 10px var(--neon-green);
+    }
+
+    .status-dot.stopped {
+      background: var(--neon-red);
+      box-shadow: 0 0 10px var(--neon-red);
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .card h2 {
+      font-size: 14px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 16px;
+    }
+
+    .stat {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .stat:last-child {
+      border-bottom: none;
+    }
+
+    .stat-label {
+      color: var(--text-muted);
+    }
+
+    .stat-value {
+      font-weight: bold;
+      color: var(--neon-blue);
+    }
+
+    .stat-value.green { color: var(--neon-green); }
+    .stat-value.purple { color: var(--neon-purple); }
+    .stat-value.orange { color: var(--neon-orange); }
+    .stat-value.red { color: var(--neon-red); }
+
+    .reputation-bar {
+      width: 100%;
+      height: 8px;
+      background: var(--border);
+      border-radius: 4px;
+      margin-top: 8px;
+      overflow: hidden;
+    }
+
+    .reputation-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--neon-red), var(--neon-orange), var(--neon-green));
+      transition: width 0.3s ease;
+    }
+
+    .controls {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      font-family: inherit;
+      font-size: 14px;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    button.primary {
+      background: var(--neon-green);
+      color: var(--bg);
+    }
+
+    button.primary:hover {
+      box-shadow: 0 0 20px rgba(0, 255, 136, 0.4);
+    }
+
+    button.danger {
+      background: var(--neon-red);
+      color: white;
+    }
+
+    button.danger:hover {
+      box-shadow: 0 0 20px rgba(255, 68, 68, 0.4);
+    }
+
+    button.secondary {
+      background: var(--border);
+      color: var(--text);
+    }
+
+    button.secondary:hover {
+      background: #2a2a3a;
+    }
+
+    .log-container {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      height: 400px;
+      overflow-y: auto;
+    }
+
+    .log-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: var(--card);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .log-header h2 {
+      font-size: 14px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .log-body {
+      padding: 16px 20px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .log-entry {
+      margin-bottom: 8px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .log-entry .timestamp {
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    .log-entry .prefix {
+      font-weight: bold;
+      margin-right: 8px;
+    }
+
+    .log-entry.system .prefix { color: var(--neon-blue); }
+    .log-entry.info .prefix { color: var(--text-muted); }
+    .log-entry.success .prefix { color: var(--neon-green); }
+    .log-entry.warning .prefix { color: var(--neon-orange); }
+    .log-entry.error .prefix { color: var(--neon-red); }
+
+    .fixes-list {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .fix-item {
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .fix-item:last-child {
+      border-bottom: none;
+    }
+
+    .fix-info {
+      flex: 1;
+    }
+
+    .fix-id {
+      font-size: 12px;
+      color: var(--neon-purple);
+    }
+
+    .fix-error {
+      font-size: 14px;
+      margin-top: 4px;
+    }
+
+    .fix-status {
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    .fix-status.active {
+      background: rgba(0, 255, 136, 0.2);
+      color: var(--neon-green);
+    }
+
+    .fix-status.rolled-back {
+      background: rgba(255, 153, 0, 0.2);
+      color: var(--neon-orange);
+    }
+
+    .input-group {
+      display: flex;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      font-family: inherit;
+      font-size: 14px;
+      padding: 12px 16px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+    }
+
+    input[type="text"]:focus {
+      outline: none;
+      border-color: var(--neon-purple);
+      box-shadow: 0 0 10px rgba(168, 85, 247, 0.2);
+    }
+
+    .mode-indicator {
+      padding: 4px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .mode-indicator.idle {
+      background: rgba(0, 212, 255, 0.2);
+      color: var(--neon-blue);
+    }
+
+    .mode-indicator.healing {
+      background: rgba(168, 85, 247, 0.2);
+      color: var(--neon-purple);
+    }
+
+    .mode-indicator.interactive {
+      background: rgba(0, 255, 136, 0.2);
+      color: var(--neon-green);
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>TARX Autonomic Daemon</h1>
+    <div class="status">
+      <span class="mode-indicator idle" id="mode">IDLE</span>
+      <span class="status-dot active" id="status-dot"></span>
+      <span id="status-text">Running</span>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Status</h2>
+      <div class="stat">
+        <span class="stat-label">Node ID</span>
+        <span class="stat-value" id="node-id">Loading...</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Uptime</span>
+        <span class="stat-value green" id="uptime">0m</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Kill Switch</span>
+        <span class="stat-value" id="kill-switch">OFF</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Last Poll</span>
+        <span class="stat-value" id="last-poll">-</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Healing Stats</h2>
+      <div class="stat">
+        <span class="stat-label">Errors Analyzed</span>
+        <span class="stat-value purple" id="errors-analyzed">0</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Errors Healed</span>
+        <span class="stat-value green" id="errors-healed">0</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Fixes Broadcast</span>
+        <span class="stat-value orange" id="fixes-broadcast">0</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Mesh Nodes Reached</span>
+        <span class="stat-value" id="mesh-nodes">0</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Reputation</h2>
+      <div class="stat">
+        <span class="stat-label">Score</span>
+        <span class="stat-value green" id="reputation">1.00</span>
+      </div>
+      <div class="reputation-bar">
+        <div class="reputation-fill" id="reputation-bar" style="width: 100%"></div>
+      </div>
+      <div class="stat" style="margin-top: 12px">
+        <span class="stat-label">Can Broadcast</span>
+        <span class="stat-value" id="can-broadcast">Yes</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom: 24px">
+    <h2>Controls</h2>
+    <div class="controls">
+      <button class="danger" onclick="emergencyStop()">🛑 Emergency Stop</button>
+      <button class="secondary" onclick="clearStop()">Clear Stop</button>
+      <button class="secondary" onclick="rollbackLast()">↩️ Rollback Last</button>
+      <button class="primary" onclick="refreshStatus()">🔄 Refresh</button>
+    </div>
+    <div class="input-group">
+      <input type="text" id="message-input" placeholder="Send message to daemon...">
+      <button class="primary" onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="log-container">
+      <div class="log-header">
+        <h2>Activity Log</h2>
+        <button class="secondary" onclick="clearLog()">Clear</button>
+      </div>
+      <div class="log-body" id="log-body">
+        <div class="log-entry system">
+          <span class="timestamp">--:--:--</span>
+          <span class="prefix">[SYS]</span>
+          <span>Connecting to daemon...</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Recent Fixes</h2>
+      <div class="fixes-list" id="fixes-list">
+        <div class="fix-item">
+          <span style="color: var(--text-muted)">No fixes recorded yet</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = 'http://localhost:11439';
+    let pollInterval = null;
+
+    async function fetchStatus() {
+      try {
+        const response = await fetch(`${API_URL}/status`);
+        if (!response.ok) throw new Error('Daemon not responding');
+        const state = await response.json();
+        updateUI(state);
+      } catch (error) {
+        document.getElementById('status-dot').className = 'status-dot stopped';
+        document.getElementById('status-text').textContent = 'Disconnected';
+        addLog('error', `Connection error: ${error.message}`);
+      }
+    }
+
+    function updateUI(state) {
+      // Status
+      document.getElementById('status-dot').className = 'status-dot active';
+      document.getElementById('status-text').textContent = 'Running';
+
+      // Mode
+      const modeEl = document.getElementById('mode');
+      modeEl.textContent = state.mode;
+      modeEl.className = `mode-indicator ${state.mode.toLowerCase()}`;
+
+      // Stats
+      document.getElementById('node-id').textContent = state.nodeId.substring(0, 12) + '...';
+      document.getElementById('uptime').textContent = Math.floor((Date.now() - state.startedAt) / 60000) + 'm';
+      document.getElementById('kill-switch').textContent = state.killSwitchActive ? 'ACTIVE' : 'OFF';
+      document.getElementById('kill-switch').className = state.killSwitchActive ? 'stat-value red' : 'stat-value green';
+      document.getElementById('last-poll').textContent = new Date(state.lastPollAt).toLocaleTimeString();
+
+      // Healing stats
+      document.getElementById('errors-analyzed').textContent = state.errorsAnalyzed;
+      document.getElementById('errors-healed').textContent = state.errorsHealed;
+      document.getElementById('fixes-broadcast').textContent = state.fixesBroadcast;
+      document.getElementById('mesh-nodes').textContent = state.meshNodesReached;
+
+      // Reputation
+      const rep = state.reputation;
+      document.getElementById('reputation').textContent = rep.toFixed(2);
+      document.getElementById('reputation-bar').style.width = `${rep * 100}%`;
+      document.getElementById('can-broadcast').textContent = rep >= 0.4 ? 'Yes' : 'No';
+      document.getElementById('can-broadcast').className = rep >= 0.4 ? 'stat-value green' : 'stat-value red';
+    }
+
+    async function fetchFixes() {
+      try {
+        const response = await fetch(`${API_URL}/fixes`);
+        if (!response.ok) return;
+        const data = await response.json();
+        updateFixes(data.fixes);
+      } catch {}
+    }
+
+    function updateFixes(fixes) {
+      const container = document.getElementById('fixes-list');
+      if (!fixes || fixes.length === 0) {
+        container.innerHTML = '<div class="fix-item"><span style="color: var(--text-muted)">No fixes recorded yet</span></div>';
+        return;
+      }
+
+      container.innerHTML = fixes.map(fix => `
+        <div class="fix-item">
+          <div class="fix-info">
+            <div class="fix-id">${fix.id}</div>
+            <div class="fix-error">${fix.errorId}</div>
+          </div>
+          <span class="fix-status ${fix.rolledBack ? 'rolled-back' : 'active'}">
+            ${fix.rolledBack ? 'Rolled Back' : 'Active'}
+          </span>
+          ${!fix.rolledBack ? `<button class="secondary" onclick="rollback('${fix.id}')" style="margin-left: 8px; padding: 6px 12px;">Rollback</button>` : ''}
+        </div>
+      `).join('');
+    }
+
+    async function emergencyStop() {
+      if (!confirm('Activate emergency stop? The daemon will enter observe-only mode.')) return;
+      try {
+        const response = await fetch(`${API_URL}/stop`, { method: 'POST' });
+        const data = await response.json();
+        addLog('warning', data.message);
+        fetchStatus();
+      } catch (error) {
+        addLog('error', `Emergency stop failed: ${error.message}`);
+      }
+    }
+
+    async function clearStop() {
+      try {
+        const response = await fetch(`${API_URL}/clear-stop`, { method: 'POST' });
+        const data = await response.json();
+        addLog('success', data.message);
+        fetchStatus();
+      } catch (error) {
+        addLog('error', `Clear stop failed: ${error.message}`);
+      }
+    }
+
+    async function rollbackLast() {
+      try {
+        const fixes = await fetch(`${API_URL}/fixes`).then(r => r.json());
+        const activeFixes = (fixes.fixes || []).filter(f => !f.rolledBack);
+        if (activeFixes.length === 0) {
+          addLog('info', 'No fixes to rollback');
+          return;
+        }
+        const lastFix = activeFixes[activeFixes.length - 1];
+        await rollback(lastFix.id);
+      } catch (error) {
+        addLog('error', `Rollback failed: ${error.message}`);
+      }
+    }
+
+    async function rollback(fixId) {
+      try {
+        const response = await fetch(`${API_URL}/rollback/${fixId}`, { method: 'POST' });
+        const data = await response.json();
+        addLog(data.success ? 'success' : 'error', data.message);
+        fetchFixes();
+      } catch (error) {
+        addLog('error', `Rollback failed: ${error.message}`);
+      }
+    }
+
+    async function sendMessage() {
+      const input = document.getElementById('message-input');
+      const message = input.value.trim();
+      if (!message) return;
+
+      addLog('info', `You: ${message}`);
+      input.value = '';
+
+      try {
+        const response = await fetch(`${API_URL}/message`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message })
+        });
+        const data = await response.json();
+        addLog('success', `TARX: ${data.result}`);
+      } catch (error) {
+        addLog('error', `Message failed: ${error.message}`);
+      }
+    }
+
+    function addLog(type, message) {
+      const body = document.getElementById('log-body');
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.innerHTML = `
+        <span class="timestamp">${new Date().toLocaleTimeString()}</span>
+        <span class="prefix">[${type.toUpperCase()}]</span>
+        <span>${message}</span>
+      `;
+      body.appendChild(entry);
+      body.scrollTop = body.scrollHeight;
+    }
+
+    function clearLog() {
+      document.getElementById('log-body').innerHTML = '';
+      addLog('system', 'Log cleared');
+    }
+
+    function refreshStatus() {
+      fetchStatus();
+      fetchFixes();
+      addLog('info', 'Status refreshed');
+    }
+
+    // Initialize
+    document.getElementById('message-input').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendMessage();
+    });
+
+    // Start polling
+    fetchStatus();
+    fetchFixes();
+    pollInterval = setInterval(() => {
+      fetchStatus();
+      fetchFixes();
+    }, 5000);
+
+    addLog('system', 'Dashboard connected');
+  </script>
+</body>
+</html>

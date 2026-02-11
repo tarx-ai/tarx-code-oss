@@ -1,0 +1,536 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) TARX AI. All rights reserved.
+ *  Licensed under the MIT License.
+ *
+ *  TARX Voice Panel Styles
+ *--------------------------------------------------------------------------------------------*/
+
+.tarx-voice-panel {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	padding: 16px;
+	gap: 12px;
+	background-color: var(--vscode-editor-background);
+	color: var(--vscode-editor-foreground);
+	font-family: var(--vscode-font-family);
+	overflow-y: auto;
+}
+
+/* Header */
+.tarx-voice-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding-bottom: 8px;
+	border-bottom: 1px solid var(--vscode-widget-border);
+}
+
+.tarx-voice-title {
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+
+/* Status display */
+.tarx-voice-status {
+	padding: 10px 14px;
+	background-color: var(--vscode-input-background);
+	border: 1px solid var(--vscode-input-border);
+	border-radius: 6px;
+	font-size: 13px;
+	font-weight: 500;
+	text-align: center;
+	transition: all 0.3s ease;
+}
+
+.tarx-voice-status.listening {
+	background-color: rgba(220, 38, 38, 0.15);
+	border-color: #dc2626;
+	animation: pulse-status 1.5s infinite;
+}
+
+.tarx-voice-status.processing {
+	background-color: rgba(234, 179, 8, 0.15);
+	border-color: #eab308;
+}
+
+.tarx-voice-status.error {
+	background-color: rgba(220, 38, 38, 0.2);
+	border-color: #dc2626;
+	color: #dc2626;
+}
+
+@keyframes pulse-status {
+	0%, 100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.7;
+	}
+}
+
+/* Record button */
+.tarx-voice-record-button {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	padding: 14px 20px;
+	background-color: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	border: none;
+	border-radius: 8px;
+	font-size: 14px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.tarx-voice-record-button:hover {
+	background-color: var(--vscode-button-hoverBackground);
+	transform: translateY(-1px);
+}
+
+.tarx-voice-record-button:active {
+	transform: translateY(0);
+}
+
+.tarx-voice-record-button .icon {
+	font-size: 18px;
+}
+
+.tarx-voice-record-button.recording {
+	background-color: #dc2626;
+	animation: pulse-recording 1s infinite;
+}
+
+.tarx-voice-record-button.recording:hover {
+	background-color: #b91c1c;
+}
+
+@keyframes pulse-recording {
+	0%, 100% {
+		box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7);
+	}
+	50% {
+		box-shadow: 0 0 0 8px rgba(220, 38, 38, 0);
+	}
+}
+
+/* Confidence display */
+.tarx-voice-confidence {
+	padding: 8px 12px;
+	background-color: var(--vscode-input-background);
+	border-radius: 4px;
+	font-size: 12px;
+	text-align: center;
+	opacity: 0.8;
+	transition: all 0.3s;
+}
+
+.tarx-voice-confidence.high {
+	color: #22c55e;
+	opacity: 1;
+}
+
+.tarx-voice-confidence.medium {
+	color: #eab308;
+	opacity: 1;
+}
+
+.tarx-voice-confidence.low {
+	color: #dc2626;
+	opacity: 1;
+}
+
+/* Transcript display */
+.tarx-voice-transcript-label {
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+	opacity: 0.7;
+	letter-spacing: 0.5px;
+}
+
+.tarx-voice-transcript {
+	flex: 1;
+	min-height: 100px;
+	padding: 14px;
+	background-color: var(--vscode-input-background);
+	border: 1px solid var(--vscode-input-border);
+	border-radius: 6px;
+	font-size: 14px;
+	line-height: 1.6;
+	overflow-y: auto;
+	white-space: pre-wrap;
+	word-wrap: break-word;
+	transition: border-color 0.3s;
+}
+
+.tarx-voice-transcript.partial {
+	border-color: var(--vscode-focusBorder);
+	font-style: italic;
+	opacity: 0.9;
+}
+
+.tarx-voice-transcript.final {
+	border-color: #22c55e;
+}
+
+/* Context section */
+.tarx-voice-context {
+	padding: 12px;
+	background-color: var(--vscode-sideBar-background);
+	border-left: 3px solid var(--vscode-focusBorder);
+	border-radius: 0 6px 6px 0;
+}
+
+.tarx-voice-context-label {
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	opacity: 0.6;
+	margin-bottom: 8px;
+	letter-spacing: 0.5px;
+}
+
+.tarx-voice-context-items {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.tarx-context-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	opacity: 0.8;
+}
+
+.tarx-context-item.ok .check {
+	color: #22c55e;
+}
+
+.tarx-context-item.dim {
+	opacity: 0.5;
+}
+
+.tarx-context-item .label {
+	font-weight: 500;
+}
+
+.tarx-context-item .value {
+	opacity: 0.7;
+}
+
+/* Action buttons */
+.tarx-voice-actions {
+	display: flex;
+	gap: 10px;
+}
+
+.tarx-voice-action-btn {
+	flex: 1;
+	padding: 12px 16px;
+	border: none;
+	border-radius: 6px;
+	font-size: 13px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.tarx-voice-action-btn.primary {
+	background-color: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+}
+
+.tarx-voice-action-btn.primary:hover {
+	background-color: var(--vscode-button-hoverBackground);
+}
+
+.tarx-voice-action-btn.secondary {
+	background-color: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+}
+
+.tarx-voice-action-btn.secondary:hover {
+	background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* Tips section */
+.tarx-voice-tips {
+	padding: 12px;
+	background-color: rgba(var(--vscode-focusBorder-rgb), 0.1);
+	border-radius: 6px;
+	font-size: 12px;
+}
+
+.tarx-voice-tips .tip-title {
+	font-weight: 600;
+	margin-bottom: 6px;
+	opacity: 0.8;
+}
+
+.tarx-voice-tips .tip-item {
+	opacity: 0.7;
+	padding: 2px 0;
+}
+
+/* Scrollbar */
+.tarx-voice-panel::-webkit-scrollbar {
+	width: 8px;
+}
+
+.tarx-voice-panel::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.tarx-voice-panel::-webkit-scrollbar-thumb {
+	background: var(--vscode-scrollbarSlider-background);
+	border-radius: 4px;
+}
+
+.tarx-voice-panel::-webkit-scrollbar-thumb:hover {
+	background: var(--vscode-scrollbarSlider-hoverBackground);
+}
+
+.tarx-voice-transcript::-webkit-scrollbar {
+	width: 6px;
+}
+
+.tarx-voice-transcript::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.tarx-voice-transcript::-webkit-scrollbar-thumb {
+	background: var(--vscode-scrollbarSlider-background);
+	border-radius: 3px;
+}
+
+/* ============================================================================
+   PROACTIVE MODE STYLES
+   ============================================================================ */
+
+/* Proactive Toggle Button */
+.tarx-proactive-toggle {
+	padding: 6px 12px;
+	margin-left: auto;
+	background: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+	border: 1px solid var(--vscode-button-border);
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 11px;
+	font-weight: 500;
+	transition: all 0.2s ease;
+	white-space: nowrap;
+}
+
+.tarx-proactive-toggle:hover {
+	background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.tarx-proactive-toggle.active {
+	background: #059669;
+	color: white;
+	border-color: #047857;
+}
+
+.tarx-proactive-toggle.active:hover {
+	background: #047857;
+}
+
+/* Proactive Actions Section */
+.tarx-proactive-actions {
+	padding: 12px;
+	background-color: var(--vscode-sideBar-background);
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 6px;
+	margin-top: 4px;
+}
+
+.tarx-actions-label {
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	opacity: 0.7;
+	margin-bottom: 10px;
+	letter-spacing: 0.5px;
+}
+
+.tarx-actions-container {
+	min-height: 60px;
+	max-height: 280px;
+	overflow-y: auto;
+}
+
+.tarx-actions-placeholder {
+	font-size: 12px;
+	opacity: 0.5;
+	font-style: italic;
+	padding: 8px 0;
+}
+
+/* Action Card */
+.tarx-action-card {
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-input-border);
+	border-radius: 6px;
+	padding: 12px;
+	animation: slideInCard 0.3s ease-out;
+}
+
+@keyframes slideInCard {
+	from {
+		opacity: 0;
+		transform: translateY(-10px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+.tarx-action-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 10px;
+}
+
+.tarx-action-type {
+	display: inline-block;
+	padding: 3px 8px;
+	background: #1f2937;
+	color: #3b82f6;
+	border-radius: 4px;
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+}
+
+.tarx-action-confidence-badge {
+	padding: 2px 6px;
+	border-radius: 3px;
+	font-size: 10px;
+	font-weight: 600;
+}
+
+.tarx-action-confidence-badge.high {
+	background: rgba(34, 197, 94, 0.2);
+	color: #22c55e;
+}
+
+.tarx-action-confidence-badge.medium {
+	background: rgba(234, 179, 8, 0.2);
+	color: #eab308;
+}
+
+.tarx-action-confidence-badge.low {
+	background: rgba(220, 38, 38, 0.2);
+	color: #dc2626;
+}
+
+.tarx-action-proposal {
+	font-size: 13px;
+	line-height: 1.5;
+	margin-bottom: 8px;
+	color: var(--vscode-editor-foreground);
+}
+
+.tarx-action-evidence {
+	font-size: 11px;
+	opacity: 0.6;
+	margin-bottom: 10px;
+	font-style: italic;
+}
+
+/* Action Buttons */
+.tarx-action-buttons {
+	display: flex;
+	gap: 6px;
+	margin-bottom: 8px;
+}
+
+.tarx-action-btn {
+	flex: 1;
+	padding: 8px 10px;
+	border: 1px solid;
+	border-radius: 4px;
+	font-size: 11px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.tarx-action-btn.approve {
+	background: #059669;
+	color: white;
+	border-color: #047857;
+}
+
+.tarx-action-btn.approve:hover {
+	background: #047857;
+}
+
+.tarx-action-btn.reject {
+	background: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+	border-color: var(--vscode-button-border);
+}
+
+.tarx-action-btn.reject:hover {
+	background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.tarx-action-btn.explain {
+	background: transparent;
+	color: var(--vscode-foreground);
+	border-color: var(--vscode-input-border);
+}
+
+.tarx-action-btn.explain:hover {
+	background: var(--vscode-list-hoverBackground);
+}
+
+/* Option Buttons */
+.tarx-action-options {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding-top: 8px;
+	border-top: 1px solid var(--vscode-widget-border);
+}
+
+.tarx-option-btn {
+	padding: 6px 10px;
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	border: 1px solid var(--vscode-input-border);
+	border-radius: 4px;
+	font-size: 11px;
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.tarx-option-btn:hover {
+	background: var(--vscode-list-hoverBackground);
+	border-color: var(--vscode-focusBorder);
+}
+
+/* Actions container scrollbar */
+.tarx-actions-container::-webkit-scrollbar {
+	width: 6px;
+}
+
+.tarx-actions-container::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.tarx-actions-container::-webkit-scrollbar-thumb {
+	background: var(--vscode-scrollbarSlider-background);
+	border-radius: 3px;
+}

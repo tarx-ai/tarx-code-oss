@@ -1,0 +1,555 @@
+/**
+ * TARX Shadcn-style CSS
+ * Minimal, clean UI with blue accents (#0066FF)
+ *
+ * @file extensions/tarx/media/shadcn.css
+ */
+
+/* ========================================
+   CSS VARIABLES (Shadcn/ui)
+   ======================================== */
+
+:root {
+	/* TARX Brand */
+	--tarx-primary: #0066FF;
+	--tarx-primary-light: #3385FF;
+	--tarx-primary-dark: #0052CC;
+	--tarx-primary-rgb: 0, 102, 255;
+	
+	/* Shadcn Neutral (Light) */
+	--background: #FFFFFF;
+	--foreground: #09090B;
+	--card: #FFFFFF;
+	--card-foreground: #09090B;
+	--popover: #FFFFFF;
+	--popover-foreground: #09090B;
+	--muted: #F4F4F5;
+	--muted-foreground: #71717A;
+	--accent: #F4F4F5;
+	--accent-foreground: #18181B;
+	--border: #E4E4E7;
+	--input: #E4E4E7;
+	--ring: var(--tarx-primary);
+	--radius: 0.5rem;
+	
+	/* Semantic */
+	--success: #10B981;
+	--warning: #F59E0B;
+	--error: #EF4444;
+	--info: #3B82F6;
+}
+
+/* Dark mode */
+.vscode-dark, [data-vscode-theme-kind="vscode-dark"] {
+	--background: #09090B;
+	--foreground: #FAFAFA;
+	--card: #09090B;
+	--card-foreground: #FAFAFA;
+	--popover: #09090B;
+	--popover-foreground: #FAFAFA;
+	--muted: #27272A;
+	--muted-foreground: #A1A1AA;
+	--accent: #27272A;
+	--accent-foreground: #FAFAFA;
+	--border: #27272A;
+	--input: #27272A;
+}
+
+/* ========================================
+   BASE STYLES
+   ======================================== */
+
+* {
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+}
+
+body {
+	font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+	font-size: var(--vscode-font-size, 13px);
+	color: var(--foreground);
+	background: var(--background);
+	line-height: 1.5;
+}
+
+/* ========================================
+   SIDEBAR STYLES
+   ======================================== */
+
+.tarx-sidebar {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	padding: 8px;
+}
+
+.tarx-sidebar-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 8px 12px;
+	margin-bottom: 8px;
+	border-bottom: 1px solid var(--border);
+}
+
+.tarx-sidebar-title {
+	font-weight: 600;
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: var(--muted-foreground);
+}
+
+/* ========================================
+   PROJECT LIST
+   ======================================== */
+
+.tarx-project-list {
+	flex: 1;
+	overflow-y: auto;
+}
+
+.tarx-project-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	border-radius: var(--radius);
+	cursor: pointer;
+	transition: background 0.15s ease;
+}
+
+.tarx-project-item:hover {
+	background: var(--accent);
+}
+
+.tarx-project-item.active {
+	background: rgba(var(--tarx-primary-rgb), 0.1);
+	border-left: 3px solid var(--tarx-primary);
+	margin-left: -3px;
+}
+
+.tarx-project-icon {
+	width: 16px;
+	height: 16px;
+	flex-shrink: 0;
+}
+
+.tarx-project-icon.colored {
+	filter: none;
+}
+
+.tarx-project-name {
+	flex: 1;
+	font-size: 13px;
+	font-weight: 500;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.tarx-project-badge {
+	font-size: 10px;
+	padding: 2px 6px;
+	border-radius: 9999px;
+	background: var(--tarx-primary);
+	color: white;
+	font-weight: 600;
+}
+
+/* ========================================
+   SECTION HEADERS (Expandable)
+   ======================================== */
+
+.tarx-section {
+	margin-bottom: 16px;
+}
+
+.tarx-section-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 12px;
+	cursor: pointer;
+	user-select: none;
+	border-radius: var(--radius);
+}
+
+.tarx-section-header:hover {
+	background: var(--accent);
+}
+
+.tarx-section-chevron {
+	width: 12px;
+	height: 12px;
+	transition: transform 0.15s ease;
+}
+
+.tarx-section.expanded .tarx-section-chevron {
+	transform: rotate(90deg);
+}
+
+.tarx-section-title {
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: var(--muted-foreground);
+}
+
+.tarx-section-count {
+	margin-left: auto;
+	font-size: 10px;
+	color: var(--muted-foreground);
+	background: var(--muted);
+	padding: 1px 6px;
+	border-radius: 9999px;
+}
+
+.tarx-section-content {
+	padding-left: 20px;
+	overflow: hidden;
+	max-height: 0;
+	transition: max-height 0.2s ease;
+}
+
+.tarx-section.expanded .tarx-section-content {
+	max-height: 500px;
+}
+
+/* ========================================
+   BUTTONS (Shadcn-style)
+   ======================================== */
+
+.tarx-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	padding: 8px 16px;
+	font-size: 13px;
+	font-weight: 500;
+	border-radius: var(--radius);
+	border: none;
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.tarx-btn:focus {
+	outline: none;
+	box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--ring);
+}
+
+.tarx-btn-primary {
+	background: var(--tarx-primary);
+	color: white;
+}
+
+.tarx-btn-primary:hover {
+	background: var(--tarx-primary-dark);
+}
+
+.tarx-btn-secondary {
+	background: var(--muted);
+	color: var(--foreground);
+}
+
+.tarx-btn-secondary:hover {
+	background: var(--accent);
+}
+
+.tarx-btn-ghost {
+	background: transparent;
+	color: var(--foreground);
+}
+
+.tarx-btn-ghost:hover {
+	background: var(--accent);
+}
+
+.tarx-btn-icon {
+	padding: 8px;
+	border-radius: var(--radius);
+}
+
+/* ========================================
+   INPUTS (Shadcn-style)
+   ======================================== */
+
+.tarx-input {
+	width: 100%;
+	padding: 8px 12px;
+	font-size: 13px;
+	border: 1px solid var(--input);
+	border-radius: var(--radius);
+	background: var(--background);
+	color: var(--foreground);
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tarx-input:focus {
+	outline: none;
+	border-color: var(--tarx-primary);
+	box-shadow: 0 0 0 2px rgba(var(--tarx-primary-rgb), 0.2);
+}
+
+.tarx-input::placeholder {
+	color: var(--muted-foreground);
+}
+
+/* ========================================
+   CONVERSATION ITEMS
+   ======================================== */
+
+.tarx-conversation-item {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 10px 12px;
+	border-radius: var(--radius);
+	cursor: pointer;
+	transition: background 0.15s ease;
+}
+
+.tarx-conversation-item:hover {
+	background: var(--accent);
+}
+
+.tarx-conversation-icon {
+	width: 32px;
+	height: 32px;
+	border-radius: 50%;
+	background: var(--muted);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 14px;
+	flex-shrink: 0;
+}
+
+.tarx-conversation-content {
+	flex: 1;
+	min-width: 0;
+}
+
+.tarx-conversation-title {
+	font-weight: 500;
+	font-size: 13px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.tarx-conversation-meta {
+	font-size: 11px;
+	color: var(--muted-foreground);
+	margin-top: 2px;
+}
+
+/* ========================================
+   COLOR DOT (for project colors)
+   ======================================== */
+
+.tarx-color-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	flex-shrink: 0;
+}
+
+.tarx-color-dot.blue { background: #0066FF; }
+.tarx-color-dot.green { background: #10B981; }
+.tarx-color-dot.purple { background: #8B5CF6; }
+.tarx-color-dot.orange { background: #F97316; }
+.tarx-color-dot.pink { background: #EC4899; }
+.tarx-color-dot.cyan { background: #06B6D4; }
+.tarx-color-dot.yellow { background: #EAB308; }
+.tarx-color-dot.red { background: #EF4444; }
+
+/* ========================================
+   EMPTY STATE
+   ======================================== */
+
+.tarx-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	padding: 32px 16px;
+	text-align: center;
+	color: var(--muted-foreground);
+}
+
+.tarx-empty-icon {
+	font-size: 32px;
+	margin-bottom: 12px;
+	opacity: 0.5;
+}
+
+.tarx-empty-title {
+	font-weight: 500;
+	font-size: 14px;
+	color: var(--foreground);
+	margin-bottom: 4px;
+}
+
+.tarx-empty-text {
+	font-size: 12px;
+	margin-bottom: 16px;
+}
+
+/* ========================================
+   SCROLLBAR (Shadcn-style)
+   ======================================== */
+
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--border);
+	border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: var(--muted-foreground);
+}
+
+/* ========================================
+   ANIMATIONS
+   ======================================== */
+
+@keyframes tarx-pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.5; }
+}
+
+@keyframes tarx-spin {
+	from { transform: rotate(0deg); }
+	to { transform: rotate(360deg); }
+}
+
+.tarx-loading {
+	animation: tarx-pulse 1.5s ease-in-out infinite;
+}
+
+.tarx-spinner {
+	animation: tarx-spin 1s linear infinite;
+}
+
+/* ========================================
+   ENHANCED HOVER STATES
+   Electric blue focus ring (#00F0FF)
+   ======================================== */
+
+:root {
+	--electric-blue: #00F0FF;
+	--electric-blue-rgb: 0, 240, 255;
+	--hover-scale: 1.02;
+	--transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Tree item hover - higher contrast */
+.tarx-tree-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 12px;
+	border-radius: 6px;
+	cursor: pointer;
+	transition:
+		background-color var(--transition-fast),
+		transform var(--transition-fast),
+		box-shadow var(--transition-fast);
+}
+
+.tarx-tree-item:hover {
+	background: rgba(0, 0, 0, 0.06);
+	transform: scale(var(--hover-scale));
+}
+
+.vscode-dark .tarx-tree-item:hover,
+[data-vscode-theme-kind="vscode-dark"] .tarx-tree-item:hover {
+	background: rgba(255, 255, 255, 0.1);
+}
+
+/* Focus ring - electric blue */
+.tarx-tree-item:focus,
+.tarx-tree-item:focus-visible {
+	outline: none;
+	box-shadow:
+		0 0 0 2px var(--background),
+		0 0 0 4px var(--electric-blue);
+}
+
+/* Active state with electric accent */
+.tarx-tree-item.active {
+	background: rgba(var(--electric-blue-rgb), 0.1);
+	border-left: 3px solid var(--electric-blue);
+	padding-left: 9px;
+}
+
+/* Active indicator pulse */
+.tarx-active-indicator {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--electric-blue);
+	animation: tarx-active-pulse 2s ease-in-out infinite;
+}
+
+@keyframes tarx-active-pulse {
+	0%, 100% { opacity: 1; transform: scale(1); }
+	50% { opacity: 0.6; transform: scale(0.85); }
+}
+
+/* Icon container */
+.tarx-item-icon {
+	width: 16px;
+	height: 16px;
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+/* Label with ellipsis */
+.tarx-item-label {
+	flex: 1;
+	font-size: 13px;
+	font-weight: 500;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* Description text */
+.tarx-item-description {
+	font-size: 11px;
+	color: var(--muted-foreground);
+	flex-shrink: 0;
+}
+
+/* Section header enhanced */
+.tarx-section-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	border-radius: 6px;
+	transition: background-color var(--transition-fast);
+}
+
+.tarx-section-header:hover {
+	background: rgba(0, 0, 0, 0.04);
+}
+
+.vscode-dark .tarx-section-header:hover {
+	background: rgba(255, 255, 255, 0.06);
+}

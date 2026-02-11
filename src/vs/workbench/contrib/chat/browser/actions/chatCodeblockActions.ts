@@ -34,7 +34,6 @@ import { ITerminalEditorService, ITerminalGroupService, ITerminalService } from 
 import { ChatContextKeys } from '../../common/actions/chatContextKeys.js';
 import { ChatCopyKind, IChatService } from '../../common/chatService/chatService.js';
 import { IChatRequestViewModel, IChatResponseViewModel, isRequestVM, isResponseVM } from '../../common/model/chatViewModel.js';
-import { ChatAgentLocation } from '../../common/constants.js';
 import { IChatCodeBlockContextProviderService, IChatWidgetService } from '../chat.js';
 import { DefaultChatTextEditor, ICodeBlockActionContext, ICodeCompareBlockActionContext } from '../widget/chatContentParts/codeBlockPart.js';
 import { CHAT_CATEGORY } from './chatActions.js';
@@ -324,18 +323,7 @@ export function registerChatCodeBlockActions() {
 				f1: true,
 				category: CHAT_CATEGORY,
 				icon: Codicon.insert,
-				menu: [{
-					id: MenuId.ChatCodeBlock,
-					group: 'navigation',
-					when: ContextKeyExpr.and(ChatContextKeys.inChatSession, ChatContextKeys.location.notEqualsTo(ChatAgentLocation.Terminal)),
-					order: 20
-				}, {
-					id: MenuId.ChatCodeBlock,
-					group: 'navigation',
-					when: ContextKeyExpr.and(ChatContextKeys.inChatSession, ChatContextKeys.location.isEqualTo(ChatAgentLocation.Terminal)),
-					isHiddenByDefault: true,
-					order: 20
-				}],
+				// TARX: Removed from code block toolbar — Apply in Editor is the primary action
 				keybinding: {
 					when: ContextKeyExpr.or(ContextKeyExpr.and(ChatContextKeys.inChatSession, ChatContextKeys.inChatInput.negate()), accessibleViewInCodeBlock),
 					primary: KeyMod.CtrlCmd | KeyCode.Enter,
@@ -360,12 +348,7 @@ export function registerChatCodeBlockActions() {
 				f1: true,
 				category: CHAT_CATEGORY,
 				icon: Codicon.newFile,
-				menu: {
-					id: MenuId.ChatCodeBlock,
-					group: 'navigation',
-					isHiddenByDefault: true,
-					order: 40,
-				}
+				// TARX: Removed from code block toolbar
 			});
 		}
 

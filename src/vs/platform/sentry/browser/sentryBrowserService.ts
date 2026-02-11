@@ -1,10 +1,13 @@
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) TARX AI. All rights reserved.
  *  Licensed under the MIT License.
+ *
+ *  Sentry Browser/Renderer Service — Stub
+ *  @sentry/browser can't resolve as bare specifier in the renderer ESM context.
+ *  Error tracking runs in the main process (@sentry/node) and extension host instead.
+ *  This stub satisfies the ISentryService interface without importing @sentry/browser.
  *--------------------------------------------------------------------------------------------*/
 
-// TARX: Sentry temporarily disabled - module resolution issue in browser context
-// import * as Sentry from '@sentry/electron/renderer';
 import { ISentryService } from '../common/sentry.js';
 import { ILogService } from '../../log/common/log.js';
 import { IProductService } from '../../product/common/productService.js';
@@ -19,15 +22,14 @@ export class SentryBrowserService implements ISentryService {
 	) { }
 
 	init(): void {
-		// TARX: Sentry disabled - no-op
-		this.logService.info('[Sentry] Disabled - browser module resolution issue');
+		this.logService.info('[Sentry] Renderer tracking disabled — bare specifier not supported in ESM context');
 	}
 
 	captureException(_error: Error, _context?: Record<string, unknown>): string | undefined {
 		return undefined;
 	}
 
-	captureMessage(_message: string, _level: 'info' | 'warning' | 'error' = 'info'): string | undefined {
+	captureMessage(_message: string, _level?: 'info' | 'warning' | 'error'): string | undefined {
 		return undefined;
 	}
 

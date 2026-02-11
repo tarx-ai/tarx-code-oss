@@ -1,0 +1,40 @@
+{
+  "name": "TARX Learning Project",
+  "description": "Learn TARX features with annotated code examples",
+  "version": "1.0.0",
+  "type": "tutorial",
+  "created": "2026-01-28",
+  "author": "TARX AI",
+  "tags": [
+    "getting-started",
+    "python",
+    "javascript",
+    "tutorial"
+  ],
+  "files": {
+    "hello-world.py": {
+      "description": "Python basics - functions, classes, type hints",
+      "difficulty": "beginner"
+    },
+    "calculator.py": {
+      "description": "Python patterns - enums, dataclasses, error handling",
+      "difficulty": "intermediate"
+    },
+    "api-example.js": {
+      "description": "JavaScript API patterns - async/await, fetch, promises",
+      "difficulty": "intermediate"
+    }
+  },
+  "learning_objectives": [
+    "Understand how to ask TARX questions about code",
+    "Learn to use proactive suggestions",
+    "Practice using keyboard shortcuts",
+    "Explore pattern detection features"
+  ],
+  "suggested_flow": [
+    "Read README.md first",
+    "Open hello-world.py and try explaining functions",
+    "Open calculator.py and ask for refactoring suggestions",
+    "Open api-example.js and explore error handling patterns"
+  ]
+}

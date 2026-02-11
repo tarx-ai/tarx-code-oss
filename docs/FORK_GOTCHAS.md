@@ -1,6 +1,6 @@
-# TARX Code OSS - Fork Gotchas & Critical Knowledge
+# Workbench - Fork Gotchas & Critical Knowledge
 
-This document contains critical information for anyone working on the TARX Code OSS fork. **Read this before making any workbench/sidebar changes.**
+This document contains critical information for anyone working on the Workbench fork. **Read this before making any workbench/sidebar changes.**
 
 ---
 

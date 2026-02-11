@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "tarx-memory": {
+      "command": "node",
+      "args": [
+        "/Users/master/Desktop/tarx-code-oss/extensions/tarx-claude-memory/dist/server.js"
+      ]
+    }
+  }
+}

@@ -503,10 +503,17 @@ export class TarxSidecarService extends Disposable implements ITarxSidecarServic
 	}
 
 	private async findModelPath(): Promise<string | undefined> {
-		const minModelSize = 500 * 1024 * 1024;
 		const home = process.env.HOME || '';
 
-		// Check locations in priority order
+		// V1.1: Fine-tuned TARX model — always prefer if present
+		const fineTunedModel = path.join(home, 'Library/Application Support/tarx/models/tarx-qwen2.5-7b-deep-Q4_K_M.gguf');
+		if (fs.existsSync(fineTunedModel)) {
+			this.logService.info(`[TARX] Using fine-tuned model: ${fineTunedModel}`);
+			return fineTunedModel;
+		}
+
+		// Fallback: scan directories for any valid GGUF
+		const minModelSize = 500 * 1024 * 1024;
 		const searchDirs = [
 			path.join(home, 'Library/Application Support/tarx/models'),
 			path.join(home, '.ollama/models/blobs'),

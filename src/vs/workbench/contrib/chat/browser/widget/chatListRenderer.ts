@@ -102,7 +102,7 @@ import { isEqual } from '../../../../../base/common/resources.js';
 
 const $ = dom.$;
 
-const COPILOT_USERNAME = 'GitHub Copilot';
+const COPILOT_USERNAME = 'TARX';
 
 export interface IChatListItemTemplate {
 	currentElement?: ChatTreeItem;
@@ -791,7 +791,8 @@ export class ChatListItemRenderer extends Disposable implements ITreeRenderer<Ch
 		} else if (agent?.icon) {
 			return agent.icon;
 		} else {
-			return Codicon.chatSparkle;
+			// Use TARX eyes icon as default for chat responses
+			return FileAccess.asBrowserUri('vs/workbench/browser/parts/tarxsidebar/media/tarx-eyes.png');
 		}
 	}
 

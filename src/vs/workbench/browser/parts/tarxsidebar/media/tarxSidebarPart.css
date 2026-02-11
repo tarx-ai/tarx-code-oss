@@ -55,23 +55,30 @@
 
 /* ============================================================================
    Header - Logo + Compute Dropdown Pill
+   Compact header matching main app header height (~35px)
    ============================================================================ */
 .tarx-header {
-	padding: var(--tarx-spacing-md) var(--tarx-spacing-lg);
+	box-sizing: border-box;
+	padding: 0 var(--tarx-spacing-md);
 	border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.08));
 	position: relative;
+	height: 35px;
+	display: flex;
+	align-items: center;
 }
 
 .tarx-logo-row {
 	display: flex;
 	align-items: center;
+	justify-content: flex-start;
 	gap: var(--tarx-icon-gap);
+	height: 100%;
 }
 
 /* Header collapse/expand toggle button */
 .tarx-header-collapse-btn {
-	width: 28px;
-	height: 28px;
+	width: 22px;
+	height: 22px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -93,16 +100,17 @@
 }
 
 .tarx-logo-icon {
-	width: 24px;
-	height: 24px;
+	width: 18px;
+	height: 18px;
 	object-fit: contain;
 	flex-shrink: 0;
 	border-radius: var(--tarx-radius-sm);
+	display: block;
 }
 
 .tarx-logo-text {
-	font-size: 16px;
-	font-weight: 600;
+	font-size: var(--tarx-font-lg);
+	font-weight: 700;
 	flex: 1;
 }
 
@@ -132,13 +140,13 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 14px;
-	height: 14px;
+	width: var(--tarx-icon-size);
+	height: var(--tarx-icon-size);
 }
 
 .tarx-compute-chip-icon svg {
-	width: 14px;
-	height: 14px;
+	width: var(--tarx-icon-size);
+	height: var(--tarx-icon-size);
 }
 
 .tarx-compute-label {
@@ -159,17 +167,17 @@
 	transform: rotate(180deg);
 }
 
-/* Compute Dropdown Menu */
+/* Compute Dropdown Menu - opens upward from footer */
 .tarx-compute-dropdown {
 	position: absolute;
-	top: 100%;
+	bottom: 100%;
 	left: var(--tarx-spacing-lg);
 	right: var(--tarx-spacing-lg);
-	margin-top: 4px;
+	margin-bottom: 4px;
 	background: var(--vscode-dropdown-background, #3c3c3c);
 	border: 1px solid var(--vscode-dropdown-border, rgba(255,255,255,0.1));
 	border-radius: var(--tarx-radius-md);
-	box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+	box-shadow: 0 -4px 12px rgba(0,0,0,0.3);
 	z-index: 100;
 	overflow: hidden;
 }
@@ -317,9 +325,6 @@
 .tarx-nav-row-icon {
 	width: var(--tarx-icon-size);
 	height: var(--tarx-icon-size);
-	display: flex;
-	align-items: center;
-	justify-content: center;
 	flex-shrink: 0;
 	opacity: 0.9;
 }
@@ -391,9 +396,6 @@
 .tarx-section-icon {
 	width: var(--tarx-icon-size);
 	height: var(--tarx-icon-size);
-	display: flex;
-	align-items: center;
-	justify-content: center;
 	opacity: 0.9;
 	flex-shrink: 0;
 }
@@ -465,9 +467,6 @@
 .tarx-section-item-icon {
 	width: var(--tarx-icon-size);
 	height: var(--tarx-icon-size);
-	display: flex;
-	align-items: center;
-	justify-content: center;
 	opacity: 0.8;
 	margin-right: var(--tarx-icon-gap);
 	flex-shrink: 0;
@@ -494,10 +493,10 @@
    History Section (now a collapsible section)
    ============================================================================ */
 
-/* History content within section */
+/* History content - no max-height, parent .tarx-sections handles scrolling */
 .tarx-history-content {
-	max-height: 200px;
-	overflow-y: auto;
+	/* Let parent container (.tarx-sections) handle the scrolling */
+	overflow: visible;
 }
 
 .tarx-history-empty {
@@ -515,17 +514,23 @@
 	opacity: 0.4;
 	text-transform: uppercase;
 	letter-spacing: 0.5px;
+	position: sticky;
+	top: 0;
+	background: var(--vscode-sideBar-background);
+	z-index: 1;
 }
 
 .tarx-history-item {
 	display: flex;
 	align-items: center;
-	padding: var(--tarx-spacing-xs) var(--tarx-spacing-md);
-	margin: 0 var(--tarx-spacing-sm);
+	gap: 8px;
+	padding: 6px var(--tarx-spacing-md);
+	margin: 1px var(--tarx-spacing-sm);
 	margin-left: calc(var(--tarx-spacing-sm) + var(--tarx-icon-size) + var(--tarx-spacing-md));
 	border-radius: var(--tarx-radius-md);
 	cursor: pointer;
 	transition: background var(--tarx-transition-fast);
+	min-height: 28px;
 }
 
 .tarx-history-item:hover {
@@ -536,22 +541,39 @@
 	background: var(--vscode-list-activeSelectionBackground, rgba(255,255,255,0.06));
 }
 
+/* History item icon */
 .tarx-history-item-icon {
-	width: 14px;
-	height: 14px;
+	flex-shrink: 0;
+	width: 16px;
+	height: 16px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	opacity: 0.6;
-	margin-right: 6px;
-	flex-shrink: 0;
+	opacity: 0.85;
 }
 
+/* Claude SVG icon styling */
+.tarx-history-item-icon svg {
+	width: 14px;
+	height: 14px;
+}
+
+/* History item title */
 .tarx-history-item-title {
 	font-size: var(--tarx-font-md);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+	flex: 1;
+	min-width: 0;
+}
+
+/* History item time */
+.tarx-history-item-time {
+	font-size: var(--tarx-font-xs);
+	opacity: 0.5;
+	flex-shrink: 0;
+	white-space: nowrap;
 }
 
 /* See all button in section header */
@@ -569,12 +591,27 @@
    Footer - Extensions/Settings/Collapse (stacked vertically)
    ============================================================================ */
 .tarx-footer {
+	position: relative;
 	display: flex;
 	flex-direction: column;
 	padding: var(--tarx-spacing-sm) 0;
 	border-top: 1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-sideBar-border, rgba(255,255,255,0.06)));
 	margin-top: auto;
 	background: inherit;
+}
+
+/* Compute row in footer */
+.tarx-compute-row {
+	position: relative;
+}
+
+.tarx-compute-row .tarx-compute-chevron {
+	margin-left: auto;
+	opacity: 0.6;
+}
+
+.tarx-compute-row.open {
+	background: var(--vscode-list-activeSelectionBackground, rgba(255,255,255,0.08));
 }
 
 .tarx-footer-row {
@@ -629,6 +666,18 @@
 /* ============================================================================
    Collapsed State
    ============================================================================ */
+
+/* CRITICAL: Override the workbench's nosidebar behavior for TARX
+   When collapsed, the workbench tries to hide the sidebar completely.
+   We override this to keep it visible at 48px */
+.monaco-workbench.nosidebar > .part.sidebar.tarx-sidebar {
+	display: flex !important;
+	visibility: visible !important;
+	width: 48px !important;
+	min-width: 48px !important;
+	max-width: 48px !important;
+}
+
 .tarx-sidebar-container.collapsed {
 	width: var(--tarx-sidebar-collapsed-width);
 }
@@ -636,6 +685,8 @@
 .tarx-sidebar-container.collapsed .tarx-logo-text,
 .tarx-sidebar-container.collapsed .tarx-compute-pill,
 .tarx-sidebar-container.collapsed .tarx-compute-dropdown,
+.tarx-sidebar-container.collapsed .tarx-compute-row .tarx-footer-label,
+.tarx-sidebar-container.collapsed .tarx-compute-row .tarx-compute-chevron,
 .tarx-sidebar-container.collapsed .tarx-nav-row-label,
 .tarx-sidebar-container.collapsed .tarx-section-title,
 .tarx-sidebar-container.collapsed .tarx-section-add,
@@ -648,26 +699,19 @@
 }
 
 .tarx-sidebar-container.collapsed .tarx-header {
-	padding: var(--tarx-spacing-md) var(--tarx-spacing-sm);
+	padding: 0;
+	height: 35px;
+	justify-content: center;
 }
 
 .tarx-sidebar-container.collapsed .tarx-logo-row {
 	justify-content: center;
 }
 
-/* Hide logo icon in collapsed mode, show only the collapse toggle */
+/* Show logo icon centered in collapsed mode */
 .tarx-sidebar-container.collapsed .tarx-logo-icon {
-	display: none;
-}
-
-/* Header collapse button in collapsed mode */
-.tarx-sidebar-container.collapsed .tarx-header-collapse-btn {
-	width: 32px;
-	height: 32px;
-}
-
-.tarx-sidebar-container.collapsed .tarx-header-collapse-icon {
-	opacity: 0.9;
+	width: 22px;
+	height: 22px;
 }
 
 .tarx-sidebar-container.collapsed .tarx-nav-row {
@@ -1096,4 +1140,349 @@
 .tarx-section-empty-state .tarx-cta-btn {
 	padding: 4px 10px;
 	font-size: var(--tarx-font-sm);
+}
+
+/* ============================================================================
+   File Upload Section
+   ============================================================================ */
+
+/* Upload button in section header */
+.tarx-section-upload {
+	opacity: 0;
+	margin-right: var(--tarx-spacing-sm);
+	cursor: pointer;
+}
+
+.tarx-section-header:hover .tarx-section-upload {
+	opacity: 1;
+}
+
+/* Divider for uploaded files */
+.tarx-section-divider {
+	font-size: var(--tarx-font-xs);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	opacity: 0.5;
+	padding: var(--tarx-spacing-md) var(--tarx-spacing-md) var(--tarx-spacing-xs);
+	margin-left: calc(var(--tarx-icon-size) + var(--tarx-spacing-md));
+}
+
+/* Uploaded files container */
+.tarx-uploaded-files {
+	padding: 0 var(--tarx-spacing-sm);
+}
+
+/* Individual uploaded file */
+.tarx-uploaded-file {
+	display: flex;
+	align-items: center;
+	padding: var(--tarx-spacing-xs) var(--tarx-spacing-sm);
+	margin-left: calc(var(--tarx-icon-size) + var(--tarx-spacing-md));
+	border-radius: var(--tarx-radius-sm);
+	cursor: pointer;
+	transition: background var(--tarx-transition-fast);
+}
+
+.tarx-uploaded-file:hover {
+	background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.03));
+}
+
+.tarx-file-icon {
+	width: 14px;
+	height: 14px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0.7;
+	margin-right: var(--tarx-spacing-xs);
+	flex-shrink: 0;
+}
+
+.tarx-file-name {
+	flex: 1;
+	font-size: var(--tarx-font-sm);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.tarx-file-size {
+	font-size: var(--tarx-font-xs);
+	opacity: 0.5;
+	margin-left: var(--tarx-spacing-sm);
+}
+
+.tarx-file-delete {
+	width: 16px;
+	height: 16px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0;
+	margin-left: var(--tarx-spacing-xs);
+	cursor: pointer;
+	border-radius: var(--tarx-radius-sm);
+	transition: opacity var(--tarx-transition-fast), background var(--tarx-transition-fast);
+}
+
+.tarx-uploaded-file:hover .tarx-file-delete {
+	opacity: 0.5;
+}
+
+.tarx-file-delete:hover {
+	opacity: 1 !important;
+	background: var(--vscode-list-hoverBackground);
+}
+
+/* Empty state for uploaded files */
+.tarx-uploaded-files .tarx-empty-state {
+	font-size: var(--tarx-font-sm);
+	opacity: 0.5;
+	padding: var(--tarx-spacing-sm) 0;
+	text-align: center;
+}
+
+/* Drag and drop overlay */
+.tarx-section.drag-over {
+	position: relative;
+}
+
+.tarx-section.drag-over::after {
+	content: '📎 Drop files here';
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(66, 133, 244, 0.1);
+	border: 2px dashed var(--vscode-focusBorder, #4285f4);
+	border-radius: var(--tarx-radius-md);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: var(--tarx-font-lg);
+	z-index: 10;
+	pointer-events: none;
+}
+
+/* ============================================================================
+   Project Selector in Header
+   ============================================================================ */
+
+.tarx-project-row {
+	display: flex;
+	align-items: center;
+	gap: var(--tarx-spacing-sm);
+	padding: var(--tarx-spacing-sm) var(--tarx-spacing-md);
+	margin-top: var(--tarx-spacing-xs);
+}
+
+.tarx-project-selector {
+	flex: 1;
+	padding: 6px 10px;
+	background: var(--vscode-input-background, rgba(255,255,255,0.05));
+	color: var(--vscode-input-foreground, inherit);
+	border: 1px solid var(--vscode-input-border, rgba(255,255,255,0.1));
+	border-radius: var(--tarx-radius-md);
+	font-size: var(--tarx-font-sm);
+	cursor: pointer;
+	appearance: none;
+	-webkit-appearance: none;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: right 8px center;
+	padding-right: 28px;
+}
+
+.tarx-project-selector:hover {
+	border-color: var(--vscode-focusBorder, rgba(255,255,255,0.2));
+}
+
+.tarx-project-selector:focus {
+	outline: none;
+	border-color: var(--vscode-focusBorder, #4285f4);
+}
+
+.tarx-project-selector option {
+	background: var(--vscode-dropdown-background, #1e1e1e);
+	color: var(--vscode-dropdown-foreground, inherit);
+	padding: 4px 8px;
+}
+
+.tarx-new-chat-btn {
+	width: 28px;
+	height: 28px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: var(--vscode-button-background, #4285f4);
+	color: var(--vscode-button-foreground, white);
+	border: none;
+	border-radius: var(--tarx-radius-md);
+	cursor: pointer;
+	transition: background var(--tarx-transition-fast);
+	flex-shrink: 0;
+}
+
+.tarx-new-chat-btn:hover {
+	background: var(--vscode-button-hoverBackground, #5a9cf4);
+}
+
+/* Hide project row when collapsed */
+.tarx-sidebar-container.collapsed .tarx-project-row {
+	display: none;
+}
+
+/* ============================================================================
+   Project Create Modal
+   ============================================================================ */
+.tarx-modal-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(0, 0, 0, 0.6);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 9999;
+	backdrop-filter: blur(2px);
+}
+
+.tarx-modal {
+	background: var(--vscode-editor-background, #1e1e1e);
+	border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.1));
+	border-radius: 12px;
+	padding: 0;
+	width: 420px;
+	max-width: 90vw;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+	animation: tarx-modal-appear 0.15s ease-out;
+}
+
+@keyframes tarx-modal-appear {
+	from {
+		opacity: 0;
+		transform: scale(0.95) translateY(-10px);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1) translateY(0);
+	}
+}
+
+.tarx-modal-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 16px 20px;
+	border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.08));
+}
+
+.tarx-modal-header h2 {
+	margin: 0;
+	font-size: 16px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+
+.tarx-modal-close {
+	width: 28px;
+	height: 28px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 20px;
+	cursor: pointer;
+	border-radius: 6px;
+	opacity: 0.6;
+	transition: all 0.15s ease;
+}
+
+.tarx-modal-close:hover {
+	opacity: 1;
+	background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
+}
+
+.tarx-modal-content {
+	padding: 20px;
+}
+
+.tarx-modal-content label {
+	display: block;
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--vscode-foreground);
+	opacity: 0.8;
+	margin-bottom: 6px;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+}
+
+.tarx-modal-content input,
+.tarx-modal-content textarea {
+	width: 100%;
+	padding: 10px 12px;
+	margin-bottom: 16px;
+	background: var(--vscode-input-background, rgba(255,255,255,0.05));
+	border: 1px solid var(--vscode-input-border, rgba(255,255,255,0.1));
+	border-radius: 6px;
+	color: var(--vscode-input-foreground, inherit);
+	font-size: 14px;
+	font-family: inherit;
+	box-sizing: border-box;
+	transition: border-color 0.15s ease;
+}
+
+.tarx-modal-content input:focus,
+.tarx-modal-content textarea:focus {
+	outline: none;
+	border-color: var(--vscode-focusBorder, #4285f4);
+}
+
+.tarx-modal-content input.error {
+	border-color: var(--vscode-errorForeground, #f44336);
+}
+
+.tarx-modal-content textarea {
+	min-height: 80px;
+	resize: vertical;
+	line-height: 1.5;
+}
+
+.tarx-modal-actions {
+	display: flex;
+	gap: 10px;
+	justify-content: flex-end;
+	padding: 16px 20px;
+	border-top: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.08));
+	background: var(--vscode-sideBar-background, rgba(0,0,0,0.1));
+	border-radius: 0 0 12px 12px;
+}
+
+.tarx-modal-btn {
+	padding: 8px 16px;
+	border-radius: 6px;
+	cursor: pointer;
+	font-size: 13px;
+	font-weight: 500;
+	border: 1px solid var(--vscode-button-border, transparent);
+	background: transparent;
+	color: var(--vscode-foreground);
+	transition: all 0.15s ease;
+}
+
+.tarx-modal-btn:hover {
+	background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
+}
+
+.tarx-modal-btn.primary {
+	background: var(--vscode-button-background, #4285f4);
+	color: var(--vscode-button-foreground, white);
+	border-color: transparent;
+}
+
+.tarx-modal-btn.primary:hover {
+	background: var(--vscode-button-hoverBackground, #5a9cf4);
 }

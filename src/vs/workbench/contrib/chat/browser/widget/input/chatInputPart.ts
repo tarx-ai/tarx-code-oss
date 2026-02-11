@@ -1083,7 +1083,7 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 					break;
 				case ChatModeKind.Ask:
 				default:
-					modeLabel = localize('chatInput.mode.ask', "(Ask), ask questions or type / for topics.");
+					modeLabel = localize('chatInput.mode.ask', "(Ask), Ask TARX anything... (⌘↩ to send)");
 					break;
 			}
 		}

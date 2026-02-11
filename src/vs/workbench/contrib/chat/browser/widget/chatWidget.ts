@@ -15,9 +15,9 @@ import { toErrorMessage } from '../../../../../base/common/errorMessage.js';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import { IMarkdownString, MarkdownString } from '../../../../../base/common/htmlContent.js';
 import { Iterable } from '../../../../../base/common/iterator.js';
-import { Disposable, DisposableStore, IDisposable, MutableDisposable, thenIfNotDisposed } from '../../../../../base/common/lifecycle.js';
+import { Disposable, DisposableStore, IDisposable, MutableDisposable } from '../../../../../base/common/lifecycle.js';
 import { ResourceSet } from '../../../../../base/common/map.js';
-import { Schemas } from '../../../../../base/common/network.js';
+import { FileAccess, Schemas } from '../../../../../base/common/network.js';
 import { filter } from '../../../../../base/common/objects.js';
 import { autorun, observableFromEvent, observableValue } from '../../../../../base/common/observable.js';
 import { basename, extUri, isEqual } from '../../../../../base/common/resources.js';
@@ -77,6 +77,9 @@ import { ChatListWidget } from './chatListWidget.js';
 import { ChatEditorOptions } from './chatOptions.js';
 import { ChatViewWelcomePart, IChatSuggestedPrompts, IChatViewWelcomeContent } from '../viewsWelcome/chatViewWelcomeController.js';
 import { IAgentSessionsService } from '../agentSessions/agentSessionsService.js';
+// TARX Follow-up Suggestions
+import { TarxSuggestionService } from '../tarxSuggestionService.js';
+import { TarxFollowupChips } from './tarxFollowupChips.js';
 
 const $ = dom.$;
 
@@ -233,6 +236,10 @@ export class ChatWidget extends Disposable implements IChatWidget {
 
 	private readonly chatSuggestNextWidget: ChatSuggestNextWidget;
 
+	// TARX: Follow-up suggestion chips (rendered inline in last response item)
+	private readonly tarxSuggestionService = new TarxSuggestionService();
+	private tarxSuggestionsDisposable: TarxFollowupChips | undefined;
+
 	private bodyDimension: dom.Dimension | undefined;
 	private visibleChangeCount = 0;
 	private requestInProgress: IContextKey<boolean>;
@@ -241,9 +248,6 @@ export class ChatWidget extends Disposable implements IChatWidget {
 
 	private _visible = false;
 	get visible() { return this._visible; }
-
-	private _instructionFilesCheckPromise: Promise<boolean> | undefined;
-	private _instructionFilesExist: boolean | undefined;
 
 	private _isRenderingWelcome = false;
 
@@ -819,7 +823,7 @@ export class ChatWidget extends Disposable implements IChatWidget {
 				let additionalMessage: string | IMarkdownString | undefined;
 				if (this.chatEntitlementService.anonymous && !this.chatEntitlementService.sentiment.installed) {
 					const providers = product.defaultChatAgent.provider;
-					additionalMessage = new MarkdownString(localize({ key: 'settings', comment: ['{Locked="]({2})"}', '{Locked="]({3})"}'] }, "By continuing with {0} Copilot, you agree to {1}'s [Terms]({2}) and [Privacy Statement]({3}).", providers.default.name, providers.default.name, product.defaultChatAgent.termsStatementUrl, product.defaultChatAgent.privacyStatementUrl), { isTrusted: true });
+					additionalMessage = new MarkdownString(localize({ key: 'settings', comment: ['{Locked="]({2})"}', '{Locked="]({3})"}'] }, "By continuing with {0}, you agree to {1}'s [Terms]({2}) and [Privacy Statement]({3}).", providers.default.name, providers.default.name, product.defaultChatAgent.termsStatementUrl, product.defaultChatAgent.privacyStatementUrl), { isTrusted: true });
 				} else {
 					additionalMessage = defaultAgent?.metadata.additionalWelcomeMessage;
 				}
@@ -849,62 +853,9 @@ export class ChatWidget extends Disposable implements IChatWidget {
 	}
 
 	private _getGenerateInstructionsMessage(): IMarkdownString {
-		// Start checking for instruction files immediately if not already done
-		if (!this._instructionFilesCheckPromise) {
-			this._instructionFilesCheckPromise = this._checkForAgentInstructionFiles();
-			// Use VS Code's idiomatic pattern for disposal-safe promise callbacks
-			this._register(thenIfNotDisposed(this._instructionFilesCheckPromise, hasFiles => {
-				this._instructionFilesExist = hasFiles;
-				// Only re-render if the current view still doesn't have items and we're showing the welcome message
-				const hasViewModelItems = this.viewModel?.getItems().length ?? 0;
-				if (hasViewModelItems === 0) {
-					this.renderWelcomeViewContentIfNeeded();
-				}
-			}));
-		}
-
-		// If we already know the result, use it
-		if (this._instructionFilesExist === true) {
-			// Don't show generate instructions message if files exist
-			return new MarkdownString('');
-		} else if (this._instructionFilesExist === false) {
-			// Show generate instructions message if no files exist
-			const generateInstructionsCommand = 'workbench.action.chat.generateInstructions';
-			return new MarkdownString(localize(
-				'chatWidget.instructions',
-				"[Generate Agent Instructions]({0}) to onboard AI onto your codebase.",
-				`command:${generateInstructionsCommand}`
-			), { isTrusted: { enabledCommands: [generateInstructionsCommand] } });
-		}
-
-		// While checking, don't show the generate instructions message
+		// TARX: Hide the native VS Code agent instructions CTA
+		// Project-specific instructions are handled through TARX project settings
 		return new MarkdownString('');
-	}
-
-	/**
-	 * Checks if any agent instruction files (.github/copilot-instructions.md or AGENTS.md) exist in the workspace.
-	 * Used to determine whether to show the "Generate Agent Instructions" hint.
-	 *
-	 * @returns true if instruction files exist OR if instruction features are disabled (to hide the hint)
-	 */
-	private async _checkForAgentInstructionFiles(): Promise<boolean> {
-		try {
-			const useCopilotInstructionsFiles = this.configurationService.getValue(PromptsConfig.USE_COPILOT_INSTRUCTION_FILES);
-			const useAgentMd = this.configurationService.getValue(PromptsConfig.USE_AGENT_MD);
-			if (!useCopilotInstructionsFiles && !useAgentMd) {
-				// If both settings are disabled, return true to hide the hint (since the features aren't enabled)
-				return true;
-			}
-			return (
-				(await this.promptsService.listCopilotInstructionsMDs(CancellationToken.None)).length > 0 ||
-				// Note: only checking for AGENTS.md files at the root folder, not ones in subfolders.
-				(await this.promptsService.listAgentMDs(CancellationToken.None, false)).length > 0
-			);
-		} catch (error) {
-			// On error, assume no instruction files exist to be safe
-			this.logService.warn('[ChatWidget] Error checking for instruction files:', error);
-			return false;
-		}
 	}
 
 	private getWelcomeViewContent(additionalMessage: string | IMarkdownString | undefined): IChatViewWelcomeContent {
@@ -932,19 +883,23 @@ export class ChatWidget extends Disposable implements IChatWidget {
 
 		let title: string;
 		if (this.input.currentModeKind === ChatModeKind.Ask) {
-			title = localize('chatDescription', "What would you like to work on?");
+			title = localize('chatDescription', "Ask TARX anything...");
 		} else if (this.input.currentModeKind === ChatModeKind.Edit) {
 			title = localize('editsTitle', "What would you like to edit?");
 		} else {
-			title = localize('agentTitle', "What would you like TARX to build?");
+			title = localize('agentTitle', "What would you like to build?");
 		}
+
+		// Use TARX logo for the welcome view
+		const tarxIconUri = FileAccess.asBrowserUri('vs/workbench/contrib/chat/browser/widget/media/tarx-icon.png');
 
 		return {
 			title,
 			message: new MarkdownString(DISCLAIMER),
-			icon: Codicon.robot,
+			icon: tarxIconUri,
 			additionalMessage,
-			suggestedPrompts: this.getPromptFileSuggestions()
+			suggestedPrompts: this.getPromptFileSuggestions(),
+			useLargeIcon: true
 		};
 	}
 
@@ -1147,10 +1102,75 @@ export class ChatWidget extends Disposable implements IChatWidget {
 	private async renderFollowups(): Promise<void> {
 		const lastItem = this.listWidget.lastItem;
 		if (lastItem && isResponseVM(lastItem) && lastItem.isComplete) {
-			this.input.renderFollowups(lastItem.replyFollowups, lastItem);
+			const participantFollowups = lastItem.replyFollowups;
+			if (participantFollowups && participantFollowups.length > 0) {
+				// Standard path: participant-provided follow-ups
+				this.input.renderFollowups(participantFollowups, lastItem);
+				this.clearTarxSuggestions();
+			} else {
+				// TARX path: generate suggestions from local model
+				this.input.renderFollowups(undefined, undefined);
+				this.generateTarxSuggestions(lastItem);
+			}
 		} else {
 			this.input.renderFollowups(undefined, undefined);
+			this.clearTarxSuggestions();
 		}
+	}
+
+	private async generateTarxSuggestions(lastItem: IChatResponseViewModel): Promise<void> {
+		this.clearTarxSuggestions();
+
+		// Get last user message from the session
+		const items = this.viewModel?.getItems() ?? [];
+		const lastUserMsg = [...items].reverse().find(isRequestVM);
+		if (!lastUserMsg) {
+			return;
+		}
+
+		const suggestions = await this.tarxSuggestionService.generateSuggestions(
+			lastUserMsg.messageText,
+			lastItem.response.toString()
+		);
+		if (suggestions.length === 0) {
+			return;
+		}
+
+		// TARX: Render chips inline inside the last response item (above footer toolbar)
+		const lastResponseEl = this.listContainer.querySelector('.chat-most-recent-response');
+		if (!lastResponseEl) {
+			return;
+		}
+
+		const footerToolbar = lastResponseEl.querySelector('.chat-footer-toolbar');
+		const inlineContainer = document.createElement('div');
+		inlineContainer.className = 'tarx-inline-suggestions';
+
+		if (footerToolbar) {
+			lastResponseEl.insertBefore(inlineContainer, footerToolbar);
+		} else {
+			lastResponseEl.appendChild(inlineContainer);
+		}
+
+		this.tarxSuggestionsDisposable?.dispose();
+		this.tarxSuggestionsDisposable = new TarxFollowupChips(
+			inlineContainer,
+			suggestions,
+			(text) => {
+				this.inputEditor.setValue(text);
+				this.focusInput();
+			}
+		);
+
+		// Notify tree of height change so scroll calculations update
+		this.listWidget.rerender();
+	}
+
+	private clearTarxSuggestions(): void {
+		this.tarxSuggestionsDisposable?.dispose();
+		this.tarxSuggestionsDisposable = undefined;
+		// Remove any inline suggestion containers from list items
+		this.listContainer.querySelectorAll('.tarx-inline-suggestions').forEach(el => el.remove());
 	}
 
 	private renderChatSuggestNextWidget(): void {
@@ -2074,6 +2094,7 @@ export class ChatWidget extends Disposable implements IChatWidget {
 		}
 
 		this._onDidAcceptInput.fire();
+		this.clearTarxSuggestions(); // TARX: Clear suggestion chips on new input
 		this.listWidget.setScrollLock(this.isLockedToCodingAgent || !!checkModeOption(this.input.currentModeKind, this.viewOptions.autoScroll));
 
 		const editorValue = this.getInput();

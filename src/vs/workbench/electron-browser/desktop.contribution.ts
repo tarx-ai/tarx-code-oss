@@ -19,7 +19,7 @@ import { IsMacContext } from '../../platform/contextkey/common/contextkeys.js';
 import { INativeHostService } from '../../platform/native/common/native.js';
 import { IJSONContributionRegistry, Extensions as JSONExtensions } from '../../platform/jsonschemas/common/jsonContributionRegistry.js';
 import { IJSONSchema } from '../../base/common/jsonSchema.js';
-import { InstallShellScriptAction, UninstallShellScriptAction } from './actions/installActions.js';
+import { InstallShellScriptAction, UninstallShellScriptAction, TarxInstallCliAction, TarxUninstallCliAction, InstallCodeCommandAction } from './actions/installActions.js';
 import { EditorsVisibleContext, SingleEditorGroupsContext } from '../common/contextkeys.js';
 import { TELEMETRY_SETTING_ID } from '../../platform/telemetry/common/telemetry.js';
 import { IConfigurationService } from '../../platform/configuration/common/configuration.js';
@@ -63,6 +63,10 @@ import { MAX_ZOOM_LEVEL, MIN_ZOOM_LEVEL } from '../../platform/window/electron-b
 	if (isMacintosh) {
 		registerAction2(InstallShellScriptAction);
 		registerAction2(UninstallShellScriptAction);
+		// TARX: Additional aliases for better discoverability
+		registerAction2(TarxInstallCliAction);
+		registerAction2(TarxUninstallCliAction);
+		registerAction2(InstallCodeCommandAction);
 	}
 
 	// Quit

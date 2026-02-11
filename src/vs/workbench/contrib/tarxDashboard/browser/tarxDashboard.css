@@ -1,0 +1,391 @@
+/* ============================================================================
+   TARX Thinking Dashboard — Cyberpunk Dark Theme
+   ============================================================================ */
+
+.tarx-dashboard {
+	background: #0D0D0F;
+	color: #E8E8ED;
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+	font-size: 13px;
+	line-height: 1.5;
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+
+/* --- Header --- */
+
+.tarx-dashboard-header {
+	padding: 20px 24px 12px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-shrink: 0;
+}
+
+.tarx-dashboard-header-left {
+	display: flex;
+	align-items: baseline;
+	gap: 12px;
+}
+
+.tarx-dashboard-title {
+	font-size: 16px;
+	font-weight: 600;
+	color: #E8E8ED;
+	letter-spacing: 0.5px;
+}
+
+.tarx-dashboard-subtitle {
+	font-size: 12px;
+	color: #8B8B96;
+}
+
+.tarx-dashboard-health {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.tarx-health-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	position: relative;
+	cursor: default;
+}
+
+.tarx-health-dot.healthy {
+	background: #00E676;
+	box-shadow: 0 0 6px rgba(0, 230, 118, 0.4);
+}
+
+.tarx-health-dot.unhealthy {
+	background: #FF326D;
+	box-shadow: 0 0 6px rgba(255, 50, 109, 0.4);
+}
+
+.tarx-health-dot.unknown {
+	background: #555;
+}
+
+.tarx-health-label {
+	font-size: 11px;
+	color: #8B8B96;
+}
+
+/* --- Main Grid --- */
+
+.tarx-dashboard-grid {
+	flex: 1;
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	grid-template-rows: 1fr auto;
+	gap: 16px;
+	padding: 12px 24px 20px;
+	overflow: hidden;
+}
+
+/* --- Panels --- */
+
+.tarx-panel {
+	background: #161619;
+	border: 1px solid #2A2A30;
+	border-radius: 8px;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+.tarx-panel-header {
+	padding: 14px 16px 10px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-shrink: 0;
+	border-bottom: 1px solid #1E1E22;
+}
+
+.tarx-panel-title {
+	font-size: 13px;
+	font-weight: 600;
+	color: #E8E8ED;
+}
+
+.tarx-panel-body {
+	flex: 1;
+	overflow-y: auto;
+	padding: 8px 16px 16px;
+}
+
+/* --- Suggestions Panel --- */
+
+.tarx-panel-suggestions {
+	grid-column: 1;
+	grid-row: 1;
+}
+
+.tarx-suggestion-card {
+	padding: 12px;
+	border-radius: 6px;
+	background: #1C1C20;
+	border: 1px solid #2A2A30;
+	margin-bottom: 8px;
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	transition: border-color 0.2s;
+}
+
+.tarx-suggestion-card:hover {
+	border-color: #40B6FB;
+}
+
+.tarx-suggestion-icon {
+	font-size: 16px;
+	flex-shrink: 0;
+	margin-top: 1px;
+}
+
+.tarx-suggestion-content {
+	flex: 1;
+	min-width: 0;
+}
+
+.tarx-suggestion-title {
+	font-size: 13px;
+	font-weight: 500;
+	color: #E8E8ED;
+	margin-bottom: 2px;
+}
+
+.tarx-suggestion-detail {
+	font-size: 12px;
+	color: #8B8B96;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.tarx-suggestion-cta {
+	background: transparent;
+	border: 1px solid #40B6FB;
+	color: #40B6FB;
+	padding: 4px 10px;
+	border-radius: 4px;
+	font-size: 11px;
+	cursor: pointer;
+	white-space: nowrap;
+	flex-shrink: 0;
+	align-self: center;
+	transition: all 0.2s;
+}
+
+.tarx-suggestion-cta:hover {
+	background: #40B6FB;
+	color: #0D0D0F;
+	box-shadow: 0 0 12px rgba(64, 182, 251, 0.2);
+}
+
+/* --- Thinking Panel --- */
+
+.tarx-panel-thinking {
+	grid-column: 2;
+	grid-row: 1;
+}
+
+.tarx-thinking-pulse {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: #40B6FB;
+	animation: tarx-pulse 2s ease-in-out infinite;
+}
+
+@keyframes tarx-pulse {
+	0%, 100% { opacity: 0.4; transform: scale(0.9); }
+	50% { opacity: 1; transform: scale(1.1); }
+}
+
+.tarx-thinking-entry {
+	padding: 8px 0;
+	border-bottom: 1px solid #1E1E22;
+	display: flex;
+	gap: 10px;
+	align-items: flex-start;
+	animation: tarx-fade-in 0.3s ease-out;
+}
+
+@keyframes tarx-fade-in {
+	from { opacity: 0; transform: translateY(-4px); }
+	to { opacity: 1; transform: translateY(0); }
+}
+
+.tarx-thinking-entry:last-child {
+	border-bottom: none;
+}
+
+.tarx-thinking-time {
+	font-size: 11px;
+	color: #555;
+	white-space: nowrap;
+	min-width: 48px;
+	flex-shrink: 0;
+}
+
+.tarx-thinking-msg {
+	font-size: 12px;
+	color: #C0C0C8;
+	flex: 1;
+}
+
+.tarx-thinking-msg.alert {
+	color: #FF326D;
+}
+
+.tarx-thinking-msg.health {
+	color: #00E676;
+}
+
+.tarx-thinking-action {
+	background: transparent;
+	border: 1px solid #2A2A30;
+	color: #8B8B96;
+	padding: 2px 8px;
+	border-radius: 3px;
+	font-size: 10px;
+	cursor: pointer;
+	white-space: nowrap;
+	flex-shrink: 0;
+	transition: all 0.2s;
+}
+
+.tarx-thinking-action:hover {
+	border-color: #40B6FB;
+	color: #40B6FB;
+}
+
+.tarx-thinking-empty {
+	color: #555;
+	font-size: 12px;
+	font-style: italic;
+	padding: 20px 0;
+	text-align: center;
+	animation: tarx-empty-cycle 6s ease-in-out infinite;
+}
+
+@keyframes tarx-empty-cycle {
+	0%, 100% { opacity: 0.5; }
+	50% { opacity: 0.8; }
+}
+
+/* --- Conversations Panel --- */
+
+.tarx-panel-conversations {
+	grid-column: 1 / -1;
+	grid-row: 2;
+	max-height: 200px;
+}
+
+.tarx-conversations-row {
+	display: flex;
+	gap: 10px;
+	overflow-x: auto;
+	padding-bottom: 4px;
+}
+
+.tarx-conv-card {
+	flex-shrink: 0;
+	width: 220px;
+	padding: 12px;
+	background: #1C1C20;
+	border: 1px solid #2A2A30;
+	border-radius: 6px;
+	cursor: pointer;
+	transition: border-color 0.2s;
+}
+
+.tarx-conv-card:hover {
+	border-color: #40B6FB;
+}
+
+.tarx-conv-title {
+	font-size: 13px;
+	font-weight: 500;
+	color: #E8E8ED;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	margin-bottom: 4px;
+}
+
+.tarx-conv-meta {
+	font-size: 11px;
+	color: #8B8B96;
+}
+
+.tarx-conv-empty {
+	color: #555;
+	font-size: 12px;
+	padding: 16px 0;
+}
+
+.tarx-conv-empty-cta {
+	color: #40B6FB;
+	cursor: pointer;
+	text-decoration: none;
+	border: none;
+	background: none;
+	font-size: 12px;
+	padding: 0;
+}
+
+.tarx-conv-empty-cta:hover {
+	text-decoration: underline;
+}
+
+.tarx-view-all {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	padding: 12px;
+	color: #8B8B96;
+	font-size: 12px;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.tarx-view-all:hover {
+	color: #40B6FB;
+}
+
+/* --- Scrollbar Styling --- */
+
+.tarx-panel-body::-webkit-scrollbar {
+	width: 6px;
+}
+
+.tarx-panel-body::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.tarx-panel-body::-webkit-scrollbar-thumb {
+	background: #2A2A30;
+	border-radius: 3px;
+}
+
+.tarx-panel-body::-webkit-scrollbar-thumb:hover {
+	background: #3A3A40;
+}
+
+.tarx-conversations-row::-webkit-scrollbar {
+	height: 4px;
+}
+
+.tarx-conversations-row::-webkit-scrollbar-thumb {
+	background: #2A2A30;
+	border-radius: 2px;
+}

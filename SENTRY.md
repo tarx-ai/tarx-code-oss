@@ -1,12 +1,12 @@
-# TARX Code Sentry Integration
+# Workbench Sentry Integration
 
-Error tracking and crash reporting for TARX Code-OSS.
+Error tracking and crash reporting for Workbench-OSS.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    TARX Code-OSS                            │
+│                    Workbench-OSS                            │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  ┌─────────────────────┐    ┌─────────────────────┐        │
@@ -84,7 +84,7 @@ The default DSN is configured in `src/vs/platform/sentry/common/sentry.ts`:
 
 ## AI Agent Monitoring
 
-TARX Code includes Sentry AI Agent Monitoring for tracking AI/LLM calls.
+Workbench includes Sentry AI Agent Monitoring for tracking AI/LLM calls.
 
 ### Configuration
 

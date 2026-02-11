@@ -74,6 +74,7 @@ export class ProjectContextPanel {
 	private _activeTab: 'conversations' | 'sources' | 'memory' = 'conversations';
 	private _createMode: boolean = false;
 	private _pendingWorkspacePath: string | null = null;
+	private _chatHistory: Array<{ role: string; content: string }> = [];
 
 	// ========================================
 	// PUBLIC GETTERS FOR UI TESTING
@@ -326,6 +327,7 @@ export class ProjectContextPanel {
 					SELECT s.id, s.title, s.updated_at as timestamp, s.message_count as messageCount,
 					       s.space_id as spaceId
 					FROM sessions s
+					WHERE s.space_id = '${escapedProjectId}'
 					ORDER BY s.updated_at DESC
 					LIMIT 20;
 				`;
@@ -407,6 +409,10 @@ export class ProjectContextPanel {
 				await this._deleteFile(message.id);
 				break;
 
+			case 'savePastedText':
+				await this._savePastedText(message.content, message.filename);
+				break;
+
 			case 'refreshData':
 				if (this._projectId) {
 					await this.loadProject(this._projectId);
@@ -432,6 +438,14 @@ export class ProjectContextPanel {
 
 			case 'cancelCreate':
 				this._panel.dispose();
+				break;
+
+			case 'sendProjectChat':
+				await this._handleProjectChat(message.message);
+				break;
+
+			case 'openFullChat':
+				await vscode.commands.executeCommand('workbench.action.chat.open');
 				break;
 		}
 	}
@@ -479,28 +493,42 @@ export class ProjectContextPanel {
 	/**
 	 * Handle project creation from create mode
 	 */
-	private async _handleCreateProject(data: { name: string; path: string; instructions: string; files?: string[] }): Promise<void> {
+	private async _handleCreateProject(data: { name: string; path: string; instructions: string; files?: string[]; mode?: string }): Promise<void> {
 		try {
-			console.log('[TARX] Creating project:', data.name, data.path);
+			console.log('[TARX] Creating project:', data.name, data.path, 'mode:', data.mode);
+
+			let resolvedPath = data.path;
+
+			// Handle "create" mode — auto-create folder under ~/TARX Projects/
+			if (data.mode === 'create' && resolvedPath.startsWith('~/')) {
+				resolvedPath = resolvedPath.replace('~', os.homedir());
+				if (!fs.existsSync(resolvedPath)) {
+					fs.mkdirSync(resolvedPath, { recursive: true });
+					console.log('[TARX] Created project folder:', resolvedPath);
+				}
+			}
 
 			// Validate path exists
-			if (!fs.existsSync(data.path)) {
+			if (!fs.existsSync(resolvedPath)) {
 				this._panel.webview.postMessage({
 					type: 'createError',
-					error: `Folder does not exist: ${data.path}`
+					error: `Folder does not exist: ${resolvedPath}`
 				});
 				return;
 			}
 
 			// Validate not a UUID
 			const uuidCheck = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-			if (uuidCheck.test(data.path) || uuidCheck.test(path.basename(data.path))) {
+			if (uuidCheck.test(resolvedPath) || uuidCheck.test(path.basename(resolvedPath))) {
 				this._panel.webview.postMessage({
 					type: 'createError',
 					error: 'Invalid folder path'
 				});
 				return;
 			}
+
+			// Use resolvedPath from here
+			data.path = resolvedPath;
 
 			// Create .tarx directory
 			const tarxDir = path.join(data.path, '.tarx');
@@ -699,6 +727,139 @@ export class ProjectContextPanel {
 			}
 		} catch (error) {
 			console.error('[TARX] Error deleting file:', error);
+		}
+	}
+
+	/**
+	 * Save pasted text content as a file in the project
+	 */
+	private async _savePastedText(content: string, filename: string): Promise<void> {
+		if (!this._projectData) return;
+
+		try {
+			const tarxDir = path.join(this._projectData.root, '.tarx', 'sources');
+			if (!fs.existsSync(tarxDir)) {
+				fs.mkdirSync(tarxDir, { recursive: true });
+			}
+
+			const filePath = path.join(tarxDir, filename);
+			fs.writeFileSync(filePath, content, 'utf-8');
+
+			// Upload via command to get it indexed
+			await vscode.commands.executeCommand('tarx.uploadFile', {
+				filename,
+				content,
+				size: Buffer.byteLength(content, 'utf-8'),
+				mimeType: 'text/plain'
+			});
+
+			vscode.window.showInformationMessage(`Saved "${filename}" to project`);
+
+			// Refresh
+			if (this._projectId) {
+				await this.loadProject(this._projectId);
+			}
+		} catch (error) {
+			console.error('[TARX] Error saving pasted text:', error);
+			vscode.window.showErrorMessage('Failed to save pasted text');
+		}
+	}
+
+	/**
+	 * Handle inline project chat — streams from local LLM
+	 */
+	private async _handleProjectChat(userMessage: string): Promise<void> {
+		// Build messages array
+		const messages: Array<{ role: string; content: string }> = [];
+
+		// System prompt with project context
+		const instructions = this._projectData?.instructions || '';
+		messages.push({
+			role: 'system',
+			content: `You are TARX, a local AI assistant. You are chatting in the context of the project "${this._projectData?.name || 'Unknown'}".`
+				+ (instructions ? `\n\nProject instructions:\n${instructions}` : '')
+				+ `\n\nBe concise. Answer in context of this project.`
+		});
+
+		// Recent chat history (last 10 turns)
+		for (const msg of this._chatHistory.slice(-10)) {
+			messages.push({ role: msg.role, content: msg.content });
+		}
+
+		// Current user message
+		messages.push({ role: 'user', content: userMessage });
+		this._chatHistory.push({ role: 'user', content: userMessage });
+
+		try {
+			const response = await fetch('http://localhost:11435/v1/chat/completions', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					messages,
+					temperature: 0.7,
+					max_tokens: 1024,
+					stream: true,
+					repeat_penalty: 1.15,
+					presence_penalty: 0.3,
+					frequency_penalty: 0.1
+				})
+			});
+
+			if (!response.ok) {
+				this._postMessage({ type: 'chatError', error: `LLM error: ${response.status}` });
+				return;
+			}
+
+			const reader = response.body?.getReader();
+			if (!reader) {
+				this._postMessage({ type: 'chatError', error: 'No response body' });
+				return;
+			}
+
+			const decoder = new TextDecoder();
+			let buffer = '';
+			let fullResponse = '';
+
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+
+				buffer += decoder.decode(value, { stream: true });
+				const lines = buffer.split('\n');
+				buffer = lines.pop() || '';
+
+				for (const line of lines) {
+					if (line.startsWith('data: ')) {
+						const data = line.slice(6);
+						if (data === '[DONE]') break;
+
+						try {
+							const parsed = JSON.parse(data);
+							const delta = parsed.choices?.[0]?.delta;
+							const content = delta?.content || delta?.reasoning_content;
+							if (content) {
+								fullResponse += content;
+								this._postMessage({ type: 'chatStreamToken', token: content });
+							}
+						} catch {
+							// Ignore parse errors
+						}
+					}
+				}
+			}
+
+			if (!fullResponse) {
+				fullResponse = 'No response generated.';
+			}
+
+			this._chatHistory.push({ role: 'assistant', content: fullResponse });
+			this._postMessage({ type: 'chatStreamEnd', content: fullResponse });
+
+		} catch (error: any) {
+			const errMsg = error?.cause?.code === 'ECONNREFUSED'
+				? 'TARX Desktop is not running. Start it to use chat.'
+				: String(error);
+			this._postMessage({ type: 'chatError', error: errMsg });
 		}
 	}
 
@@ -1140,6 +1301,169 @@ export class ProjectContextPanel {
 		@keyframes spin {
 			to { transform: rotate(360deg); }
 		}
+
+		.source-actions {
+			display: flex;
+			gap: 8px;
+			margin: 12px 0;
+		}
+
+		.source-actions .action-btn {
+			flex: none;
+			padding: 6px 12px;
+			font-size: 12px;
+		}
+
+		.paste-area {
+			background: var(--vscode-input-background);
+			border: 1px solid var(--vscode-input-border);
+			border-radius: 6px;
+			padding: 12px;
+			margin-bottom: 12px;
+		}
+
+		.paste-textarea {
+			width: 100%;
+			min-height: 80px;
+			background: transparent;
+			border: none;
+			color: var(--vscode-input-foreground);
+			font-family: var(--vscode-font-family);
+			font-size: var(--vscode-font-size);
+			resize: vertical;
+			outline: none;
+			margin-bottom: 8px;
+		}
+
+		.paste-actions {
+			display: flex;
+			gap: 8px;
+			align-items: center;
+		}
+
+		.paste-filename {
+			flex: 1;
+			padding: 6px 10px;
+			background: var(--vscode-input-background);
+			border: 1px solid var(--vscode-input-border);
+			border-radius: 4px;
+			color: var(--vscode-input-foreground);
+			font-size: 12px;
+		}
+
+		.paste-actions .action-btn {
+			flex: none;
+			padding: 6px 12px;
+			font-size: 12px;
+		}
+
+		/* Chat Section */
+		.chat-section {
+			border-top: 1px solid var(--vscode-panel-border);
+			background: var(--vscode-editor-background);
+			padding: 12px 0;
+			margin-top: 20px;
+		}
+
+		.chat-header {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			margin-bottom: 8px;
+			font-size: 13px;
+			font-weight: 600;
+			text-transform: uppercase;
+			letter-spacing: 0.5px;
+		}
+
+		.open-full-btn {
+			background: transparent;
+			border: none;
+			color: var(--vscode-foreground);
+			cursor: pointer;
+			padding: 4px 8px;
+			border-radius: 4px;
+			font-size: 14px;
+			opacity: 0.6;
+		}
+
+		.open-full-btn:hover {
+			background: var(--vscode-toolbar-hoverBackground);
+			opacity: 1;
+		}
+
+		.chat-messages {
+			max-height: 240px;
+			overflow-y: auto;
+			margin-bottom: 8px;
+		}
+
+		.chat-message {
+			padding: 8px 12px;
+			border-radius: 8px;
+			margin-bottom: 6px;
+			font-size: 13px;
+			line-height: 1.5;
+			white-space: pre-wrap;
+			word-wrap: break-word;
+		}
+
+		.chat-message.user {
+			background: var(--vscode-input-background);
+			margin-left: 40px;
+		}
+
+		.chat-message.assistant {
+			background: var(--vscode-textBlockQuote-background);
+			margin-right: 40px;
+		}
+
+		.chat-message.error {
+			background: var(--vscode-inputValidation-errorBackground);
+			color: var(--vscode-errorForeground);
+			font-size: 12px;
+		}
+
+		.chat-input-area {
+			display: flex;
+			gap: 8px;
+		}
+
+		.chat-input-area textarea {
+			flex: 1;
+			resize: none;
+			background: var(--vscode-input-background);
+			border: 1px solid var(--vscode-input-border);
+			border-radius: 6px;
+			color: var(--vscode-input-foreground);
+			padding: 8px;
+			font-family: var(--vscode-font-family);
+			font-size: var(--vscode-font-size);
+			outline: none;
+		}
+
+		.chat-input-area textarea:focus {
+			border-color: var(--vscode-textLink-foreground);
+		}
+
+		.chat-input-area button {
+			padding: 8px 16px;
+			background: var(--vscode-button-background);
+			color: var(--vscode-button-foreground);
+			border: none;
+			border-radius: 6px;
+			cursor: pointer;
+			font-size: 13px;
+		}
+
+		.chat-input-area button:hover {
+			background: var(--vscode-button-hoverBackground);
+		}
+
+		.chat-input-area button:disabled {
+			opacity: 0.5;
+			cursor: not-allowed;
+		}
 	</style>
 </head>
 <body>
@@ -1167,7 +1491,7 @@ export class ProjectContextPanel {
 				placeholder="Example: This is a React TypeScript project. Use functional components with hooks. Follow the existing coding style..."
 				onchange="saveInstructions()"
 			>${this._escapeHtml(instructions)}</textarea>
-			<div class="save-indicator" id="saveIndicator">✓ Saved</div>
+			<div class="save-indicator" id="saveIndicator">Saved</div>
 		</div>
 	</div>
 
@@ -1199,6 +1523,18 @@ export class ProjectContextPanel {
 				<i class="codicon codicon-cloud-upload drop-zone-icon"></i>
 				<div class="drop-zone-text">Drag files here or click to upload</div>
 			</div>
+			<div class="source-actions">
+				<button class="action-btn secondary" onclick="uploadFile()"><i class="codicon codicon-cloud-upload"></i> Upload Files</button>
+				<button class="action-btn secondary" onclick="togglePasteArea()"><i class="codicon codicon-clippy"></i> Paste Text</button>
+			</div>
+			<div class="paste-area" id="pasteArea" style="display: none;">
+				<textarea id="pasteContent" class="paste-textarea" placeholder="Paste text content here (notes, documentation, specifications...)"></textarea>
+				<div class="paste-actions">
+					<input type="text" id="pasteFilename" class="paste-filename" placeholder="filename.txt" />
+					<button class="action-btn primary" onclick="savePastedText()">Save</button>
+					<button class="action-btn secondary" onclick="togglePasteArea()">Cancel</button>
+				</div>
+			</div>
 			${filesHtml}
 		</div>
 
@@ -1208,14 +1544,19 @@ export class ProjectContextPanel {
 		</div>
 	</div>
 
-	<!-- Action Bar -->
-	<div class="action-bar">
-		<button class="action-btn secondary" onclick="uploadFile()">
-			<i class="codicon codicon-cloud-upload"></i> Upload Files
-		</button>
-		<button class="action-btn primary" onclick="newConversation()">
-			<i class="codicon codicon-comment-discussion"></i> New Chat
-		</button>
+	<!-- Chat Section -->
+	<div class="chat-section">
+		<div class="chat-header">
+			<span>Chat with TARX</span>
+			<button onclick="openFullChat()" class="open-full-btn" title="Open full chat panel">
+				<i class="codicon codicon-link-external"></i>
+			</button>
+		</div>
+		<div class="chat-messages" id="chatMessages"></div>
+		<div class="chat-input-area">
+			<textarea id="chatInput" placeholder="Ask about this project..." rows="1" onkeydown="handleChatKeydown(event)"></textarea>
+			<button id="sendBtn" onclick="sendChatMessage()">Send</button>
+		</div>
 	</div>
 	` : `
 	<!-- No Project Selected -->
@@ -1260,6 +1601,74 @@ export class ProjectContextPanel {
 			vscode.postMessage({ type: 'refreshData' });
 		}
 
+		function togglePasteArea() {
+			const area = document.getElementById('pasteArea');
+			if (area) {
+				area.style.display = area.style.display === 'none' ? 'block' : 'none';
+				if (area.style.display === 'block') {
+					document.getElementById('pasteContent').focus();
+				}
+			}
+		}
+
+		function savePastedText() {
+			const content = document.getElementById('pasteContent').value.trim();
+			const filename = document.getElementById('pasteFilename').value.trim() || ('pasted-' + Date.now() + '.txt');
+			if (!content) { return; }
+			vscode.postMessage({ type: 'savePastedText', content, filename });
+			document.getElementById('pasteContent').value = '';
+			document.getElementById('pasteFilename').value = '';
+			togglePasteArea();
+		}
+
+		// ---- Chat functions ----
+		let chatStreaming = false;
+
+		function sendChatMessage() {
+			const input = document.getElementById('chatInput');
+			const msg = input.value.trim();
+			if (!msg || chatStreaming) return;
+
+			// Show user message
+			appendChatMessage('user', msg);
+			input.value = '';
+			input.style.height = 'auto';
+
+			chatStreaming = true;
+			document.getElementById('sendBtn').disabled = true;
+
+			// Create placeholder for assistant response
+			const messagesEl = document.getElementById('chatMessages');
+			const assistantEl = document.createElement('div');
+			assistantEl.className = 'chat-message assistant';
+			assistantEl.id = 'chat-streaming';
+			assistantEl.textContent = '';
+			messagesEl.appendChild(assistantEl);
+			messagesEl.scrollTop = messagesEl.scrollHeight;
+
+			vscode.postMessage({ type: 'sendProjectChat', message: msg });
+		}
+
+		function appendChatMessage(role, content) {
+			const messagesEl = document.getElementById('chatMessages');
+			const el = document.createElement('div');
+			el.className = 'chat-message ' + role;
+			el.textContent = content;
+			messagesEl.appendChild(el);
+			messagesEl.scrollTop = messagesEl.scrollHeight;
+		}
+
+		function handleChatKeydown(e) {
+			if (e.key === 'Enter' && !e.shiftKey) {
+				e.preventDefault();
+				sendChatMessage();
+			}
+		}
+
+		function openFullChat() {
+			vscode.postMessage({ type: 'openFullChat' });
+		}
+
 		function saveInstructions() {
 			const content = document.getElementById('instructions').value;
 
@@ -1276,9 +1685,43 @@ export class ProjectContextPanel {
 			switch (message.type) {
 				case 'instructionsSaved':
 					const indicator = document.getElementById('saveIndicator');
-					indicator.classList.add('visible');
-					setTimeout(() => indicator.classList.remove('visible'), 2000);
+					if (indicator) {
+						indicator.classList.add('visible');
+						setTimeout(() => indicator.classList.remove('visible'), 2000);
+					}
 					break;
+
+				case 'chatStreamToken': {
+					const streamEl = document.getElementById('chat-streaming');
+					if (streamEl) {
+						streamEl.textContent += message.token;
+						const messagesEl = document.getElementById('chatMessages');
+						if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
+					}
+					break;
+				}
+
+				case 'chatStreamEnd': {
+					const streamEl = document.getElementById('chat-streaming');
+					if (streamEl) {
+						streamEl.textContent = message.content;
+						streamEl.removeAttribute('id');
+					}
+					chatStreaming = false;
+					const sendBtn = document.getElementById('sendBtn');
+					if (sendBtn) sendBtn.disabled = false;
+					break;
+				}
+
+				case 'chatError': {
+					const streamEl = document.getElementById('chat-streaming');
+					if (streamEl) streamEl.remove();
+					appendChatMessage('error', message.error);
+					chatStreaming = false;
+					const sendBtn2 = document.getElementById('sendBtn');
+					if (sendBtn2) sendBtn2.disabled = false;
+					break;
+				}
 			}
 		});
 
@@ -1589,6 +2032,52 @@ export class ProjectContextPanel {
 			display: block;
 		}
 
+		.mode-tabs {
+			display: flex;
+			gap: 0;
+			margin-bottom: 24px;
+			border-bottom: 1px solid var(--vscode-panel-border);
+		}
+
+		.mode-tab {
+			padding: 10px 20px;
+			background: transparent;
+			border: none;
+			color: var(--vscode-descriptionForeground);
+			cursor: pointer;
+			font-size: 14px;
+			font-weight: 500;
+			border-bottom: 2px solid transparent;
+			margin-bottom: -1px;
+			transition: all 0.2s;
+		}
+
+		.mode-tab:hover {
+			color: var(--vscode-foreground);
+		}
+
+		.mode-tab.active {
+			color: var(--vscode-foreground);
+			border-bottom-color: var(--vscode-textLink-foreground);
+		}
+
+		.auto-path {
+			padding: 10px 12px;
+			background: var(--vscode-textBlockQuote-background);
+			border: 1px solid var(--vscode-panel-border);
+			border-radius: 6px;
+			font-family: var(--vscode-editor-font-family);
+			font-size: 13px;
+			color: var(--vscode-descriptionForeground);
+		}
+
+		.auto-path-hint {
+			font-size: 11px;
+			color: var(--vscode-descriptionForeground);
+			margin-top: 4px;
+			opacity: 0.7;
+		}
+
 		@media (max-width: 700px) {
 			.content {
 				grid-template-columns: 1fr;
@@ -1603,25 +2092,39 @@ export class ProjectContextPanel {
 <body>
 	<div class="container">
 		<div class="header">
-			<h1>✨ Create Project</h1>
+			<h1>Create Project</h1>
 			<p class="subtitle">Set up a new TARX project to track your work</p>
+		</div>
+
+		<!-- Mode Tabs -->
+		<div class="mode-tabs">
+			<button class="mode-tab active" id="modeCreate" onclick="switchMode('create')">Create New</button>
+			<button class="mode-tab" id="modeImport" onclick="switchMode('import')">Import Folder</button>
 		</div>
 
 		<div class="content">
 			<div class="main-section">
 				<div class="section">
-					<div class="section-title">📋 Project Details</div>
+					<div class="section-title">PROJECT DETAILS</div>
 
 					<div class="field">
 						<label for="projectName">Project Name</label>
-						<input type="text" id="projectName" value="${this._escapeHtml(workspaceName)}" placeholder="my-awesome-project" autofocus />
+						<input type="text" id="projectName" value="${this._escapeHtml(workspaceName)}" placeholder="my-awesome-project" autofocus oninput="onNameInput()" />
 						<div class="error-message" id="nameError"></div>
 					</div>
 
-					<div class="field">
-						<label for="projectPath">Workspace Folder</label>
+					<!-- Create mode: auto-generated path display -->
+					<div class="field" id="autoPathField">
+						<label>Project Location</label>
+						<div class="auto-path" id="autoPathDisplay">~/TARX Projects/<span id="autoPathName">${this._escapeHtml(workspaceName || 'my-project')}</span>/</div>
+						<div class="auto-path-hint">Folder will be created automatically</div>
+					</div>
+
+					<!-- Import mode: browse path -->
+					<div class="field" id="browsePathField" style="display: none;">
+						<label for="projectPath">Folder to Import</label>
 						<div class="path-input">
-							<input type="text" id="projectPath" value="${this._escapeHtml(workspacePath)}" placeholder="/path/to/folder" readonly />
+							<input type="text" id="projectPath" value="${this._escapeHtml(workspacePath)}" placeholder="/path/to/existing/folder" readonly />
 							<button onclick="browsePath()">Browse...</button>
 						</div>
 						<div class="error-message" id="pathError"></div>
@@ -1638,7 +2141,7 @@ export class ProjectContextPanel {
 					<div class="drop-zone" id="dropZone">
 						<i class="codicon codicon-folder drop-zone-icon"></i>
 						<div class="drop-zone-text">Drag files here or click to browse</div>
-						<div class="drop-zone-hint">PDFs, docs, code files - TARX will index them</div>
+						<div class="drop-zone-hint">PDFs, docs, code files — TARX will index them</div>
 					</div>
 					<div id="fileList"></div>
 				</div>
@@ -1646,7 +2149,7 @@ export class ProjectContextPanel {
 
 			<div class="sidebar-section">
 				<button class="btn btn-primary" id="createBtn" onclick="createProject()">
-					<i class="codicon codicon-add"></i> Create Project
+					Create Project
 				</button>
 
 				<button class="btn btn-secondary" onclick="cancelCreate()">
@@ -1670,6 +2173,29 @@ export class ProjectContextPanel {
 	<script>
 		const vscode = acquireVsCodeApi();
 		let pendingFiles = [];
+		let currentMode = 'create'; // 'create' or 'import'
+
+		function switchMode(mode) {
+			currentMode = mode;
+			document.getElementById('modeCreate').classList.toggle('active', mode === 'create');
+			document.getElementById('modeImport').classList.toggle('active', mode === 'import');
+			document.getElementById('autoPathField').style.display = mode === 'create' ? '' : 'none';
+			document.getElementById('browsePathField').style.display = mode === 'import' ? '' : 'none';
+
+			// Clear name if switching modes
+			if (mode === 'create') {
+				document.getElementById('projectName').placeholder = 'my-awesome-project';
+			} else {
+				document.getElementById('projectName').placeholder = 'Auto-fills from folder name';
+			}
+		}
+
+		function onNameInput() {
+			const name = document.getElementById('projectName').value.trim();
+			const slug = name ? name.replace(/[^a-zA-Z0-9._-]/g, '-').replace(/-+/g, '-') : 'my-project';
+			const autoSpan = document.getElementById('autoPathName');
+			if (autoSpan) { autoSpan.textContent = slug; }
+		}
 
 		function browsePath() {
 			vscode.postMessage({ type: 'browseFolderForCreate' });
@@ -1677,22 +2203,30 @@ export class ProjectContextPanel {
 
 		function createProject() {
 			const name = document.getElementById('projectName').value.trim();
-			const path = document.getElementById('projectPath').value.trim();
 			const instructions = document.getElementById('projectInstructions').value.trim();
 
 			// Validation
 			let valid = true;
 			document.getElementById('nameError').textContent = '';
-			document.getElementById('pathError').textContent = '';
+			const pathErr = document.getElementById('pathError');
+			if (pathErr) pathErr.textContent = '';
 
 			if (!name) {
 				document.getElementById('nameError').textContent = 'Project name is required';
 				valid = false;
 			}
 
-			if (!path) {
-				document.getElementById('pathError').textContent = 'Workspace folder is required';
-				valid = false;
+			let projectPath;
+			if (currentMode === 'create') {
+				// Auto-generate path
+				const slug = name.replace(/[^a-zA-Z0-9._-]/g, '-').replace(/-+/g, '-');
+				projectPath = '~/TARX Projects/' + slug;
+			} else {
+				projectPath = document.getElementById('projectPath').value.trim();
+				if (!projectPath) {
+					if (pathErr) pathErr.textContent = 'Please select a folder to import';
+					valid = false;
+				}
 			}
 
 			if (!valid) return;
@@ -1704,7 +2238,7 @@ export class ProjectContextPanel {
 
 			vscode.postMessage({
 				type: 'createProject',
-				data: { name, path, instructions, files: pendingFiles }
+				data: { name, path: projectPath, instructions, files: pendingFiles, mode: currentMode }
 			});
 		}
 
@@ -1727,7 +2261,7 @@ export class ProjectContextPanel {
 				case 'createError':
 					const btn = document.getElementById('createBtn');
 					btn.disabled = false;
-					btn.textContent = '✨ Create Project';
+					btn.textContent = 'Create Project';
 					alert(message.error);
 					break;
 			}
@@ -1771,7 +2305,7 @@ export class ProjectContextPanel {
 			list.innerHTML = pendingFiles.map((f, i) => \`
 				<div style="display: flex; align-items: center; padding: 8px; background: var(--vscode-input-background); border-radius: 4px; margin-top: 8px;">
 					<span style="flex: 1; font-size: 12px; opacity: 0.8;">\${f.split('/').pop()}</span>
-					<button onclick="removePendingFile(\${i})" style="background: none; border: none; color: var(--vscode-errorForeground); cursor: pointer;">×</button>
+					<button onclick="removePendingFile(\${i})" style="background: none; border: none; color: var(--vscode-errorForeground); cursor: pointer;">x</button>
 				</div>
 			\`).join('');
 		}

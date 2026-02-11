@@ -11,7 +11,7 @@ import { createCommandUri, MarkdownString } from '../../../../base/common/htmlCo
 import { Disposable, DisposableMap, DisposableStore } from '../../../../base/common/lifecycle.js';
 import * as strings from '../../../../base/common/strings.js';
 import { localize, localize2 } from '../../../../nls.js';
-import { ContextKeyExpr, IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
+import { IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
 import { ExtensionIdentifier, IExtensionManifest } from '../../../../platform/extensions/common/extensions.js';
 import { SyncDescriptor } from '../../../../platform/instantiation/common/descriptors.js';
 import { IProductService } from '../../../../platform/product/common/productService.js';
@@ -41,7 +41,7 @@ const chatViewContainer: ViewContainer = Registry.as<IViewContainersRegistry>(Vi
 	storageId: ChatViewContainerId,
 	hideIfEmpty: true,
 	order: 1,
-}, ViewContainerLocation.AuxiliaryBar, { isDefault: true, doNotRegisterOpenCommand: true });
+}, ViewContainerLocation.AuxiliaryBar, { isDefault: false, doNotRegisterOpenCommand: true });
 
 const chatViewDescriptor: IViewDescriptor = {
 	id: ChatViewId,
@@ -49,7 +49,7 @@ const chatViewDescriptor: IViewDescriptor = {
 	containerTitle: chatViewContainer.title.value,
 	singleViewPaneContainerTitle: chatViewContainer.title.value,
 	name: localize2('chat.viewContainer.label', "TARX"),
-	canToggleVisibility: false,
+	canToggleVisibility: true,
 	canMoveView: true,
 	// TARX: Removed keybinding - Cmd+Alt+I now opens chat as editor tab via workbench.action.chat.open
 	openCommandActionDescriptor: {
@@ -58,15 +58,8 @@ const chatViewDescriptor: IViewDescriptor = {
 		mnemonicTitle: localize({ key: 'miToggleChat', comment: ['&& denotes a mnemonic'] }, "&&TARX"),
 		order: 1
 	},
-	ctorDescriptor: new SyncDescriptor(ChatViewPane),
-	when: ContextKeyExpr.or(
-		ContextKeyExpr.or(
-			ChatContextKeys.Setup.hidden,
-			ChatContextKeys.Setup.disabled
-		)?.negate(),
-		ChatContextKeys.panelParticipantRegistered,
-		ChatContextKeys.extensionInvalid
-	)
+	ctorDescriptor: new SyncDescriptor(ChatViewPane)
+	// TARX: Removed 'when' clause - chat view always visible (local AI, no Copilot entitlement needed)
 };
 Registry.as<IViewsRegistry>(ViewExtensions.ViewsRegistry).registerViews([chatViewDescriptor], chatViewContainer);
 
@@ -347,9 +340,9 @@ export class ChatCompatibilityNotifier extends Disposable implements IWorkbenchC
 
 		this.registeredWelcomeView = true;
 		const showExtensionLabel = localize('showExtension', "Show Extension");
-		const mainMessage = localize('chatFailErrorMessage', "Chat failed to load because the installed version of the Copilot Chat extension is not compatible with this version of {0}. Please ensure that the Copilot Chat extension is up to date.", this.productService.nameLong);
+		const mainMessage = localize('chatFailErrorMessage', "Chat failed to load because the installed version of the TARX Chat extension is not compatible with this version of {0}. Please ensure that the TARX Chat extension is up to date.", this.productService.nameLong);
 		const commandButton = `[${showExtensionLabel}](${createCommandUri(showExtensionsWithIdsCommandId, [this.productService.defaultChatAgent?.chatExtensionId])})`;
-		const versionMessage = `Copilot Chat version: ${chatExtension.version}`;
+		const versionMessage = `TARX Chat version: ${chatExtension.version}`;
 		const viewsRegistry = Registry.as<IViewsRegistry>(ViewExtensions.ViewsRegistry);
 		this._register(viewsRegistry.registerViewWelcomeContent(ChatViewId, {
 			content: [mainMessage, commandButton, versionMessage].join('\n\n'),

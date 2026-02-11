@@ -1,0 +1,31 @@
+{
+  "name": "tarx-ui-mcp-server",
+  "version": "2.0.0",
+  "engines": {
+    "node": ">=18.0.0",
+    "vscode": "^1.85.0"
+  },
+  "type": "module",
+  "private": true,
+  "description": "MCP server for TARX UI end-to-end testing — 168 tools, screenshot/OCR, 2500 test cases",
+  "main": "dist/server.js",
+  "bin": {
+    "tarx-ui-mcp": "./dist/server.js"
+  },
+  "scripts": {
+    "build": "npx esbuild src/server.ts --outfile=dist/server.js --format=esm --platform=node --target=node18 --bundle --packages=external",
+    "build:ocr": "swiftc -O -o tools/tarx-ocr tools/tarx-ocr.swift -framework Vision -framework AppKit",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "pngjs": "^7.0.0",
+    "ws": "^8.16.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.0.0"
+  }
+}

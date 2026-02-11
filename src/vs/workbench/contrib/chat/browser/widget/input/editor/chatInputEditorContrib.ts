@@ -61,6 +61,20 @@ function getRangeForPlaceholder(part: IParsedChatRequestPart) {
 	};
 }
 
+// TARX: Rotating placeholder text arrays
+const TARX_PLACEHOLDERS_ACTIVE = [
+	'Ask TARX anything...',
+	'Describe what you want to build...',
+	'Paste an error to debug...',
+	'Ask about your codebase...'
+];
+
+const TARX_PLACEHOLDERS_EMPTY = [
+	'What are you working on?',
+	'Describe a task and TARX will handle it',
+	'Paste code to review or improve'
+];
+
 class InputEditorDecorations extends Disposable {
 
 	private static readonly UPDATE_DELAY = 200;
@@ -70,6 +84,9 @@ class InputEditorDecorations extends Disposable {
 	private readonly previouslyUsedAgents = new Set<string>();
 
 	private readonly viewModelDisposables = this._register(new MutableDisposable());
+
+	private _tarxPlaceholderIndex = 0;
+	private _tarxPlaceholderInterval: ReturnType<typeof setInterval> | undefined;
 
 
 	private readonly updateThrottle = this._register(new ThrottledDelayer<void>(InputEditorDecorations.UPDATE_DELAY));
@@ -110,6 +127,13 @@ class InputEditorDecorations extends Disposable {
 		}));
 
 		this.registerViewModelListeners();
+
+		// TARX: Rotate placeholder text every 5 seconds
+		this._tarxPlaceholderInterval = setInterval(() => {
+			this._tarxPlaceholderIndex++;
+			this.updateInputPlaceholderDecoration();
+		}, 5000);
+		this._register({ dispose: () => { if (this._tarxPlaceholderInterval) { clearInterval(this._tarxPlaceholderInterval); } } });
 	}
 
 	private registerViewModelListeners(): void {
@@ -166,7 +190,18 @@ class InputEditorDecorations extends Disposable {
 		if (!inputValue) {
 			const mode = this.widget.input.currentModeObs.get();
 			const placeholder = mode.argumentHint?.get() ?? mode.description.get() ?? '';
-			const displayPlaceholder = viewModel.inputPlaceholder || placeholder;
+
+			// TARX: Use rotating placeholder text when no explicit placeholder is set
+			let displayPlaceholder: string;
+			if (viewModel.inputPlaceholder) {
+				displayPlaceholder = viewModel.inputPlaceholder;
+			} else if (placeholder) {
+				displayPlaceholder = placeholder;
+			} else {
+				const hasMessages = (this.widget.viewModel?.getItems().length ?? 0) > 0;
+				const list = hasMessages ? TARX_PLACEHOLDERS_ACTIVE : TARX_PLACEHOLDERS_EMPTY;
+				displayPlaceholder = list[this._tarxPlaceholderIndex % list.length];
+			}
 
 			const decoration: IDecorationOptions[] = [
 				{

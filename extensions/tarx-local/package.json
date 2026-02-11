@@ -28,6 +28,16 @@
           "type": "string",
           "default": "auto",
           "description": "Model to use (auto-detect based on hardware)"
+        },
+        "tarx.local.embeddingServer.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable embedding server for RAG"
+        },
+        "tarx.local.embeddingServer.port": {
+          "type": "number",
+          "default": 11437,
+          "description": "Port for embedding server"
         }
       }
     },
@@ -39,6 +49,14 @@
       {
         "command": "tarx.local.status",
         "title": "TARX: Show Local Inference Status"
+      },
+      {
+        "command": "tarx.local.restartEmbedding",
+        "title": "TARX: Restart Embedding Server"
+      },
+      {
+        "command": "tarx.local.embeddingStatus",
+        "title": "TARX: Show Embedding Server Status"
       }
     ]
   },

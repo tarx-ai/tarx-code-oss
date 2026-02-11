@@ -16,7 +16,7 @@ import { Footer } from './components/Footer';
 import { ModelLoadingIndicator } from './components/ModelLoadingIndicator';
 import { UploadProgress } from './components/UploadProgress';
 import { SettingsView } from './components/SettingsView';
-import { ProjectModal } from './components/ProjectModal';
+import TARXDashboard from './components/Dashboard';
 import type {
 	TarxProject,
 	TarxHistoryItem,
@@ -27,9 +27,9 @@ import type {
 	TarxSettings
 } from './types';
 
-// Custom branded chat icon - larger and more prominent than codicons
+// Custom branded chat icon - same size as codicons (16px)
 const ChatIcon: React.FC = () => (
-	<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+	<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
 		<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
 		<path d="M8 10h.01" strokeWidth="2.5"/>
 		<path d="M12 10h.01" strokeWidth="2.5"/>
@@ -66,9 +66,6 @@ export const App: React.FC<AppProps> = ({ logoUri, eyesUri }) => {
 	const [showSettings, setShowSettings] = useState(false);
 	const [settings, setSettings] = useState<TarxSettings | null>(null);
 
-	// Project modal state
-	const [showProjectModal, setShowProjectModal] = useState(false);
-
 	// MCP Bridge state
 	const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 	const [activeSection, setActiveSection] = useState<'chat' | 'projects' | 'history' | 'files'>('chat');
@@ -84,6 +81,12 @@ export const App: React.FC<AppProps> = ({ logoUri, eyesUri }) => {
 	});
 	const [extensionReady, setExtensionReady] = useState(false);
 
+	// Collapsed state (from sidebar part)
+	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+	// Dashboard state — shown by default
+	const [showDashboard, setShowDashboard] = useState(true);
+
 	// Handlers
 	const toggleSection = useCallback((sectionId: keyof SectionState) => {
 		setSectionState(prev => {
@@ -94,6 +97,7 @@ export const App: React.FC<AppProps> = ({ logoUri, eyesUri }) => {
 	}, []);
 
 	const handleOpenChat = useCallback(() => {
+		setShowDashboard(false);
 		postMessage({ command: 'openChat' });
 	}, []);
 
@@ -102,29 +106,15 @@ export const App: React.FC<AppProps> = ({ logoUri, eyesUri }) => {
 	}, []);
 
 	const handleOpenProject = useCallback((projectId: string) => {
-		// Set selected project in state
 		setSelectedProjectId(projectId);
-
-		// Save to vscode state
 		setState({ ...getState(), selectedProjectId: projectId });
-
-		// Post select message to extension (not open)
-		postMessage({ command: 'selectProject', projectId });
+		// Open full-tab project context panel
+		postMessage({ command: 'openProjectTab', projectId });
 	}, []);
 
 	const handleCreateProject = useCallback(() => {
-		// Show inline modal in sidebar
-		setShowProjectModal(true);
-	}, []);
-
-	const handleProjectSubmit = useCallback((name: string) => {
-		// Send to extension to create project with auto-folder
-		postMessage({ command: 'createProject', name });
-		setShowProjectModal(false);
-	}, []);
-
-	const handleProjectModalCancel = useCallback(() => {
-		setShowProjectModal(false);
+		// Open full-tab create project panel (not sidebar modal)
+		postMessage({ command: 'openCreateProjectTab' });
 	}, []);
 
 	const handleOpenView = useCallback((viewId: string) => {
@@ -169,8 +159,12 @@ export const App: React.FC<AppProps> = ({ logoUri, eyesUri }) => {
 		postMessage({ command: 'deleteFile', fileId });
 	}, []);
 
+	const handleScanDirectory = useCallback(() => {
+		postMessage({ command: 'scanDirectory' });
+	}, []);
+
 	const handleLogoClick = useCallback(() => {
-		postMessage({ command: 'getDaemonStatus' });
+		setShowDashboard(true);
 	}, []);
 
 	// Track if we've received initial data
@@ -183,6 +177,11 @@ export const App: React.FC<AppProps> = ({ logoUri, eyesUri }) => {
 
 			console.log('[TARX WEBVIEW] Received message:', message.command);
 			switch (message.command) {
+				case 'setCollapsed':
+					console.log('[TARX WEBVIEW] setCollapsed:', message.collapsed);
+					setSidebarCollapsed(message.collapsed);
+					break;
+
 				case 'refresh':
 					console.log('[TARX WEBVIEW] Handling refresh - requesting all data');
 					postMessage({ command: 'getProjects' });
@@ -337,7 +336,7 @@ export const App: React.FC<AppProps> = ({ logoUri, eyesUri }) => {
 	// If showing settings, render SettingsView
 	if (showSettings) {
 		return (
-			<div className="tarx-sidebar-container">
+			<div className={`tarx-sidebar-container${sidebarCollapsed ? ' collapsed' : ''}`}>
 				<SettingsView
 					onBack={handleCloseSettings}
 					settings={settings}
@@ -347,8 +346,17 @@ export const App: React.FC<AppProps> = ({ logoUri, eyesUri }) => {
 		);
 	}
 
+	// If showing dashboard, render Dashboard
+	if (showDashboard) {
+		return (
+			<div className={`tarx-sidebar-container${sidebarCollapsed ? ' collapsed' : ''}`}>
+				<TARXDashboard onOpenChat={handleOpenChat} />
+			</div>
+		);
+	}
+
 	return (
-		<div className="tarx-sidebar-container">
+		<div className={`tarx-sidebar-container${sidebarCollapsed ? ' collapsed' : ''}`}>
 			<Header
 				logoUri={logoUri}
 				connectionStatus={connectionStatus}
@@ -413,6 +421,7 @@ export const App: React.FC<AppProps> = ({ logoUri, eyesUri }) => {
 							onOpenView={handleOpenView}
 							onUploadFile={handleUploadFile}
 							onDeleteFile={handleDeleteFile}
+							onScanDirectory={handleScanDirectory}
 						/>
 
 						{/* Projects Section */}
@@ -420,9 +429,11 @@ export const App: React.FC<AppProps> = ({ logoUri, eyesUri }) => {
 							collapsed={sectionState.projects}
 							onToggle={() => toggleSection('projects')}
 							projects={projects}
+							historyItems={historyItems}
 							isLoading={isLoading.projects}
 							onOpenProject={handleOpenProject}
 							onCreateProject={handleCreateProject}
+							onOpenSession={handleOpenSession}
 							selectedProjectId={selectedProjectId}
 						/>
 
@@ -447,13 +458,6 @@ export const App: React.FC<AppProps> = ({ logoUri, eyesUri }) => {
 				</>
 			)}
 
-			{/* Project Modal - inline in sidebar */}
-			{showProjectModal && (
-				<ProjectModal
-					onSubmit={handleProjectSubmit}
-					onCancel={handleProjectModalCancel}
-				/>
-			)}
 		</div>
 	);
 };

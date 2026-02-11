@@ -1,0 +1,31 @@
+{
+  "name": "tarx-orchestration-mcp",
+  "version": "2.0.0",
+  "engines": {
+    "node": ">=18.0.0",
+    "vscode": "^1.85.0"
+  },
+  "type": "module",
+  "description": "MCP server for TARX orchestration and model management",
+  "main": "dist/server.js",
+  "bin": {
+    "tarx-orchestration-mcp": "dist/server.js"
+  },
+  "scripts": {
+    "build": "tsc && chmod +x dist/server.js",
+    "dev": "tsc --watch",
+    "start": "node dist/server.js",
+    "test": "node --test dist/test/*.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@tarx/shared-db": "file:../tarx-shared",
+    "better-sqlite3": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "private": true
+}

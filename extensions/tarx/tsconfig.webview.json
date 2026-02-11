@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "./out/webview",
+    "rootDir": "./src/webview/ui",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/webview/ui/*"]
+    }
+  },
+  "include": ["./src/webview/ui/**/*.ts", "./src/webview/ui/**/*.tsx"],
+  "exclude": ["node_modules"]
+}

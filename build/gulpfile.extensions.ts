@@ -72,10 +72,31 @@ const compilations = [
 	'extensions/vscode-colorize-perf-tests/tsconfig.json',
 	'extensions/vscode-test-resolver/tsconfig.json',
 
-	// TARX extensions
+	// TARX extensions — V1.0
 	'extensions/tarx/tsconfig.json',
 	'extensions/tarx-local/tsconfig.json',
-	'extensions/tarx-supercomputer/tsconfig.json',
+	'extensions/tarx-core/tsconfig.json',
+	'extensions/tarx-ops/tsconfig.json',
+	'extensions/tarx-shared/tsconfig.json',
+	'extensions/tarx-skills-provider/tsconfig.json',
+
+	// V1.1 — mesh networking, deferred
+	// 'extensions/tarx-supercomputer/tsconfig.json',
+
+	// RETIRED — dev-only E2E testing
+	// 'extensions/tarx-ui-mcp-server/tsconfig.json',
+
+	// RETIRED — superseded by tarx-core memory
+	// 'extensions/tarx-claude-memory/tsconfig.json',
+
+	// RETIRED — superseded by tarx-ops
+	// 'extensions/tarx-admin-mcp-server/tsconfig.json',
+
+	// RETIRED — superseded by tarx-core
+	// 'extensions/tarx-mcp-server/tsconfig.json',
+
+	// RETIRED — merged into tarx-ops
+	// 'extensions/tarx-orchestration-mcp/tsconfig.json',
 
 	'.vscode/extensions/vscode-selfhost-test-provider/tsconfig.json',
 	'.vscode/extensions/vscode-selfhost-import-aid/tsconfig.json',

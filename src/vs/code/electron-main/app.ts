@@ -124,8 +124,8 @@ import { NativeMcpDiscoveryHelperService } from '../../platform/mcp/node/nativeM
 import { IWebContentExtractorService } from '../../platform/webContentExtractor/common/webContentExtractor.js';
 import { NativeWebContentExtractorService } from '../../platform/webContentExtractor/electron-main/webContentExtractorService.js';
 import ErrorTelemetry from '../../platform/telemetry/electron-main/errorTelemetry.js';
-import { ITarxSidecarService } from '../../platform/tarx/common/tarx.js';
-import { TarxSidecarChannel, TARX_SIDECAR_CHANNEL_NAME } from '../../platform/tarx/common/tarxIpc.js';
+import { ITarxSidecarService, ITarxEmbeddingSidecarService } from '../../platform/tarx/common/tarx.js';
+import { TarxSidecarChannel, TARX_SIDECAR_CHANNEL_NAME, TarxEmbeddingChannel, TARX_EMBEDDING_CHANNEL_NAME } from '../../platform/tarx/common/tarxIpc.js';
 
 /**
  * The main VS Code application. There will only ever be one instance,
@@ -1205,6 +1205,10 @@ export class CodeApplication extends Disposable {
 		const tarxSidecarChannel = new TarxSidecarChannel(accessor.get(ITarxSidecarService));
 		mainProcessElectronServer.registerChannel(TARX_SIDECAR_CHANNEL_NAME, tarxSidecarChannel);
 
+		// TARX Embedding Sidecar Service
+		const tarxEmbeddingChannel = new TarxEmbeddingChannel(accessor.get(ITarxEmbeddingSidecarService));
+		mainProcessElectronServer.registerChannel(TARX_EMBEDDING_CHANNEL_NAME, tarxEmbeddingChannel);
+
 		// Workspaces
 		const workspacesChannel = ProxyChannel.fromService(accessor.get(IWorkspacesService), disposables);
 		mainProcessElectronServer.registerChannel('workspaces', workspacesChannel);
@@ -1398,6 +1402,33 @@ export class CodeApplication extends Disposable {
 		// the window is opening.
 		// We also show an error to the user in case this fails.
 		this.resolveShellEnvironment(this.environmentMainService.args, process.env, true);
+
+		// TARX: Auto-start embedding server (5s delay to let inference server claim port 11435 first)
+		setTimeout(() => {
+			instantiationService.invokeFunction(accessor => {
+				const logService = accessor.get(ILogService);
+				logService.info('[TARX] Embedding server auto-start triggered (5s delay complete)');
+
+				try {
+					const embeddingSidecar = accessor.get(ITarxEmbeddingSidecarService);
+					logService.info('[TARX] Embedding sidecar service acquired, calling startEmbeddings()...');
+
+					embeddingSidecar.startEmbeddings().then(result => {
+						if (result.success) {
+							logService.info(`[TARX] ✓ Embedding server started successfully (PID: ${result.pid}, ${result.elapsedMs}ms)`);
+						} else {
+							logService.error(`[TARX] ✗ Embedding server failed to start: ${result.error}`);
+						}
+					}).catch(e => {
+						const errorMsg = e instanceof Error ? e.message : String(e);
+						logService.error(`[TARX] ✗ Embedding sidecar promise rejected: ${errorMsg}`, e);
+					});
+				} catch (e) {
+					const errorMsg = e instanceof Error ? e.message : String(e);
+					logService.error(`[TARX] ✗ Embedding service initialization failed: ${errorMsg}`, e);
+				}
+			});
+		}, 5000);
 
 		// Crash reporter
 		this.updateCrashReporterEnablement();

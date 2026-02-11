@@ -897,7 +897,7 @@ configurationRegistry.registerConfiguration({
 		},
 		'chat.disableAIFeatures': {
 			type: 'boolean',
-			description: nls.localize('chat.disableAIFeatures', "Disable and hide built-in AI features provided by GitHub Copilot, including chat and inline suggestions."),
+			description: nls.localize('chat.disableAIFeatures', "Disable and hide built-in AI features provided by TARX, including chat and inline suggestions."),
 			default: false,
 			scope: ConfigurationScope.WINDOW
 		},
@@ -923,7 +923,7 @@ configurationRegistry.registerConfiguration({
 		},
 		'chat.extensionUnification.enabled': {
 			type: 'boolean',
-			description: nls.localize('chat.extensionUnification.enabled', "Enables the unification of GitHub Copilot extensions. When enabled, all GitHub Copilot functionality is served from the GitHub Copilot Chat extension. When disabled, the GitHub Copilot and GitHub Copilot Chat extensions operate independently."),
+			description: nls.localize('chat.extensionUnification.enabled', "Enables the unification of TARX extensions. When enabled, all TARX functionality is served from the TARX Chat extension. When disabled, the TARX and TARX Chat extensions operate independently."),
 			default: true,
 			tags: ['experimental'],
 			experiment: {

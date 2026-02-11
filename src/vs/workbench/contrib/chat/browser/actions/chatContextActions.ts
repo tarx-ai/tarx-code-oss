@@ -59,6 +59,7 @@ export function registerChatContextActions() {
 	registerAction2(AttachSelectionToChatAction);
 	registerAction2(AttachSearchResultAction);
 	registerAction2(AttachPinnedEditorsToChatAction);
+	registerAction2(TarxUploadWithRAGAction);
 	registerPromptActions();
 }
 
@@ -744,5 +745,38 @@ export class AttachContextAction extends Action2 {
 		} finally {
 			store.dispose();
 		}
+	}
+}
+
+/**
+ * TARX Upload with RAG Action
+ *
+ * Upload files with automatic RAG pipeline processing.
+ * This action triggers the TARX extension's file attachment handler
+ * which chunks files, generates embeddings, and stores them in the knowledge base.
+ */
+class TarxUploadWithRAGAction extends Action2 {
+	constructor() {
+		super({
+			id: 'tarx.chat.uploadFile',
+			title: localize2('tarx.chat.uploadFile', 'Upload Files with RAG'),
+			icon: Codicon.cloudUpload,
+			category: CHAT_CATEGORY,
+			precondition: ChatContextKeys.enabled,
+			menu: {
+				id: MenuId.ChatInput,
+				group: 'navigation',
+				order: 0.5,
+				when: ContextKeyExpr.and(ChatContextKeys.enabled)
+			}
+		});
+	}
+
+	override async run(accessor: ServicesAccessor): Promise<void> {
+		const commandService = accessor.get(ICommandService);
+
+		// Execute TARX extension command
+		// This command is registered by the TARX extension in chatInputIntegration.ts
+		await commandService.executeCommand('tarx.chat.uploadFile');
 	}
 }

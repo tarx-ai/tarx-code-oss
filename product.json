@@ -1,8 +1,9 @@
 {
-	"nameShort": "TARX",
-	"nameLong": "TARX",
-	"applicationName": "tarx",
-	"dataFolderName": ".tarx",
+	"version": "1.96.0",
+	"nameShort": "TARX Workbench",
+	"nameLong": "TARX Workbench",
+	"applicationName": "tarx-code",
+	"dataFolderName": ".tarx-code",
 	"win32MutexName": "tarx",
 	"licenseName": "MIT",
 	"licenseUrl": "https://github.com/microsoft/vscode/blob/main/LICENSE.txt",
@@ -33,6 +34,8 @@
 	"nodejsRepository": "",
 	"urlProtocol": "tarx-code",
 	"webviewContentExternalBaseUrlTemplate": "",
+	"welcomePageTitle": "Welcome to TARX Workbench",
+	"productDescription": "Local. Private. Proactive.",
 	"builtInExtensions": [
 		{
 			"name": "ms-vscode.js-debug-companion",
@@ -91,5 +94,29 @@
 			"chatProvider",
 			"speech"
 		]
+	},
+	"configurationDefaults": {
+		"chat.editor.wordWrap": "on",
+		"tarx.thinking.enabled": true,
+		"tarx.thinking.autoCollapse": false,
+		"tarx.routing.default": "local",
+		"tarx.health.pollInterval": 30000,
+		"tarx.skills.locations": [".tarx/skills", ".github/skills"],
+		"tarx.memory.autoRecall": true,
+		"tarx.memory.maxRecall": 5,
+		"editor.fontSize": 14,
+		"editor.fontFamily": "'JetBrains Mono', 'Fira Code', Menlo, Monaco, monospace",
+		"editor.fontLigatures": true,
+		"editor.minimap.enabled": false,
+		"editor.bracketPairColorization.enabled": true,
+		"editor.guides.bracketPairs": "active",
+		"editor.smoothScrolling": true,
+		"editor.cursorBlinking": "smooth",
+		"editor.cursorSmoothCaretAnimation": "on",
+		"terminal.integrated.fontSize": 13,
+		"workbench.startupEditor": "none",
+		"workbench.tips.enabled": false,
+		"telemetry.telemetryLevel": "off",
+		"workbench.colorTheme": "TARX Dark"
 	}
 }

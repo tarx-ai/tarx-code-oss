@@ -5,9 +5,26 @@
 
 import '../../platform/update/common/update.config.contribution.js';
 
-// DISABLED: Sentry causes black screen crash - re-enable post-V1
-// import * as Sentry from '@sentry/electron/main';
-// import { TARX_SENTRY_DSN } from '../../platform/sentry/common/sentry.js';
+// TARX: Use @sentry/node instead of @sentry/electron/main (avoids black screen crash)
+import * as Sentry from '@sentry/node';
+import { TARX_SENTRY_DSN } from '../../platform/sentry/common/sentry.js';
+
+try {
+	Sentry.init({
+		dsn: TARX_SENTRY_DSN,
+		environment: process.env['NODE_ENV'] === 'production' ? 'production' : 'development',
+		release: 'tarx-code@1.0.0',
+		tracesSampleRate: 0.1,
+		ignoreErrors: ['EPIPE', 'Channel closed', 'Canceled'],
+		beforeSend(event) {
+			event.tags = { ...event.tags, app_type: 'tarx-code-oss', process_type: 'main' };
+			if (event.user) { delete event.user.ip_address; delete event.user.email; }
+			return event;
+		},
+	});
+} catch {
+	// Sentry init failed — continue without error tracking
+}
 
 import { app, dialog } from 'electron';
 import { unlinkSync, promises } from 'fs';
@@ -78,8 +95,9 @@ import { FileUserDataProvider } from '../../platform/userData/common/fileUserDat
 import { addUNCHostToAllowlist, getUNCHost } from '../../base/node/unc.js';
 import { ThemeMainService } from '../../platform/theme/electron-main/themeMainServiceImpl.js';
 import { LINUX_SYSTEM_POLICY_FILE_PATH } from '../../base/common/policy.js';
-import { ITarxSidecarService } from '../../platform/tarx/common/tarx.js';
+import { ITarxSidecarService, ITarxEmbeddingSidecarService } from '../../platform/tarx/common/tarx.js';
 import { TarxSidecarService } from '../../platform/tarx/electron-main/tarxSidecarService.js';
+import { TarxEmbeddingSidecarService } from '../../platform/tarx/electron-main/tarxEmbeddingSidecarService.js';
 
 /**
  * The main VS Code entry point.
@@ -95,7 +113,7 @@ class CodeMain {
 		try {
 			this.startup();
 		} catch (error) {
-			// Sentry disabled - just log to console
+			try { Sentry.captureException(error); } catch { /* safe */ }
 			console.error(error.message);
 			app.exit(1);
 		}
@@ -106,7 +124,7 @@ class CodeMain {
 		// Set the error handler early enough so that we are not getting the
 		// default electron error dialog popping up
 		setUnexpectedErrorHandler(err => {
-			// Sentry disabled - just log to console
+			try { Sentry.captureException(err); } catch { /* safe */ }
 			console.error(err);
 		});
 
@@ -251,8 +269,11 @@ class CodeMain {
 		// Tunnel
 		services.set(ITunnelService, new SyncDescriptor(TunnelService));
 
-		// TARX Sidecar Service
+		// TARX Sidecar Service (inference on port 11435)
 		services.set(ITarxSidecarService, new SyncDescriptor(TarxSidecarService));
+
+		// TARX Embedding Sidecar Service (embeddings on port 11437)
+		services.set(ITarxEmbeddingSidecarService, new SyncDescriptor(TarxEmbeddingSidecarService));
 
 		// Protocol (instantiated early and not using sync descriptor for security reasons)
 		services.set(IProtocolMainService, new ProtocolMainService(environmentMainService, userDataProfilesMainService, logService));

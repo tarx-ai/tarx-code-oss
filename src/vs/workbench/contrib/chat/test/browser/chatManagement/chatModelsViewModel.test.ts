@@ -138,7 +138,7 @@ suite('ChatModelsViewModel', () => {
 		// Setup test data
 		languageModelsService.addVendor({
 			vendor: 'copilot',
-			displayName: 'GitHub Copilot',
+			displayName: 'TARX',
 			managementCommand: undefined,
 			when: undefined,
 			configuration: undefined
@@ -161,7 +161,7 @@ suite('ChatModelsViewModel', () => {
 			vendor: 'copilot',
 			maxInputTokens: 8192,
 			maxOutputTokens: 4096,
-			modelPickerCategory: { label: 'Copilot', order: 1 },
+			modelPickerCategory: { label: 'TARX', order: 1 },
 			isUserSelectable: true,
 			capabilities: {
 				toolCalling: true,
@@ -182,7 +182,7 @@ suite('ChatModelsViewModel', () => {
 			vendor: 'copilot',
 			maxInputTokens: 8192,
 			maxOutputTokens: 4096,
-			modelPickerCategory: { label: 'Copilot', order: 1 },
+			modelPickerCategory: { label: 'TARX', order: 1 },
 			isUserSelectable: true,
 			capabilities: {
 				toolCalling: true,
@@ -393,7 +393,7 @@ suite('ChatModelsViewModel', () => {
 
 		const models = results.filter(r => !isLanguageModelProviderEntry(r) && !isLanguageModelGroupEntry(r)) as ILanguageModelEntry[];
 		assert.strictEqual(models.length, 2);
-		assert.ok(models.every(m => m.model.provider.group.name === 'GitHub Copilot'));
+		assert.ok(models.every(m => m.model.provider.group.name === 'TARX'));
 	});
 
 	test('should combine text search with capability filter', () => {
@@ -526,7 +526,7 @@ suite('ChatModelsViewModel', () => {
 		const service = new MockLanguageModelsService();
 		service.addVendor({
 			vendor: 'copilot',
-			displayName: 'GitHub Copilot',
+			displayName: 'TARX',
 			managementCommand: undefined,
 			when: undefined,
 			configuration: undefined
@@ -541,7 +541,7 @@ suite('ChatModelsViewModel', () => {
 			vendor: 'copilot',
 			maxInputTokens: 8192,
 			maxOutputTokens: 4096,
-			modelPickerCategory: { label: 'Copilot', order: 1 },
+			modelPickerCategory: { label: 'TARX', order: 1 },
 			isUserSelectable: true,
 			capabilities: {
 				toolCalling: true,
@@ -563,7 +563,7 @@ suite('ChatModelsViewModel', () => {
 				vendor: 'copilot',
 				maxInputTokens: 8192,
 				maxOutputTokens: 4096,
-				modelPickerCategory: { label: 'Copilot', order: 1 },
+				modelPickerCategory: { label: 'TARX', order: 1 },
 				isUserSelectable: true,
 				capabilities: {
 					toolCalling: true,

@@ -4,15 +4,32 @@ import * as path from 'path';
 import * as fs from 'fs';
 
 let meshNode: ChildProcess | undefined;
-let outputChannel: vscode.OutputChannel;
+let outputChannel: vscode.OutputChannel | undefined;
+let isDeactivating = false;
+
+/**
+ * Safe logging - prevents "Channel has been closed" errors during shutdown
+ */
+function log(message: string): void {
+  if (isDeactivating || !outputChannel) {
+    return;
+  }
+  try {
+    log(message);
+  } catch {
+    // Channel already disposed - ignore
+  }
+}
 
 export async function activate(context: vscode.ExtensionContext) {
+  isDeactivating = false;
   outputChannel = vscode.window.createOutputChannel('TARX SUPERCOMPUTER');
-  outputChannel.appendLine('TARX SUPERCOMPUTER: Activating...');
+  context.subscriptions.push(outputChannel);
+  log('TARX SUPERCOMPUTER: Activating...');
 
   const config = vscode.workspace.getConfiguration('tarx.supercomputer');
   if (!config.get('enabled', true)) {
-    outputChannel.appendLine('TARX SUPERCOMPUTER: Disabled by user config');
+    log('TARX SUPERCOMPUTER: Disabled by user config');
     return;
   }
 
@@ -31,7 +48,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // 2. Port from config
     const port = config.get('meshPort', 11436);
 
-    outputChannel.appendLine(`TARX SUPERCOMPUTER: Starting mesh-node on port ${port}`);
+    log(`TARX SUPERCOMPUTER: Starting mesh-node on port ${port}`);
 
     // 3. Spawn mesh-node
     meshNode = spawn(binaryPath, [`--port=${port}`], {
@@ -39,15 +56,15 @@ export async function activate(context: vscode.ExtensionContext) {
     });
 
     meshNode.stdout?.on('data', (data) => {
-      outputChannel.appendLine(`[mesh-node] ${data.toString().trim()}`);
+      log(`[mesh-node] ${data.toString().trim()}`);
     });
 
     meshNode.stderr?.on('data', (data) => {
-      outputChannel.appendLine(`[mesh-node] ${data.toString().trim()}`);
+      log(`[mesh-node] ${data.toString().trim()}`);
     });
 
     meshNode.on('exit', (code, signal) => {
-      outputChannel.appendLine(`TARX SUPERCOMPUTER: mesh-node exited (code: ${code}, signal: ${signal})`);
+      log(`TARX SUPERCOMPUTER: mesh-node exited (code: ${code}, signal: ${signal})`);
       if (code !== 0 && code !== null) {
         vscode.window.showErrorMessage('TARX SUPERCOMPUTER: mesh-node crashed');
       }
@@ -55,7 +72,7 @@ export async function activate(context: vscode.ExtensionContext) {
     });
 
     meshNode.on('error', (err) => {
-      outputChannel.appendLine(`TARX SUPERCOMPUTER: Spawn error: ${err.message}`);
+      log(`TARX SUPERCOMPUTER: Spawn error: ${err.message}`);
     });
 
     // 4. Wait for health
@@ -89,35 +106,37 @@ export async function activate(context: vscode.ExtensionContext) {
     const ramGb = status.local_capabilities?.ram_gb || '?';
     const peerCount = status.connected_peers || 0;
 
-    outputChannel.appendLine(`TARX SUPERCOMPUTER: Ready! Peers: ${peerCount}, RAM: ${ramGb}GB`);
-    outputChannel.appendLine(`TARX SUPERCOMPUTER: Peer ID: ${status.local_peer_id || 'unknown'}`);
+    log(`TARX SUPERCOMPUTER: Ready! Peers: ${peerCount}, RAM: ${ramGb}GB`);
+    log(`TARX SUPERCOMPUTER: Peer ID: ${status.local_peer_id || 'unknown'}`);
 
     vscode.window.showInformationMessage(
       `TARX SUPERCOMPUTER: Active | ${peerCount} peers | ${ramGb}GB RAM`
     );
 
   } catch (err: any) {
-    outputChannel.appendLine(`TARX SUPERCOMPUTER: Error: ${err.message}`);
+    log(`TARX SUPERCOMPUTER: Error: ${err.message}`);
     vscode.window.showWarningMessage(`TARX SUPERCOMPUTER: ${err.message}`);
   }
 }
 
 export function deactivate() {
+  isDeactivating = true;
   if (meshNode) {
     meshNode.kill('SIGTERM');
     meshNode = undefined;
   }
+  outputChannel = undefined;
 }
 
 async function waitForHealth(url: string, timeoutMs: number): Promise<void> {
   const start = Date.now();
-  outputChannel.appendLine(`TARX SUPERCOMPUTER: Waiting for health at ${url}...`);
+  log(`TARX SUPERCOMPUTER: Waiting for health at ${url}...`);
 
   while (Date.now() - start < timeoutMs) {
     try {
       const res = await fetch(url);
       if (res.ok) {
-        outputChannel.appendLine('TARX SUPERCOMPUTER: Health check passed');
+        log('TARX SUPERCOMPUTER: Health check passed');
         return;
       }
     } catch { /* retry */ }
@@ -137,7 +156,7 @@ async function getMeshStatus(port: number): Promise<any> {
 }
 
 async function restartMeshNode(context: vscode.ExtensionContext) {
-  outputChannel.appendLine('TARX SUPERCOMPUTER: Restarting...');
+  log('TARX SUPERCOMPUTER: Restarting...');
 
   if (meshNode) {
     meshNode.kill('SIGTERM');

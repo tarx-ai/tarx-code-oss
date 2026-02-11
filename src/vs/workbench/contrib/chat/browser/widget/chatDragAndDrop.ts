@@ -179,6 +179,18 @@ export class ChatDragAndDrop extends Themable {
 		}
 
 		this.attachmentModel.addContext(...contexts);
+
+		// TARX: Process file attachments through RAG pipeline
+		// Extract URIs from contexts and send to TARX for processing
+		const fileUris = contexts
+			.filter(ctx => ctx.kind === 'file' && URI.isUri(ctx.value))
+			.map(ctx => ctx.value as URI);
+
+		if (fileUris.length > 0) {
+			// TODO: Trigger TARX RAG processing (non-blocking)
+			// Note: Extension imports are not available from core - need to use event system
+			this.logService.trace('[TARX] Files dropped:', fileUris.length);
+		}
 	}
 
 	private updateDropFeedback(e: DragEvent, target: HTMLElement, dropType: ChatDragAndDropType | undefined): void {

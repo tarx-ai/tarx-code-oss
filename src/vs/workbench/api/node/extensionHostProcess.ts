@@ -5,10 +5,28 @@
 
 import minimist from 'minimist';
 import * as nativeWatchdog from '@vscode/native-watchdog';
-// DISABLED: Sentry integration temporarily disabled to fix EPIPE crash on shutdown
-// TODO: Re-enable with safe config after V1 (no console instrumentation)
-// import * as Sentry from '@sentry/electron/main';
-// import { TARX_SENTRY_DSN } from '../../../platform/sentry/common/sentry.js';
+// TARX: Use @sentry/node for extension host (avoids EPIPE — ignoreErrors filters pipe errors)
+import * as Sentry from '@sentry/node';
+import { TARX_SENTRY_DSN } from '../../../platform/sentry/common/sentry.js';
+
+try {
+	Sentry.init({
+		dsn: TARX_SENTRY_DSN,
+		environment: 'development',
+		release: 'tarx-code@1.0.0',
+		tracesSampleRate: 0.1,
+		ignoreErrors: ['EPIPE', 'SIGPIPE', 'Channel closed', 'Canceled'],
+		beforeSend(event) {
+			event.tags = { ...event.tags, app_type: 'tarx-code-oss', process_type: 'extension-host' };
+			if (event.user) { delete event.user.ip_address; delete event.user.email; }
+			return event;
+		},
+	});
+	// Expose on globalThis so TARX extension logger can access it via globalThis.Sentry
+	(globalThis as any).Sentry = Sentry;
+} catch {
+	// Sentry init failed — continue without error tracking
+}
 import * as net from 'net';
 import { ProcessTimeRunOnceScheduler } from '../../../base/common/async.js';
 import { VSBuffer } from '../../../base/common/buffer.js';

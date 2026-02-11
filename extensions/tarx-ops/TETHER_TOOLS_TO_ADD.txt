@@ -1,0 +1,342 @@
+// =============================================================================
+
+// Tool: Dispatch work (tethered Claude Code session)
+server.tool(
+  "tarx_dispatch_work",
+  "Start a Claude Code session with TARX tethering. Creates a TARX session, orchestration entry, and auto-syncs output on completion. Use this for tracked work that needs to persist in TARX history.",
+  {
+    prompt: z.string().describe("The prompt/task to give Claude Code"),
+    workspace: z.string().optional().describe("Working directory (default: ~/Desktop/tarx-code-oss)"),
+    model: z.string().optional().describe("Model to use (default: sonnet)"),
+    dangerouslySkipPermissions: z.boolean().optional().describe("Skip permission prompts (default: false)"),
+  },
+  async ({ prompt, workspace, model = "sonnet", dangerouslySkipPermissions = false }) => {
+    try {
+      const sessionId = generateSessionId();
+      const workDir = workspace || path.join(os.homedir(), "Desktop/tarx-code-oss");
+
+      // Create tether BEFORE spawning
+      const tetherResult = Tether.createTether(sessionId, prompt, workDir, model);
+      console.error(`[Tether] Created tether for CC session ${sessionId} → TARX ${tetherResult.tarxSessionId}`);
+
+      // Create outputLines array BEFORE spawn
+      const outputLines: OutputLine[] = [];
+
+      // Build Claude Code command arguments
+      const args = [
+        '--model', model,
+        '-p', prompt,
+        '--output-format', 'text'
+      ];
+
+      if (dangerouslySkipPermissions) {
+        args.push('--dangerously-skip-permissions');
+      }
+
+      // Spawn Claude Code process
+      const proc = spawn('/opt/homebrew/bin/claude', args, {
+        cwd: workDir,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env }
+      });
+
+      // Capture stdout
+      proc.stdout.on('data', (chunk: Buffer) => {
+        const text = chunk.toString();
+        console.error(`[Claude ${sessionId}] stdout: ${text.substring(0, 200)}`);
+        text.split('\n').forEach(line => {
+          if (line.trim()) {
+            outputLines.push({
+              timestamp: new Date().toISOString(),
+              type: 'stdout',
+              text: line
+            });
+          }
+        });
+      });
+
+      // Capture stderr
+      proc.stderr.on('data', (chunk: Buffer) => {
+        const text = chunk.toString();
+        console.error(`[Claude ${sessionId}] stderr: ${text.substring(0, 200)}`);
+        text.split('\n').forEach(line => {
+          if (line.trim()) {
+            outputLines.push({
+              timestamp: new Date().toISOString(),
+              type: 'stderr',
+              text: line
+            });
+          }
+        });
+      });
+
+      // Store session
+      const session: ClaudeCodeSession = {
+        id: sessionId,
+        process: proc,
+        workspace: workDir,
+        prompt,
+        model,
+        startedAt: new Date().toISOString(),
+        status: 'running',
+        outputLines,
+      };
+
+      claudeCodeSessions.set(sessionId, session);
+
+      // Handle process exit - AUTO-SYNC TO TARX
+      proc.on('close', (code: number | null) => {
+        console.error(`[Claude ${sessionId}] Process exited with code ${code}`);
+        const sess = claudeCodeSessions.get(sessionId);
+        if (sess) {
+          sess.status = code === 0 ? 'completed' : 'error';
+          sess.exitCode = code;
+          sess.endedAt = new Date().toISOString();
+          if (code !== 0) {
+            sess.error = `Process exited with code ${code}`;
+          }
+
+          // AUTO-SYNC OUTPUT TO TARX
+          const fullOutput = sess.outputLines.map(l => l.text).join('\n');
+          const syncResult = Tether.syncOutput(
+            sessionId,
+            fullOutput,
+            code === 0 ? 'completed' : 'error',
+            code
+          );
+          console.error(`[Tether] Auto-synced output for ${sessionId}: msg=${syncResult.messageId}, memory=${syncResult.memoryId}`);
+        }
+      });
+
+      proc.on('error', (err: Error) => {
+        console.error(`[Claude ${sessionId}] Process error: ${err.message}`);
+        const sess = claudeCodeSessions.get(sessionId);
+        if (sess) {
+          sess.status = 'error';
+          sess.error = err.message;
+          sess.endedAt = new Date().toISOString();
+
+          // Sync error state too
+          const fullOutput = sess.outputLines.map(l => l.text).join('\n');
+          Tether.syncOutput(sessionId, fullOutput, 'error', null);
+        }
+      });
+
+      console.error(`[Claude ${sessionId}] Spawned (tethered): /opt/homebrew/bin/claude ${args.slice(0, 4).join(' ')}...`);
+
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            success: true,
+            ccSessionId: sessionId,
+            tarxSessionId: tetherResult.tarxSessionId,
+            orchSessionId: tetherResult.orchSessionId,
+            spaceId: tetherResult.spaceId,
+            workspace: workDir,
+            prompt: prompt.substring(0, 100) + (prompt.length > 100 ? '...' : ''),
+            model,
+            message: `Tethered Claude Code session started. Output will auto-sync to TARX session ${tetherResult.tarxSessionId}. Use tarx_check_work to monitor progress.`,
+          }, null, 2),
+        }],
+      };
+    } catch (error) {
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            error: error instanceof Error ? error.message : "Failed to start tethered Claude Code session",
+          }),
+        }],
+        isError: true,
+      };
+    }
+  }
+);
+
+// Tool: Check work status
+server.tool(
+  "tarx_check_work",
+  "Check status of tethered Claude Code work. If ccSessionId is provided, returns detailed status and auto-syncs if completed. Otherwise lists all tethered sessions.",
+  {
+    ccSessionId: z.string().optional().describe("Claude Code session ID to check"),
+    showAll: z.boolean().optional().describe("Show all sessions including completed (default: false)"),
+    limit: z.number().optional().describe("Limit number of results (default: 10)"),
+  },
+  async ({ ccSessionId, showAll = false, limit = 10 }) => {
+    try {
+      if (ccSessionId) {
+        // Get specific tether and CC session
+        const tether = Tether.getTether(ccSessionId);
+        if (!tether) {
+          return {
+            content: [{
+              type: "text",
+              text: JSON.stringify({
+                error: `No tethered session found for CC session ${ccSessionId}`,
+              }),
+            }],
+            isError: true,
+          };
+        }
+
+        const ccSession = claudeCodeSessions.get(ccSessionId);
+
+        // If CC session is done but not synced, sync it now
+        if (ccSession && ccSession.status !== 'running' && !tether.outputSynced) {
+          const fullOutput = ccSession.outputLines.map(l => l.text).join('\n');
+          const syncResult = Tether.syncOutput(
+            ccSessionId,
+            fullOutput,
+            ccSession.status === 'completed' ? 'completed' : 'error',
+            ccSession.exitCode
+          );
+          console.error(`[Tether] Manual sync triggered for ${ccSessionId}: msg=${syncResult.messageId}`);
+        }
+
+        // Return unified status
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              ccSession: {
+                id: ccSessionId,
+                status: ccSession?.status || 'unknown',
+                startedAt: ccSession?.startedAt,
+                endedAt: ccSession?.endedAt,
+                outputLines: ccSession?.outputLines.length || 0,
+                exitCode: ccSession?.exitCode,
+              },
+              tarxSession: {
+                id: tether.tarxSessionId,
+                orchId: tether.orchSessionId,
+                spaceId: tether.spaceId,
+                prompt: tether.prompt,
+                workspace: tether.workspace,
+                model: tether.model,
+                outputSynced: tether.outputSynced,
+                createdAt: new Date(tether.createdAt).toISOString(),
+                lastSyncAt: tether.lastSyncAt ? new Date(tether.lastSyncAt).toISOString() : null,
+              },
+            }, null, 2),
+          }],
+        };
+      } else {
+        // List all tethered sessions
+        const allTethers = Tether.listTetheredSessions({ limit });
+        const stats = Tether.getTetherStats();
+
+        const tethersWithStatus = allTethers.map(t => {
+          const ccSession = claudeCodeSessions.get(t.ccSessionId);
+          return {
+            ccSessionId: t.ccSessionId,
+            tarxSessionId: t.tarxSessionId,
+            prompt: t.prompt.substring(0, 80) + (t.prompt.length > 80 ? '...' : ''),
+            workspace: t.workspace,
+            model: t.model,
+            ccStatus: ccSession?.status || 'ended',
+            outputSynced: t.outputSynced,
+            createdAt: new Date(t.createdAt).toISOString(),
+          };
+        });
+
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              stats,
+              recentSessions: showAll ? tethersWithStatus : tethersWithStatus.filter(t => !t.outputSynced || t.ccStatus === 'running'),
+              totalShown: tethersWithStatus.length,
+              message: `Showing ${tethersWithStatus.length} tethered sessions. Use ccSessionId parameter for detailed status.`,
+            }, null, 2),
+          }],
+        };
+      }
+    } catch (error) {
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            error: error instanceof Error ? error.message : "Failed to check work status",
+          }),
+        }],
+        isError: true,
+      };
+    }
+  }
+);
+
+// Tool: Work history
+server.tool(
+  "tarx_work_history",
+  "Get persistent history of tethered Claude Code sessions. This history survives restarts, unlike in-memory CC sessions.",
+  {
+    limit: z.number().optional().describe("Maximum sessions to return (default: 20)"),
+    onlySynced: z.boolean().optional().describe("Only show synced sessions (default: false)"),
+  },
+  async ({ limit = 20, onlySynced = false }) => {
+    try {
+      const sessions = Tether.listTetheredSessions({
+        limit,
+        synced: onlySynced ? true : undefined,
+      });
+      const stats = Tether.getTetherStats();
+
+      const sessionSummaries = sessions.map(s => ({
+        ccSessionId: s.ccSessionId,
+        tarxSessionId: s.tarxSessionId,
+        orchSessionId: s.orchSessionId,
+        prompt: s.prompt.substring(0, 100) + (s.prompt.length > 100 ? '...' : ''),
+        workspace: s.workspace,
+        model: s.model,
+        outputSynced: s.outputSynced,
+        createdAt: new Date(s.createdAt).toISOString(),
+        lastSyncAt: s.lastSyncAt ? new Date(s.lastSyncAt).toISOString() : null,
+      }));
+
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            stats: {
+              ...stats,
+              spaceLink: stats.spaceId ? `View in TARX: space/${stats.spaceId}` : null,
+            },
+            sessions: sessionSummaries,
+            totalShown: sessionSummaries.length,
+            message: `Showing ${sessionSummaries.length} tethered sessions from persistent storage.`,
+          }, null, 2),
+        }],
+      };
+    } catch (error) {
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            error: error instanceof Error ? error.message : "Failed to get work history",
+          }),
+        }],
+        isError: true,
+      };
+    }
+  }
+);
+
+// =============================================================================
+// CONSOLE LOG TOOLS
+// =============================================================================
+
+const TARX_LOG_FILE = path.join(os.homedir(), "Library/Application Support/tarx/console.log");
+
+// Tool: Read TARX console logs
+server.tool(
+  "tarx_admin_read_console",
+  "Read Workbench extension console logs. Returns recent [TARX] prefixed log lines from the running app.",
+  {
+    lines: z.number().optional().describe("Number of lines to return (default: 100, max: 1000)"),
+    filter: z.string().optional().describe("Case-insensitive substring filter"),
+    clear: z.boolean().optional().describe("Clear logs after reading (default: false)"),
+  },
+  async ({ lines = 100, filter, clear = false }) => {
+    try {
+      if (!fs.existsSync(TARX_LOG_FILE)) {

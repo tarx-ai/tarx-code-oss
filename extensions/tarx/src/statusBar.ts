@@ -30,20 +30,24 @@ export class TarxStatusBar implements vscode.Disposable {
 	private async _update(): Promise<void> {
 		if (this._disposed) return;
 
-		const health = await this._tarxClient.checkHealth();
+		try {
+			const health = await this._tarxClient.checkHealth();
 
-		if (this._disposed) return;
+			// Guard: check disposed again after async operation
+			if (this._disposed || !this._statusBarItem) return;
 
-		if (health.healthy) {
-			this._statusBarItem.text = `$(robot) TARX`;
-			this._statusBarItem.tooltip = health.model
-				? `TARX: Connected (${health.model}) - ${health.latencyMs}ms`
-				: `TARX: Connected - ${health.latencyMs}ms`;
-			this._statusBarItem.backgroundColor = undefined;
-		} else {
-			this._statusBarItem.text = `$(robot) TARX`;
-			this._statusBarItem.tooltip = 'TARX: Not Connected - Click to check status';
-			this._statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+			if (health.healthy) {
+				const modelName = health.model || 'Local AI';
+				this._statusBarItem.text = `$(check) TARX`;
+				this._statusBarItem.tooltip = `Local AI: Connected — ${modelName} (${health.latencyMs}ms)`;
+				this._statusBarItem.backgroundColor = undefined;
+			} else {
+				this._statusBarItem.text = `$(loading~spin) TARX`;
+				this._statusBarItem.tooltip = 'TARX: Connecting...\n\nLocal AI server starting up';
+				this._statusBarItem.backgroundColor = undefined; // Neutral, not warning yellow
+			}
+		} catch {
+			// Silently ignore errors during status bar update (disposed, network error, etc.)
 		}
 	}
 
@@ -58,7 +62,12 @@ export class TarxStatusBar implements vscode.Disposable {
 		this._disposed = true;
 		if (this._pollInterval) {
 			clearInterval(this._pollInterval);
+			this._pollInterval = undefined;
 		}
-		this._statusBarItem.dispose();
+		try {
+			this._statusBarItem?.dispose();
+		} catch {
+			// Ignore - already disposed
+		}
 	}
 }

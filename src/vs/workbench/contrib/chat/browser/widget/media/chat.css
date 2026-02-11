@@ -132,17 +132,18 @@
 .chat-typing-indicator {
 	display: inline-flex;
 	align-items: center;
-	gap: 4px;
+	gap: 5px;
 	padding: 8px 16px;
 	background: var(--vscode-input-background, rgba(255, 255, 255, 0.05));
 	border-radius: 12px;
 	margin: 8px 0;
+	border-left: 2px solid var(--vscode-charts-purple, #8b5cf6);
 }
 
 .chat-typing-indicator .typing-dot {
-	width: 8px;
-	height: 8px;
-	background: var(--vscode-foreground);
+	width: 7px;
+	height: 7px;
+	background: var(--vscode-charts-purple, #8b5cf6);
 	border-radius: 50%;
 	opacity: 0.3;
 	animation: typing-bounce 1.4s infinite ease-in-out both;
@@ -2966,4 +2967,136 @@ have to be updated for changes to the rules above, or to support more deeply nes
 .chat-attachments-show-more-button .chat-attached-context-custom-text {
 	font-style: italic;
 	color: var(--vscode-descriptionForeground);
+}
+
+/* TARX message avatar styling */
+.interactive-item-container .header .tarx-avatar {
+	background: linear-gradient(135deg, #6366f1, #8b5cf6);
+	border-radius: 6px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-weight: bold;
+	color: white;
+	font-size: 12px;
+	width: 24px;
+	height: 24px;
+	box-shadow: 0 1px 4px rgba(99, 102, 241, 0.2);
+}
+
+/* TARX response background tint */
+.interactive-item-container.interactive-response.tarx-response {
+	background: rgba(99, 102, 241, 0.03);
+	border-left: 2px solid transparent;
+	transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+/* TARX response hover state */
+.interactive-item-container.interactive-response.tarx-response:hover {
+	background: rgba(99, 102, 241, 0.05);
+	border-left-color: rgba(99, 102, 241, 0.15);
+}
+
+/* TARX Thinking Blocks - Additional Styles */
+.tarx-thinking-block {
+	background: var(--vscode-editor-background);
+	border-left: 3px solid var(--vscode-charts-purple, #8b5cf6);
+	padding: 8px 12px;
+	margin: 4px 0;
+	font-style: italic;
+	opacity: 0.85;
+	border-radius: 4px;
+	transition: opacity 0.3s ease;
+}
+
+.tarx-thinking-header {
+	font-weight: 600;
+	color: var(--vscode-charts-purple, #8b5cf6);
+	font-size: 0.85em;
+	margin-bottom: 4px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.tarx-thinking-header::before {
+	content: '';
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--vscode-charts-purple, #8b5cf6);
+	flex-shrink: 0;
+}
+
+.tarx-thinking-active .tarx-thinking-header::before {
+	animation: tarx-thinking-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes tarx-thinking-pulse {
+	0%, 100% { opacity: 0.4; transform: scale(0.8); }
+	50% { opacity: 1; transform: scale(1.2); }
+}
+
+@keyframes tarx-shimmer {
+	0% { background-position: -200px 0; }
+	100% { background-position: 200px 0; }
+}
+
+.tarx-thinking-active {
+	background: linear-gradient(90deg,
+		var(--vscode-editor-background) 0%,
+		var(--vscode-editor-selectionBackground) 50%,
+		var(--vscode-editor-background) 100%);
+	background-size: 400px 100%;
+	animation: tarx-shimmer 1.5s ease-in-out infinite;
+	opacity: 1;
+}
+
+/* ═══════════════════════════════════════════════════
+   TARX Follow-up Suggestion Chips
+   ═══════════════════════════════════════════════════ */
+
+.tarx-suggestions-wrapper {
+	padding: 0 16px;
+}
+
+/* Inline suggestions rendered inside the last response item (above footer toolbar) */
+.tarx-inline-suggestions {
+	padding: 4px 0 0;
+}
+
+.tarx-suggestions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding: 8px 0 4px;
+	opacity: 0;
+	animation: tarxChipFadeIn 200ms ease-out 200ms forwards;
+}
+
+@keyframes tarxChipFadeIn {
+	to { opacity: 1; }
+}
+
+.tarx-suggestion-chip {
+	background: var(--vscode-input-background, #1E1E24);
+	border: 1px solid var(--vscode-widget-border, #2A2A30);
+	border-radius: 16px;
+	padding: 4px 12px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground, #8B8B96);
+	cursor: pointer;
+	transition: all 150ms ease;
+	white-space: nowrap;
+	font-family: var(--vscode-font-family);
+}
+
+.tarx-suggestion-chip:hover {
+	color: #40B6FB;
+	border-color: #40B6FB;
+	box-shadow: 0 0 8px rgba(64, 182, 251, 0.15);
+}
+
+.tarx-suggestion-chip:active {
+	transform: scale(0.97);
 }

@@ -177,7 +177,7 @@ export class SetupAgent extends Disposable implements IChatAgentImplementation {
 		return { agent, disposable: disposables };
 	}
 
-	private static readonly SETUP_NEEDED_MESSAGE = new MarkdownString(localize('settingUpCopilotNeeded', "You need to set up GitHub Copilot and be signed in to use Chat."));
+	private static readonly SETUP_NEEDED_MESSAGE = new MarkdownString(localize('settingUpCopilotNeeded', "You need to set up TARX and be signed in to use Chat."));
 	private static readonly TRUST_NEEDED_MESSAGE = new MarkdownString(localize('trustNeeded', "You need to trust this workspace to use Chat."));
 
 	private static readonly CHAT_RETRY_COMMAND_ID = 'workbench.action.chat.retrySetup';
@@ -230,7 +230,7 @@ export class SetupAgent extends Disposable implements IChatAgentImplementation {
 					const model = await textModelService.createModelReference(channel.uri);
 					try {
 						const rawOutput = model.object.textEditorModel.getValue();
-						outputData = `<details>\n<summary>GitHub Copilot Chat Output (${channelName})</summary>\n\n\`\`\`\n${rawOutput}\n\`\`\`\n</details>`;
+						outputData = `<details>\n<summary>TARX Chat Output (${channelName})</summary>\n\n\`\`\`\n${rawOutput}\n\`\`\`\n</details>`;
 						logService.info(`[chat setup] Retrieved ${rawOutput.length} characters from ${channelName} output channel`);
 					} finally {
 						model.dispose();
@@ -246,7 +246,7 @@ export class SetupAgent extends Disposable implements IChatAgentImplementation {
 				extensionId: defaultChat.chatExtensionId,
 				issueTitle: 'Chat took too long to get ready',
 				issueBody: 'Chat took too long to get ready',
-				data: outputData || localize('chatOutputChannelUnavailable', "GitHub Copilot Chat output channel not available. Please ensure the GitHub Copilot Chat extension is active and try again. If the issue persists, you can manually include relevant information from the Output panel (View > Output > GitHub Copilot Chat).")
+				data: outputData || localize('chatOutputChannelUnavailable', "TARX Chat output channel not available. Please ensure the TARX Chat extension is active and try again. If the issue persists, you can manually include relevant information from the Output panel (View > Output > TARX Chat).")
 			});
 		}));
 

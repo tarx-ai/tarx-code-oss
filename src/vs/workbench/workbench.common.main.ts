@@ -214,6 +214,7 @@ import './contrib/chat/browser/contextContrib/chatContext.contribution.js';
 
 // TARX SuperComputer
 import './contrib/tarx/browser/tarx.contribution.js';
+import './contrib/tarxDashboard/browser/tarxDashboard.contribution.js';
 
 // Interactive
 import './contrib/interactive/browser/interactive.contribution.js';

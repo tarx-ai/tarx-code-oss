@@ -82,7 +82,7 @@ export class ChatStatusWidget extends Disposable implements IChatInputPartWidget
 		this.actionButton.element.classList.add('chat-status-button');
 
 		if (enabledSku === 'anonymous') {
-			const message = localize('chat.anonymousRateLimited.message', "You've reached the limit for chat messages. Try Copilot Pro for free.");
+			const message = localize('chat.anonymousRateLimited.message', "You've reached the limit for chat messages. Try TARX Pro for free.");
 			const buttonLabel = localize('chat.anonymousRateLimited.signIn', "Sign In");
 			this.messageElement.textContent = message;
 			this.actionButton.label = buttonLabel;

@@ -8,12 +8,14 @@
 		"sourceMap": true,
 		"strict": true,
 		"esModuleInterop": true,
+		"allowSyntheticDefaultImports": true,
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true,
 		"moduleResolution": "Node16",
 		"declaration": true,
-		"declarationMap": true
+		"declarationMap": true,
+		"downlevelIteration": true
 	},
 	"include": ["src/**/*"],
-	"exclude": ["node_modules", "out"]
+	"exclude": ["node_modules", "out", "src/webview/ui/**/*"]
 }

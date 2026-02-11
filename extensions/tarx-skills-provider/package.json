@@ -1,0 +1,132 @@
+{
+  "name": "tarx-skills-provider",
+  "displayName": "TARX Skills Provider",
+  "version": "1.0.0",
+  "engines": {
+    "node": ">=18.0.0",
+    "vscode": "^1.85.0"
+  },
+  "private": true,
+  "description": "Skills registry, intent classification, and skill resolution for Workbench. Provides TARX local and mesh language models.",
+  "main": "dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test dist/test/*.test.js"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "tarx.status.showDetails",
+        "title": "TARX: Show System Status",
+        "category": "TARX"
+      },
+      {
+        "command": "tarx.status.switchModel",
+        "title": "TARX: Switch Model",
+        "category": "TARX"
+      },
+      {
+        "command": "tarx-skills.selectModel",
+        "title": "TARX: Select Model",
+        "category": "TARX"
+      },
+      {
+        "command": "tarx.skills.newSkill",
+        "title": "TARX: New Skill File",
+        "category": "TARX"
+      },
+      {
+        "command": "tarx.skills.configureSkills",
+        "title": "TARX: Configure Skills",
+        "category": "TARX"
+      },
+      {
+        "command": "tarx.skills.listSkills",
+        "title": "TARX: List Available Skills",
+        "category": "TARX"
+      }
+    ],
+    "chatSkills": [
+      {
+        "id": "tarx.skills.codeGen",
+        "name": "Code Generation",
+        "description": "Generate code using local LLM with project context",
+        "skillFile": ".tarx/skills/code-gen.md"
+      },
+      {
+        "id": "tarx.skills.memory",
+        "name": "Memory & Context",
+        "description": "Persistent memory across sessions",
+        "skillFile": ".tarx/skills/memory.md"
+      },
+      {
+        "id": "tarx.skills.debug",
+        "name": "Debug & Diagnostics",
+        "description": "Debug errors using Sentry integration, logs, and stack traces",
+        "skillFile": ".tarx/skills/debug.md"
+      },
+      {
+        "id": "tarx.skills.knowledge",
+        "name": "Knowledge Base",
+        "description": "RAG-powered search over uploaded documents and project files",
+        "skillFile": ".tarx/skills/knowledge.md"
+      },
+      {
+        "id": "tarx.skills.projects",
+        "name": "Project Management",
+        "description": "Manage spaces, sessions, tasks, and project organization",
+        "skillFile": ".tarx/skills/projects.md"
+      }
+    ],
+    "terminal": {
+      "profiles": [
+        {
+          "id": "tarx.terminal",
+          "title": "TARX Terminal",
+          "icon": "terminal"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "TARX Skills",
+      "properties": {
+        "tarx.skills.locations": {
+          "type": "array",
+          "default": [
+            ".tarx/skills",
+            ".github/skills"
+          ],
+          "description": "Folders to scan for TARX skill definitions"
+        },
+        "tarx.skills.agentLocations": {
+          "type": "array",
+          "default": [
+            ".tarx/agents"
+          ],
+          "description": "Folders to scan for TARX agent definitions"
+        },
+        "tarx.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:11435",
+          "description": "URL for TARX local inference server (Qwen 8.2B)"
+        },
+        "tarx.meshServerUrl": {
+          "type": "string",
+          "default": "http://localhost:11436",
+          "description": "URL for TARX mesh network inference server"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "yaml": "^2.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.109.0",
+    "typescript": "^5.0.0"
+  }
+}

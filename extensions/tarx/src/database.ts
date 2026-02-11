@@ -326,6 +326,10 @@ export interface DatabaseOperations {
 	getRecentConversation(projectId: string | null): Promise<Conversation | null>;
 	getRecentTurns(projectId: string | null, limit?: number): Promise<ConversationTurn[]>;
 	getRecentConversations(projectId: string | null, limit?: number): Promise<Conversation[]>;
+
+	// Raw database access (for advanced queries like sessions table)
+	getDb(): unknown;
+	ensureDbReady(): Promise<unknown>;
 }
 
 /**
@@ -343,8 +347,36 @@ export class JsonDatabase implements DatabaseOperations {
 	private dbPath: string;
 
 	constructor(storagePath: string) {
-		this.dbPath = path.join(storagePath, 'tarx-db.json');
+		// Validate storage path - reject root-level paths like /mock
+		if (this.isInvalidStoragePath(storagePath)) {
+			const os = require('os');
+			const fallbackPath = path.join(os.tmpdir(), 'tarx-storage');
+			console.warn(`[TARX] Invalid storage path "${storagePath}", using fallback: ${fallbackPath}`);
+			this.dbPath = path.join(fallbackPath, 'tarx-db.json');
+		} else {
+			this.dbPath = path.join(storagePath, 'tarx-db.json');
+		}
 		this.data = this.load();
+	}
+
+	/**
+	 * Check if storage path is invalid (too shallow or mock path)
+	 */
+	private isInvalidStoragePath(storagePath: string): boolean {
+		if (!storagePath) {
+			return true;
+		}
+		const normalized = path.normalize(storagePath);
+		const parts = normalized.split(path.sep).filter(Boolean);
+		// Reject paths with fewer than 2 parts (e.g., /mock has only 1 part)
+		if (parts.length < 2) {
+			return true;
+		}
+		// Reject known test/mock paths
+		if (normalized.startsWith('/mock') || normalized.startsWith('/test')) {
+			return true;
+		}
+		return false;
 	}
 
 	private load(): typeof this.data {
@@ -375,6 +407,16 @@ export class JsonDatabase implements DatabaseOperations {
 		} catch (e) {
 			console.error('[TARX] Failed to save database:', e);
 		}
+	}
+
+	// Raw database access (JsonDatabase doesn't have a raw DB, return null)
+	getDb(): unknown {
+		return null;
+	}
+
+	// Ensure database ready (JsonDatabase is always ready)
+	async ensureDbReady(): Promise<unknown> {
+		return null;
 	}
 
 	// Projects

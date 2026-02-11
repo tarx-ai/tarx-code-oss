@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import './media/tarxSidebarPart.css';
-import { $, append, addDisposableListener, EventType, clearNode } from '../../../../base/browser/dom.js';
+import { $, append, addDisposableListener, EventType, clearNode, getWindow } from '../../../../base/browser/dom.js';
 import { IWorkbenchLayoutService, Parts, Position as SideBarPosition } from '../../../services/layout/browser/layoutService.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
@@ -17,7 +17,9 @@ import { INotificationService } from '../../../../platform/notification/common/n
 import { IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
 import { IExtensionService } from '../../../services/extensions/common/extensions.js';
 import { LayoutPriority } from '../../../../base/browser/ui/grid/grid.js';
-import { IViewDescriptorService } from '../../../common/views.js';
+import { IViewDescriptorService, ViewContainerLocation } from '../../../common/views.js';
+import { IViewsService } from '../../../services/views/common/viewsService.js';
+import { IPaneCompositePartService } from '../../../services/panecomposite/browser/panecomposite.js';
 import { AbstractPaneCompositePart, CompositeBarPosition } from '../paneCompositePart.js';
 import { ActivityBarCompositeBar, ActivitybarPart } from '../activitybar/activitybarPart.js';
 import { ActionsOrientation } from '../../../../base/browser/ui/actionbar/actionbar.js';
@@ -28,10 +30,19 @@ import { IMenuService } from '../../../../platform/actions/common/actions.js';
 import { IHoverService } from '../../../../platform/hover/browser/hover.js';
 import { SidebarFocusContext, ActiveViewletContext } from '../../../common/contextkeys.js';
 import { DisposableStore } from '../../../../base/common/lifecycle.js';
-import { ICommandService } from '../../../../platform/commands/common/commands.js';
+import { ICommandService, CommandsRegistry } from '../../../../platform/commands/common/commands.js';
 import { FileAccess } from '../../../../base/common/network.js';
 import { ThemeIcon } from '../../../../base/common/themables.js';
 import { Codicon } from '../../../../base/common/codicons.js';
+import { TarxProjectModal } from './tarxProjectModal.js';
+import { TarxExtensionsModal } from './extensionsView.js';
+import { IWebviewService, IWebviewElement } from '../../../contrib/webview/browser/webview.js';
+import { IFileDialogService } from '../../../../platform/dialogs/common/dialogs.js';
+import { URI } from '../../../../base/common/uri.js';
+import { MutableDisposable } from '../../../../base/common/lifecycle.js';
+import { TARX_CODICON_CSS, TARX_CODICON_FONT_URL, TARX_SIDEBAR_CSS, TARX_SIDEBAR_JS } from './webviewContent.js';
+import { TarxSidebarCommands, TarxMessageTypes, TarxSidebarState, createInitialSidebarState } from './tarxCommands.js';
+
 
 /**
  * TARX Sidebar Navigation Item
@@ -50,6 +61,9 @@ interface TarxHistoryItem {
 	id: string;
 	title: string;
 	timestamp: number;
+	source: 'claude' | 'tarx';
+	spaceId?: string;
+	spaceName?: string;
 }
 
 /**
@@ -61,6 +75,7 @@ interface TarxProject {
 	path: string;
 	type: string | null;
 	isActive: boolean;
+	emoji?: string;
 	createdAt: number;
 }
 
@@ -84,13 +99,37 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 	//#region IView
 
 	// Allow collapsing to 48px icon-only mode
+	// snap: false prevents the sidebar from snapping closed at minimum size
 	readonly minimumWidth: number = 48;
 	readonly maximumWidth: number = 400;
 	readonly minimumHeight: number = 0;
 	readonly maximumHeight: number = Number.POSITIVE_INFINITY;
-	override get snap(): boolean { return true; }
+	override get snap(): boolean { return false; }
 
 	readonly priority: LayoutPriority = LayoutPriority.Low;
+
+	// Override setVisible to prevent the sidebar from being hidden when in collapsed mode
+	// This ensures the 48px icon strip remains visible instead of completely hiding
+	override setVisible(visible: boolean): void {
+		console.log('[TARX] setVisible called with visible=', visible, ', isCollapsed=', this.isCollapsed);
+
+		// If trying to hide the sidebar while it's collapsed, prevent it
+		// The sidebar should remain visible at 48px, not become completely hidden
+		if (!visible && this.isCollapsed) {
+			console.log('[TARX] BLOCKING sidebar hide while collapsed - staying at 48px');
+			return; // Don't fire visibility change event, keep sidebar visible
+		}
+
+		// Also block if trying to hide but we're in the process of collapsing
+		// (catches cases where isCollapsed might not be set yet)
+		if (!visible) {
+			console.log('[TARX] WARNING: Something is trying to hide the sidebar!');
+			// Log the call stack to see what's calling this
+			console.trace('[TARX] setVisible(false) call stack:');
+		}
+
+		super.setVisible(visible);
+	}
 
 	//#endregion
 
@@ -98,25 +137,29 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 
 	// DOM elements
 	private tarxContainer: HTMLElement | undefined;
+	private webviewPlaceholder: HTMLElement | undefined;
+	private readonly _webview = this._register(new MutableDisposable<IWebviewElement>());
 	private headerElement: HTMLElement | undefined;
 	private navRowsElement: HTMLElement | undefined;
 	private sectionsContainer: HTMLElement | undefined;
 	private historyElement: HTMLElement | undefined;
 	private footerElement: HTMLElement | undefined;
 	private logoIcon: HTMLImageElement | undefined;
-	private headerCollapseBtn: HTMLElement | undefined;
-	private headerCollapseIcon: HTMLElement | undefined;
+
+	// Webview mode toggle - set to true to use React webview
+	private readonly USE_WEBVIEW_MODE = true;
 
 	// State
 	private sectionState: Map<string, boolean> = new Map();
-	private isVoiceActive: boolean = false;
+	// private isVoiceActive: boolean = false; // DISABLED FOR V1 RELEASE
 	private superEnabled: boolean = false;
 	private peerCount: number = 0;
 	private superDot: HTMLElement | undefined;
 	private superLabel: HTMLElement | undefined;
 	private localDot: HTMLElement | undefined;
 	private localLabel: HTMLElement | undefined;
-	private connectionStatus: 'online' | 'offline' | 'connecting' | 'reconnecting' = 'connecting';
+	private connectionStatus: 'online' | 'offline' | 'connecting' | 'reconnecting' = 'online'; // Default to online to avoid loading flash
+	private static readonly CONNECTION_STATUS_KEY = 'tarx.sidebar.connectionStatus';
 	private connectionCheckInterval: ReturnType<typeof setInterval> | undefined;
 	private readonly navDisposables = this._register(new DisposableStore());
 	private isCollapsed: boolean = false;
@@ -128,6 +171,9 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 	private projects: TarxProject[] = [];
 	private projectsContentEl: HTMLElement | undefined;
 
+	// Unified sidebar state for MCP bridge
+	private sidebarState: TarxSidebarState = createInitialSidebarState();
+
 	// Model loading indicator
 	private modelLoadingElement: HTMLElement | undefined;
 
@@ -138,7 +184,7 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 	private uploadProgressPercent: HTMLElement | undefined;
 
 	constructor(
-		@INotificationService notificationService: INotificationService,
+		@INotificationService private readonly tarxNotificationService: INotificationService,
 		@IStorageService storageService: IStorageService,
 		@IContextMenuService contextMenuService: IContextMenuService,
 		@IWorkbenchLayoutService layoutService: IWorkbenchLayoutService,
@@ -152,6 +198,8 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 		@IConfigurationService _configurationService: IConfigurationService,
 		@IMenuService menuService: IMenuService,
 		@ICommandService private readonly commandService: ICommandService,
+		@IWebviewService private readonly webviewService: IWebviewService,
+		@IFileDialogService private readonly fileDialogService: IFileDialogService,
 	) {
 		super(
 			Parts.SIDEBAR_PART,
@@ -163,7 +211,7 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 			'viewlet',
 			undefined,
 			undefined,
-			notificationService,
+			tarxNotificationService,
 			storageService,
 			contextMenuService,
 			layoutService,
@@ -177,9 +225,10 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 			menuService,
 		);
 
-		// Section states (collapsed by default except PROJECTS and HISTORY)
-		this.sectionState.set('create', true);
+		// Section states (collapsed by default except CONTEXT, PROJECTS and HISTORY)
+		// this.sectionState.set('create', true); // DISABLED FOR V1 RELEASE
 		this.sectionState.set('code', true);
+		this.sectionState.set('context', false); // Context panel expanded by default
 		this.sectionState.set('files', true);
 		this.sectionState.set('projects', false);
 		this.sectionState.set('history', false);
@@ -189,15 +238,220 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 
 		// Load saved collapsed state
 		this.isCollapsed = this.storageService.getBoolean(TarxSidebarPart.COLLAPSED_KEY, StorageScope.PROFILE, false);
+
+		// Load cached connection status (default to 'online' to avoid loading flash on startup)
+		const cachedStatus = this.storageService.get(TarxSidebarPart.CONNECTION_STATUS_KEY, StorageScope.APPLICATION, 'online');
+		this.connectionStatus = cachedStatus as 'online' | 'offline' | 'connecting' | 'reconnecting';
+
+		// Register the toggle collapse command so it can be called from the header button
+		this._register(CommandsRegistry.registerCommand('tarx.toggleSidebarCollapse', () => {
+			console.log('[TARX] tarx.toggleSidebarCollapse command executed');
+			this.toggleCollapse();
+		}));
+
+		// Register all MCP bridge sidebar commands
+		this.registerSidebarCommands();
+
+		// Listen for TARX extension activation and reload data when ready
+		this._register(extensionService.onDidRegisterExtensions(() => {
+			console.log('[TARX Sidebar] Extensions registered - checking for tarx extension');
+			// Give the extension a moment to fully activate and register commands
+			setTimeout(() => {
+				console.log('[TARX Sidebar] Reloading data after extension registration');
+				this.loadProjectsWithRetry(3);
+				this.loadHistoryWithRetry(3);
+				// Notify webview that extension is ready
+				this.sendWebviewMessage({ command: 'extensionReady' });
+			}, 500);
+		}));
+
+		// Periodic empty-data check: if sidebar is still empty after startup, keep retrying
+		const emptyDataCheck = setInterval(() => {
+			if (this.projects.length === 0 || this.historyItems.length === 0) {
+				console.log(`[TARX Sidebar] Empty data check: projects=${this.projects.length}, history=${this.historyItems.length} — retrying`);
+				if (this.projects.length === 0) {
+					this.loadProjectsWithRetry(2);
+				}
+				if (this.historyItems.length === 0) {
+					this.loadHistoryWithRetry(2);
+				}
+			} else {
+				// Data loaded, stop checking
+				clearInterval(emptyDataCheck);
+			}
+		}, 3000);
+		// Stop checking after 30 seconds regardless
+		setTimeout(() => clearInterval(emptyDataCheck), 30000);
+	}
+
+	/**
+	 * Register all MCP bridge sidebar commands
+	 * These commands allow MCP tools to control the sidebar UI
+	 */
+	private registerSidebarCommands(): void {
+		// ═══════════════════════════════════════════════════════════════════════
+		// UI STATE COMMANDS
+		// ═══════════════════════════════════════════════════════════════════════
+
+		this._register(CommandsRegistry.registerCommand(
+			TarxSidebarCommands.UI_REFRESH,
+			async (_accessor, section?: 'projects' | 'history' | 'files' | 'all') => {
+				console.log('[TARX Sidebar] UI_REFRESH:', section);
+				if (!section || section === 'all' || section === 'projects') {
+					await this.loadProjects();
+				}
+				if (!section || section === 'all' || section === 'history') {
+					await this.loadHistory();
+				}
+				if (!section || section === 'all' || section === 'files') {
+					await this.loadUploadedFiles();
+				}
+			}
+		));
+
+		this._register(CommandsRegistry.registerCommand(
+			TarxSidebarCommands.UI_NAVIGATE,
+			(_accessor, view: 'chat' | 'projects' | 'history' | 'files') => {
+				console.log('[TARX Sidebar] UI_NAVIGATE:', view);
+				this.sidebarState.activeSection = view;
+				this.sendWebviewMessage({
+					command: TarxMessageTypes.NAVIGATE,
+					data: { view }
+				});
+			}
+		));
+
+		this._register(CommandsRegistry.registerCommand(
+			TarxSidebarCommands.UI_SET_LOADING,
+			(_accessor, section: 'projects' | 'history' | 'files', isLoading: boolean) => {
+				console.log('[TARX Sidebar] UI_SET_LOADING:', section, isLoading);
+				this.sidebarState.isLoading[section] = isLoading;
+				this.sendWebviewMessage({
+					command: TarxMessageTypes.LOADING_STATE,
+					data: { section, isLoading }
+				});
+			}
+		));
+
+		this._register(CommandsRegistry.registerCommand(
+			TarxSidebarCommands.UI_SHOW_ERROR,
+			(_accessor, section: 'projects' | 'history' | 'files', message: string) => {
+				console.log('[TARX Sidebar] UI_SHOW_ERROR:', section, message);
+				this.sidebarState.errors[section] = message;
+				this.sendWebviewMessage({
+					command: TarxMessageTypes.ERROR_STATE,
+					data: { section, message }
+				});
+			}
+		));
+
+		this._register(CommandsRegistry.registerCommand(
+			TarxSidebarCommands.UI_CLEAR_ERROR,
+			(_accessor, section: 'projects' | 'history' | 'files') => {
+				console.log('[TARX Sidebar] UI_CLEAR_ERROR:', section);
+				this.sidebarState.errors[section] = null;
+				this.sendWebviewMessage({
+					command: TarxMessageTypes.ERROR_STATE,
+					data: { section, message: null }
+				});
+			}
+		));
+
+		this._register(CommandsRegistry.registerCommand(
+			TarxSidebarCommands.UI_GET_STATE,
+			() => {
+				console.log('[TARX Sidebar] UI_GET_STATE');
+				return { ...this.sidebarState };
+			}
+		));
+
+		this._register(CommandsRegistry.registerCommand(
+			TarxSidebarCommands.UI_SET_CONNECTION_STATUS,
+			(_accessor, status: 'online' | 'offline' | 'connecting' | 'reconnecting') => {
+				console.log('[TARX Sidebar] UI_SET_CONNECTION_STATUS:', status);
+				this.sidebarState.connectionStatus = status;
+				this.connectionStatus = status;
+				this.sendWebviewMessage({
+					command: TarxMessageTypes.CONNECTION_STATUS,
+					data: { status }
+				});
+			}
+		));
+
+		// ═══════════════════════════════════════════════════════════════════════
+		// PROJECT COMMANDS
+		// ═══════════════════════════════════════════════════════════════════════
+
+		this._register(CommandsRegistry.registerCommand(
+			TarxSidebarCommands.PROJECT_SELECT,
+			(_accessor, projectId: string) => {
+				console.log('[TARX Sidebar] PROJECT_SELECT:', projectId);
+				this.sidebarState.selectedProjectId = projectId;
+				this.sendWebviewMessage({
+					command: TarxMessageTypes.PROJECT_SELECTED,
+					data: { projectId }
+				});
+			}
+		));
+
+		this._register(CommandsRegistry.registerCommand(
+			TarxSidebarCommands.PROJECT_REFRESH,
+			async () => {
+				console.log('[TARX Sidebar] PROJECT_REFRESH');
+				await this.loadProjects();
+			}
+		));
+
+		// ═══════════════════════════════════════════════════════════════════════
+		// HISTORY COMMANDS
+		// ═══════════════════════════════════════════════════════════════════════
+
+		this._register(CommandsRegistry.registerCommand(
+			TarxSidebarCommands.HISTORY_REFRESH,
+			async () => {
+				console.log('[TARX Sidebar] HISTORY_REFRESH');
+				await this.loadHistory();
+			}
+		));
+
+		// ═══════════════════════════════════════════════════════════════════════
+		// INTERNAL COMMANDS
+		// ═══════════════════════════════════════════════════════════════════════
+
+		this._register(CommandsRegistry.registerCommand(
+			TarxSidebarCommands.INTERNAL_POST_MESSAGE,
+			(_accessor, message: { command: string; data?: unknown }) => {
+				console.log('[TARX Sidebar] INTERNAL_POST_MESSAGE:', message.command);
+				this.sendWebviewMessage(message);
+			}
+		));
+
+		this._register(CommandsRegistry.registerCommand(
+			TarxSidebarCommands.INTERNAL_UPDATE_STATE,
+			(_accessor, stateUpdate: Partial<TarxSidebarState>) => {
+				console.log('[TARX Sidebar] INTERNAL_UPDATE_STATE:', Object.keys(stateUpdate));
+				Object.assign(this.sidebarState, stateUpdate);
+				this.sendWebviewMessage({
+					command: TarxMessageTypes.STATE_SYNC,
+					data: this.sidebarState
+				});
+			}
+		));
 	}
 
 	override create(parent: HTMLElement): void {
+		console.log('[TARX INIT] TarxSidebarPart.create() called');
 		super.create(parent);
 
 		// Get the actual container from the part
 		const container = this.getContainer();
+		console.log('[TARX INIT] Container:', container ? 'exists' : 'NULL');
 		if (container) {
+			// Add tarx-sidebar class to the part element for CSS targeting
+			// This allows us to override the nosidebar behavior specifically for TARX
+			container.classList.add('tarx-sidebar');
 			this.createTarxNavigation(container);
+			console.log('[TARX INIT] createTarxNavigation completed');
 		}
 	}
 
@@ -207,6 +461,13 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 
 		this.tarxContainer = append(parent, $('.tarx-sidebar-container'));
 
+		// Check if we should use webview mode
+		if (this.USE_WEBVIEW_MODE) {
+			this.createWebviewSidebar();
+			return;
+		}
+
+		// Legacy DOM-based UI (fallback)
 		this.createHeader();
 		this.createModelLoadingIndicator();
 		this.createNavRows();
@@ -226,11 +487,11 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 		this.registerUploadProgressCommands();
 
 		// Load history and projects from database (async, runs after UI is ready)
-		// Use longer delay to ensure TARX extension is activated first
+		// 2000ms delay to ensure TARX extension is activated
 		setTimeout(() => {
-			this.loadHistoryWithRetry(3);
-			this.loadProjectsWithRetry(3);
-		}, 1000);
+			this.loadHistoryWithRetry(5);
+			this.loadProjectsWithRetry(5);
+		}, 2000);
 
 		// Apply collapsed state if it was saved
 		console.log('[TARX Sidebar] Sidebar container isCollapsed:', this.isCollapsed);
@@ -242,6 +503,396 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 			setTimeout(() => {
 				this.layoutService.setSize(Parts.SIDEBAR_PART, { width: 48, height: -1 });
 			}, 0);
+		}
+	}
+
+	/**
+	 * Create the React-based webview sidebar using VS Code's native IWebviewService
+	 * This replaces the legacy DOM-based UI with a modern React implementation
+	 */
+	private createWebviewSidebar(): void {
+		console.log('[TARX Webview] Creating webview sidebar via IWebviewService');
+
+		if (!this.tarxContainer) {
+			console.error('[TARX Webview] No container available');
+			return;
+		}
+
+				try {
+
+		// Create a placeholder element for the webview with explicit dimensions
+		this.webviewPlaceholder = document.createElement('div');
+		this.webviewPlaceholder.className = 'tarx-webview-placeholder';
+		this.webviewPlaceholder.style.cssText = `
+			width: 100%;
+			height: 100%;
+			display: flex;
+			flex-direction: column;
+			overflow: hidden;
+			flex: 1;
+		`;
+		this.tarxContainer.appendChild(this.webviewPlaceholder);
+
+		// Create webview element using VS Code's native webview service
+		const webview = this.webviewService.createWebviewElement({
+			providedViewType: 'tarx.sidebar',
+			title: 'TARX Sidebar',
+			options: {
+				retainContextWhenHidden: true,
+			},
+			contentOptions: {
+				allowScripts: true,
+				localResourceRoots: [
+					URI.file('/Users/master/Desktop/tarx-code-oss/extensions/tarx/out/webview'),
+					FileAccess.asBrowserUri('vs/workbench/browser/parts/tarxsidebar/media'),
+				],
+			},
+			extension: undefined,
+		});
+
+		this._webview.value = webview;
+
+		// Generate HTML with inline styles and scripts (no external file loading)
+		const htmlContent = this.getWebviewHtml();
+
+		// Set the HTML content
+		webview.setHtml(htmlContent);
+
+		// Mount the webview to the placeholder container
+		const targetWindow = getWindow(this.tarxContainer);
+		webview.mountTo(this.webviewPlaceholder, targetWindow);
+
+		// Set up message passing
+		this.setupWebviewMessagePassing();
+
+		// Log initial layout info
+		setTimeout(() => {
+			const bounds = this.webviewPlaceholder?.getBoundingClientRect();
+			console.log('[TARX Webview] Container bounds:', bounds?.width, 'x', bounds?.height);
+		}, 100);
+
+		console.log('[TARX Webview] Webview created and mounted via IWebviewService');
+		} catch (error) {
+			console.error('[TARX Webview] *** WEBVIEW CREATION FAILED ***', error);
+			console.error('[TARX Webview] Error name:', (error as any)?.name);
+			console.error('[TARX Webview] Error message:', (error as any)?.message);
+			console.error('[TARX Webview] Error stack:', (error as any)?.stack);
+			console.log('[TARX Webview] Falling back to legacy DOM sidebar');
+			// Fall back to legacy DOM-based sidebar
+			this.createHeader();
+			this.createModelLoadingIndicator();
+			this.createNavRows();
+			this.createSections();
+			this.createFooter();
+			if (this.superEnabled) {
+				this.updateSuperStatus('connected');
+			}
+			this.startConnectionStatusPolling();
+			this.registerUploadProgressCommands();
+			setTimeout(() => {
+				this.loadHistoryWithRetry(5);
+				this.loadProjectsWithRetry(5);
+			}, 2000);
+		}
+	}
+
+	/**
+	 * Generate the HTML content for the webview
+	 * Uses the pre-built React bundle from webviewContent.ts (generated at build time)
+	 */
+	private getWebviewHtml(): string {
+		return `<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: https:; font-src data:;">
+	<title>TARX Sidebar</title>
+	<style>
+		/* Codicon font (@font-face + icon classes) */
+		${TARX_CODICON_CSS}
+		/* Base styles and VS Code theme variables */
+		:root {
+			--vscode-font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+			--vscode-font-size: 13px;
+		}
+		html, body {
+			margin: 0;
+			padding: 0;
+			width: 100%;
+			height: 100%;
+			overflow: hidden;
+			background: var(--vscode-sideBar-background, #1e1e1e);
+			color: var(--vscode-sideBar-foreground, #cccccc);
+		}
+		#root {
+			width: 100%;
+			height: 100%;
+		}
+		/* React bundle CSS */
+		${TARX_SIDEBAR_CSS}
+	</style>
+</head>
+<body>
+	<div id="root"></div>
+	<script>
+		// Load codicon font via FontFace API (more reliable than CSS @font-face in sandboxed webviews)
+		(function() {
+			try {
+				var font = new FontFace('codicon', 'url(${TARX_CODICON_FONT_URL})');
+				font.load().then(function(loaded) {
+					document.fonts.add(loaded);
+					console.log('[TARX] Codicon font loaded via FontFace API');
+				}).catch(function(e) {
+					console.warn('[TARX] FontFace API load failed, falling back to CSS @font-face:', e);
+				});
+			} catch(e) {
+				console.warn('[TARX] FontFace API unavailable:', e);
+			}
+		})();
+	</script>
+	<script>
+		// VS Code API - must be acquired before React bundle runs
+		(function() {
+			const vscode = acquireVsCodeApi();
+			window.vscode = vscode;
+
+			// Wrapper that adds message type for TARX communication
+			window.tarxVscode = {
+				postMessage: (msg) => vscode.postMessage({ type: 'tarx-webview', ...msg }),
+				getState: () => vscode.getState(),
+				setState: (state) => vscode.setState(state)
+			};
+		})();
+	</script>
+	<script>
+		// React bundle (IIFE)
+		${TARX_SIDEBAR_JS}
+	</script>
+</body>
+</html>`;
+	}
+
+	/**
+	 * Set up message passing between the webview and the host
+	 */
+	private setupWebviewMessagePassing(): void {
+		const webview = this._webview.value;
+		if (!webview) {
+			console.error('[TARX Webview] No webview available for message passing');
+			return;
+		}
+
+		// Listen for messages from the webview using IWebview's onMessage event
+		this._register(webview.onMessage((e) => {
+			if (e.message && e.message.type === 'tarx-webview') {
+				this.handleWebviewMessage(e.message);
+			}
+		}));
+
+		// Send initial state after a short delay to ensure webview is ready
+		setTimeout(() => {
+			console.log('[TARX Webview] Sending initial state to webview');
+
+			// Send collapsed state
+			this.sendWebviewMessage({
+				command: 'setCollapsed',
+				collapsed: this.isCollapsed
+			});
+
+			// Send connection status
+			this.sendWebviewMessage({
+				command: 'connectionStatusChanged',
+				status: this.connectionStatus
+			});
+
+			// Send existing projects if any
+			if (this.projects.length > 0) {
+				this.sendWebviewMessage({
+					command: 'projectsLoaded',
+					projects: this.projects
+				});
+			}
+
+			// Send existing history if any
+			if (this.historyItems.length > 0) {
+				this.sendWebviewMessage({
+					command: 'historyLoaded',
+					items: this.historyItems
+				});
+			}
+
+			// Load data from database
+			setTimeout(() => {
+				this.loadHistoryWithRetry(5);
+				this.loadProjectsWithRetry(5);
+			}, 500);
+		}, 100);
+	}
+
+	/**
+	 * Handle messages from the webview
+	 */
+	private handleWebviewMessage(message: any): void {
+		console.log('[TARX Webview] Received message:', message);
+
+		switch (message.command) {
+			case 'ready':
+				// Webview is ready, send current state
+				this.sendWebviewMessage({
+					command: 'connectionStatusChanged',
+					status: this.connectionStatus
+				});
+				this.loadHistoryWithRetry(3);
+				this.loadProjectsWithRetry(3);
+				break;
+			case 'getProjects':
+				this.sendWebviewMessage({
+					command: 'projectsLoaded',
+					projects: this.projects
+				});
+				break;
+			case 'getHistory':
+				this.sendWebviewMessage({
+					command: 'historyLoaded',
+					items: this.historyItems
+				});
+				break;
+			case 'getConnectionStatus':
+				this.sendWebviewMessage({
+					command: 'connectionStatusChanged',
+					status: this.connectionStatus
+				});
+				break;
+			case 'getUploadedFiles':
+				// Forward to extension
+				this.commandService.executeCommand('tarx.getUploadedFiles').then((files: any) => {
+					this.sendWebviewMessage({
+						command: 'uploadedFilesLoaded',
+						files: files || []
+					});
+				});
+				break;
+			case 'openChat':
+				this.commandService.executeCommand('workbench.action.chat.open');
+				break;
+			case 'newChat':
+				this.commandService.executeCommand('tarx.chat.new');
+				break;
+			case 'openSession':
+				console.log('[TARX Deep Link] openSession', message.sessionId, 'space:', message.spaceId);
+				this.commandService.executeCommand('tarx.openSession', message.sessionId, message.spaceId);
+				break;
+			case 'openConversation':
+				console.log('[TARX Deep Link] openConversation', message.conversationId);
+				this.commandService.executeCommand('tarx.openConversation', message.conversationId);
+				break;
+			case 'selectProject':
+				console.log('[TARX Deep Link] selectProject', message.projectId);
+				this.commandService.executeCommand('tarx.projects.open', message.projectId);
+				break;
+			case 'openProject':
+				console.log('[TARX Deep Link] openProject', message.projectPath || message.projectId);
+				this.commandService.executeCommand('tarx.projects.open', message.projectPath || message.projectId);
+				break;
+			case 'createProject':
+			case 'openCreateProjectTab':
+				this.commandService.executeCommand('tarx.openCreateProject');
+				break;
+			case 'openProjectTab':
+				if (message.projectId) {
+					this.commandService.executeCommand('tarx.openProjectContext', message.projectId);
+					this.commandService.executeCommand('tarx.projects.select', message.projectId);
+					this.sendWebviewMessage({ command: 'projectSelected', data: { projectId: message.projectId } });
+				}
+				break;
+			case 'uploadFile':
+				this.commandService.executeCommand('tarx.uploadFile', {
+					filename: message.filename,
+					content: message.content,
+					size: message.size,
+					mimeType: message.mimeType
+				});
+				break;
+			case 'deleteFile':
+				this.commandService.executeCommand('tarx.deleteUploadedFile', message.fileId).then(() => {
+					this.loadUploadedFiles();
+				});
+				break;
+			case 'scanDirectory':
+				// Open folder picker then trigger scan via extension command
+				this.fileDialogService.showOpenDialog({
+					canSelectFiles: false,
+					canSelectFolders: true,
+					canSelectMany: false,
+					title: 'Select Directory to Scan'
+				}).then((result: URI[] | undefined) => {
+					if (result && result.length > 0) {
+						const folderPath = result[0].fsPath;
+						console.log('[TARX] Scanning directory:', folderPath);
+						this.commandService.executeCommand('tarx.scanDirectory', folderPath).then(() => {
+							this.loadUploadedFiles();
+						});
+					}
+				});
+				break;
+			case 'openView':
+				// Open views in the Auxiliary Bar (right side)
+				// Use the proper openViewInAuxiliaryBar for view containers
+				if (message.viewId.startsWith('workbench.view.')) {
+					this.openViewInAuxiliaryBar(message.viewId, message.viewId);
+				} else {
+					// For actions like terminal, just execute directly
+					this.layoutService.setPartHidden(false, Parts.AUXILIARYBAR_PART);
+					this.commandService.executeCommand(message.viewId);
+				}
+				break;
+			case 'openSettings':
+				this.commandService.executeCommand('workbench.action.openSettings');
+				break;
+			case 'openExtensions':
+				this.openViewInAuxiliaryBar('workbench.view.extensions', 'Extensions');
+				break;
+			case 'openFolder':
+				this.commandService.executeCommand('workbench.action.files.openFolder');
+				break;
+			case 'showAllHistory':
+				this.commandService.executeCommand('tarx.history.showAll');
+				break;
+			case 'toggleCollapse':
+				this.toggleCollapse();
+				break;
+			case 'refresh':
+				this.loadHistoryWithRetry(3);
+				this.loadProjectsWithRetry(3);
+				this.loadUploadedFiles();
+				break;
+			case 'getSettings':
+				this.commandService.executeCommand('tarx.settings.get').then((settings: any) => {
+					if (settings) {
+						this.sendWebviewMessage({ command: 'settingsLoaded', settings });
+					}
+				}).catch(() => { /* settings not available yet */ });
+				break;
+			case 'getDaemonStatus':
+				// Forward to extension
+				this.commandService.executeCommand('tarx.injectDaemonStatus', 'Checking daemon status...');
+				break;
+			default:
+				console.log('[TARX Webview] Unknown command:', message.command);
+		}
+	}
+
+	/**
+	 * Send a message to the webview
+	 */
+	private sendWebviewMessage(message: any): void {
+		const webview = this._webview.value;
+		if (webview) {
+			webview.postMessage({
+				type: 'tarx-host',
+				...message
+			});
 		}
 	}
 
@@ -284,106 +935,69 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 	}
 
 	/**
-	 * Header: Logo + Greeting + Compute dropdown pill
+	 * Header: Logo + Greeting (simplified - no project selector)
+	 * Project switching happens via the Projects section
 	 */
 	private createHeader(): void {
 		if (!this.tarxContainer) { return; }
 
 		this.headerElement = append(this.tarxContainer, $('.tarx-header'));
 
-		// Logo row with Compute pill
+		// Logo row with greeting
 		const logoRow = append(this.headerElement, $('.tarx-logo-row'));
 
-		// Panel collapse/expand toggle button (left side) - wrap in clickable container
-		this.headerCollapseBtn = append(logoRow, $('div.tarx-header-collapse-btn'));
-		this.headerCollapseIcon = append(this.headerCollapseBtn, $('span.tarx-header-collapse-icon'));
-		const headerCollapseIconType = this.isCollapsed ? Codicon.layoutSidebarLeftOff : Codicon.layoutSidebarLeft;
-		this.headerCollapseIcon.classList.add(...ThemeIcon.asClassNameArray(headerCollapseIconType));
-		this.headerCollapseBtn.title = this.isCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
-		console.log('[TARX] Header collapse btn created');
-
-		// Click on the button container for reliable event handling
-		this.navDisposables.add(addDisposableListener(this.headerCollapseBtn, EventType.CLICK, (e: MouseEvent) => {
-			console.log('[TARX] Header collapse btn clicked!');
-			e.preventDefault();
-			e.stopPropagation();
-			this.toggleCollapse();
-		}));
-
+		// Logo icon (shows in both expanded and collapsed states)
 		this.logoIcon = append(logoRow, $('img.tarx-logo-icon')) as HTMLImageElement;
 		this.logoIcon.src = FileAccess.asBrowserUri('vs/workbench/browser/parts/tarxsidebar/media/tarx-logo.png').toString(true);
 		this.logoIcon.alt = 'TARX';
 		const logoText = append(logoRow, $('span.tarx-logo-text'));
 		logoText.textContent = this.getGreeting();
-
-		// Compute dropdown pill with chip icon
-		this.computePill = append(logoRow, $('.tarx-compute-pill'));
-		const chipIcon = append(this.computePill, $('span.tarx-compute-chip-icon'));
-		chipIcon.appendChild(this.createChipSvg());
-		const pillLabel = append(this.computePill, $('span.tarx-compute-label'));
-		pillLabel.textContent = 'Compute';
-		const pillChevron = append(this.computePill, $('span.tarx-compute-chevron'));
-		pillChevron.classList.add(...ThemeIcon.asClassNameArray(Codicon.chevronDown));
-
-		// Click to show dropdown
-		this.navDisposables.add(addDisposableListener(this.computePill, EventType.CLICK, (e) => {
-			e.stopPropagation();
-			this.toggleComputeDropdown();
-		}));
-
-		// Create dropdown (hidden by default)
-		this.createComputeDropdown();
-
-		// Close dropdown when clicking outside
-		this.navDisposables.add(addDisposableListener(document, EventType.CLICK, () => {
-			this.hideComputeDropdown();
-		}));
 	}
 
 	/**
 	 * Create the Compute dropdown menu
 	 */
 	private createComputeDropdown(): void {
-		if (!this.headerElement) { return; }
+		if (!this.footerElement) { return; }
 
-		this.computeDropdown = append(this.headerElement, $('.tarx-compute-dropdown'));
+		this.computeDropdown = append(this.footerElement, $('.tarx-compute-dropdown'));
 		this.computeDropdown.style.display = 'none';
 
 		// Local option (checked when connected)
 		const localOption = append(this.computeDropdown, $('.tarx-compute-option.local'));
 		const localCheck = append(localOption, $('span.tarx-compute-check'));
-		localCheck.classList.add(...ThemeIcon.asClassNameArray(Codicon.check));
+		localCheck.classList.add(...ThemeIcon.asClassNameArray(Codicon.passFilled));
 		this.localDot = append(localOption, $('span.tarx-compute-dot'));
 		this.localLabel = append(localOption, $('span.tarx-compute-option-label'));
-		this.localLabel.textContent = 'Local';
+		this.localLabel.textContent = 'TARX LOCAL';
 		// Set initial status
 		this.updateLocalStatus(this.connectionStatus);
 
-		// Super option with toggle switch
+		// Super option with toggle switch - DISABLED FOR V1 (mesh networking not implemented)
 		const superOption = append(this.computeDropdown, $('.tarx-compute-option.super'));
+		superOption.title = 'Coming in V2 - Distributed GPU mesh networking';
+		superOption.style.opacity = '0.5';
+		superOption.style.cursor = 'not-allowed';
 		this.superDot = append(superOption, $('span.tarx-compute-dot'));
 		this.superLabel = append(superOption, $('span.tarx-compute-option-label'));
-		this.superLabel.textContent = 'SuperComputer';
+		this.superLabel.textContent = 'TARX NETWORK (Coming Soon)';
 
-		// Toggle switch
+		// Toggle switch - disabled for V1
 		const toggleLabel = append(superOption, $('label.tarx-toggle'));
+		toggleLabel.style.pointerEvents = 'none';
 		this.superToggle = append(toggleLabel, $('input.tarx-toggle-input')) as HTMLInputElement;
 		this.superToggle.type = 'checkbox';
-		this.superToggle.checked = this.superEnabled;
+		this.superToggle.checked = false; // Always off for V1
+		this.superToggle.disabled = true; // Disabled for V1
 		append(toggleLabel, $('span.tarx-toggle-slider'));
 
-		// Handle toggle change
-		this.navDisposables.add(addDisposableListener(this.superToggle, EventType.CHANGE, () => {
-			this.toggleSuperComputer();
-		}));
-
-		// Join Private Compute link
-		const joinLink = append(this.computeDropdown, $('.tarx-compute-link'));
-		joinLink.textContent = 'Join Private Compute';
-		this.navDisposables.add(addDisposableListener(joinLink, EventType.CLICK, () => {
-			this.commandService.executeCommand('tarx.privateCompute.join');
-			this.hideComputeDropdown();
-		}));
+		// Join Private Compute link - hidden for V1
+		// const joinLink = append(this.computeDropdown, $('.tarx-compute-link'));
+		// joinLink.textContent = 'Join Private Compute';
+		// this.navDisposables.add(addDisposableListener(joinLink, EventType.CLICK, () => {
+		// 	this.commandService.executeCommand('tarx.privateCompute.join');
+		// 	this.hideComputeDropdown();
+		// }));
 
 		// Prevent dropdown close when clicking inside
 		this.navDisposables.add(addDisposableListener(this.computeDropdown, EventType.CLICK, (e) => {
@@ -418,36 +1032,28 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 		}
 	}
 
-	/**
-	 * Toggle SuperComputer connection
-	 */
-	private toggleSuperComputer(): void {
-		// Use the toggle's current checked state to determine action
-		const shouldConnect = this.superToggle?.checked ?? false;
-
-		if (shouldConnect) {
-			// Connect
-			this.updateSuperStatus('connecting');
-			this.commandService.executeCommand('tarx.mesh.connect').then(() => {
-				this.superEnabled = true;
-				this.updateSuperStatus('connected');
-				this.storageService.store(TarxSidebarPart.SUPERCOMPUTER_KEY, true, StorageScope.APPLICATION, StorageTarget.USER);
-				console.log('[TARX] SuperComputer connected');
-			}).catch(() => {
-				this.superEnabled = false;
-				if (this.superToggle) { this.superToggle.checked = false; }
-				this.updateSuperStatus('disconnected');
-				console.log('[TARX] SuperComputer connection failed');
-			});
-		} else {
-			// Disconnect
-			this.superEnabled = false;
-			this.commandService.executeCommand('tarx.mesh.disconnect');
-			this.updateSuperStatus('disconnected');
-			this.storageService.store(TarxSidebarPart.SUPERCOMPUTER_KEY, false, StorageScope.APPLICATION, StorageTarget.USER);
-			console.log('[TARX] SuperComputer disconnected');
-		}
-	}
+	// DISABLED FOR V1 RELEASE - SuperComputer mesh networking not implemented
+	// Re-enable in V2 when mesh networking is ready
+	// private toggleSuperComputer(): void {
+	// 	const shouldConnect = this.superToggle?.checked ?? false;
+	// 	if (shouldConnect) {
+	// 		this.updateSuperStatus('connecting');
+	// 		this.commandService.executeCommand('tarx.mesh.connect').then(() => {
+	// 			this.superEnabled = true;
+	// 			this.updateSuperStatus('connected');
+	// 			this.storageService.store(TarxSidebarPart.SUPERCOMPUTER_KEY, true, StorageScope.APPLICATION, StorageTarget.USER);
+	// 		}).catch(() => {
+	// 			this.superEnabled = false;
+	// 			if (this.superToggle) { this.superToggle.checked = false; }
+	// 			this.updateSuperStatus('disconnected');
+	// 		});
+	// 	} else {
+	// 		this.superEnabled = false;
+	// 		this.commandService.executeCommand('tarx.mesh.disconnect');
+	// 		this.updateSuperStatus('disconnected');
+	// 		this.storageService.store(TarxSidebarPart.SUPERCOMPUTER_KEY, false, StorageScope.APPLICATION, StorageTarget.USER);
+	// 	}
+	// }
 
 	/**
 	 * Update Super status display
@@ -459,17 +1065,17 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 
 		switch (state) {
 			case 'disconnected':
-				this.superLabel.textContent = 'SuperComputer';
+				this.superLabel.textContent = 'TARX NETWORK';
 				break;
 			case 'connecting':
 				this.superDot.classList.add('connecting');
-				this.superLabel.textContent = 'SuperComputer (connecting...)';
+				this.superLabel.textContent = 'TARX NETWORK (connecting...)';
 				break;
 			case 'connected':
 				this.superDot.classList.add('active');
 				this.superLabel.textContent = this.peerCount > 0
-					? `SuperComputer (${this.peerCount} peer${this.peerCount !== 1 ? 's' : ''})`
-					: 'SuperComputer (connected)';
+					? `TARX NETWORK (${this.peerCount} peer${this.peerCount !== 1 ? 's' : ''})`
+					: 'TARX NETWORK';
 				break;
 		}
 	}
@@ -480,7 +1086,7 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 	public updatePeerCount(count: number): void {
 		this.peerCount = count;
 		if (this.superEnabled && this.superLabel) {
-			this.superLabel.textContent = `SuperComputer (${count} peer${count !== 1 ? 's' : ''})`;
+			this.superLabel.textContent = `TARX NETWORK (${count} peer${count !== 1 ? 's' : ''})`;
 		}
 	}
 
@@ -491,26 +1097,28 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 		if (!this.localDot || !this.localLabel) { return; }
 
 		this.connectionStatus = status;
+		// Cache status to avoid loading flash on restart
+		this.storageService.store(TarxSidebarPart.CONNECTION_STATUS_KEY, status, StorageScope.APPLICATION, StorageTarget.MACHINE);
 		this.localDot.classList.remove('active', 'connecting');
 
 		switch (status) {
 			case 'online':
 				this.localDot.classList.add('active');
-				this.localLabel.textContent = 'Local';
+				this.localLabel.textContent = 'TARX LOCAL';
 				this.setModelLoadingVisible(false);
 				break;
 			case 'offline':
-				this.localLabel.textContent = 'Local (offline)';
+				this.localLabel.textContent = 'TARX LOCAL (offline)';
 				this.setModelLoadingVisible(false);
 				break;
 			case 'connecting':
 				this.localDot.classList.add('connecting');
-				this.localLabel.textContent = 'Local (connecting...)';
+				this.localLabel.textContent = 'TARX LOCAL (connecting...)';
 				this.setModelLoadingVisible(true);
 				break;
 			case 'reconnecting':
 				this.localDot.classList.add('connecting');
-				this.localLabel.textContent = 'Local (reconnecting...)';
+				this.localLabel.textContent = 'TARX LOCAL (reconnecting...)';
 				this.setModelLoadingVisible(false); // Only show on initial connect
 				break;
 		}
@@ -711,48 +1319,43 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 			newChat();
 		}));
 
-		// Voice row
-		const voiceRow = append(this.navRowsElement, $('.tarx-nav-row'));
-		voiceRow.dataset.id = 'voice';
-
-		const voiceIcon = append(voiceRow, $('.tarx-nav-row-icon'));
-		voiceIcon.classList.add(...ThemeIcon.asClassNameArray(Codicon.mic));
-
-		const voiceLabel = append(voiceRow, $('.tarx-nav-row-label'));
-		voiceLabel.textContent = 'Voice';
-
-		const voiceAction = append(voiceRow, $('.tarx-action-btn.tarx-voice-btn'));
-		voiceAction.classList.add(...ThemeIcon.asClassNameArray(Codicon.play));
-		voiceAction.title = 'Start Voice';
-
-		// Entire Voice row is clickable to toggle voice
-		this.navDisposables.add(addDisposableListener(voiceRow, EventType.CLICK, () => {
-			this.toggleVoice(voiceAction);
-		}));
-		this.navDisposables.add(addDisposableListener(voiceAction, EventType.CLICK, (e) => {
-			e.stopPropagation();
-			this.toggleVoice(voiceAction);
-		}));
+		// Voice row - DISABLED FOR V1 RELEASE (re-enable in next release)
+		// const voiceRow = append(this.navRowsElement, $('.tarx-nav-row'));
+		// voiceRow.dataset.id = 'voice';
+		// const voiceIcon = append(voiceRow, $('.tarx-nav-row-icon'));
+		// voiceIcon.classList.add(...ThemeIcon.asClassNameArray(Codicon.mic));
+		// const voiceLabel = append(voiceRow, $('.tarx-nav-row-label'));
+		// voiceLabel.textContent = 'Voice';
+		// const voiceAction = append(voiceRow, $('.tarx-action-btn.tarx-voice-btn'));
+		// voiceAction.classList.add(...ThemeIcon.asClassNameArray(Codicon.play));
+		// voiceAction.title = 'Start Voice';
+		// this.navDisposables.add(addDisposableListener(voiceRow, EventType.CLICK, () => {
+		// 	this.toggleVoice(voiceAction);
+		// }));
+		// this.navDisposables.add(addDisposableListener(voiceAction, EventType.CLICK, (e) => {
+		// 	e.stopPropagation();
+		// 	this.toggleVoice(voiceAction);
+		// }));
 	}
 
-	private toggleVoice(btn: HTMLElement): void {
-		this.isVoiceActive = !this.isVoiceActive;
-		btn.className = 'tarx-action-btn tarx-voice-btn';
-
-		if (this.isVoiceActive) {
-			console.log('[TARX Sidebar] Voice starting...');
-			btn.classList.add(...ThemeIcon.asClassNameArray(Codicon.debugPause));
-			btn.classList.add('recording'); // Visual feedback
-			btn.title = 'Stop Voice';
-			this.commandService.executeCommand('tarx.voice.start');
-		} else {
-			console.log('[TARX Sidebar] Voice stopping...');
-			btn.classList.add(...ThemeIcon.asClassNameArray(Codicon.play));
-			btn.classList.remove('recording');
-			btn.title = 'Start Voice';
-			this.commandService.executeCommand('tarx.voice.stop');
-		}
-	}
+	// DISABLED FOR V1 RELEASE (re-enable in next release)
+	// private toggleVoice(btn: HTMLElement): void {
+	// 	this.isVoiceActive = !this.isVoiceActive;
+	// 	btn.className = 'tarx-action-btn tarx-voice-btn';
+	// 	if (this.isVoiceActive) {
+	// 		console.log('[TARX Sidebar] Voice starting...');
+	// 		btn.classList.add(...ThemeIcon.asClassNameArray(Codicon.debugPause));
+	// 		btn.classList.add('recording');
+	// 		btn.title = 'Stop Voice';
+	// 		this.commandService.executeCommand('tarx.voice.start');
+	// 	} else {
+	// 		console.log('[TARX Sidebar] Voice stopping...');
+	// 		btn.classList.add(...ThemeIcon.asClassNameArray(Codicon.play));
+	// 		btn.classList.remove('recording');
+	// 		btn.title = 'Start Voice';
+	// 		this.commandService.executeCommand('tarx.voice.stop');
+	// 	}
+	// }
 
 	/**
 	 * Collapsible sections: CREATE, CODE, FILES, PROJECTS, HISTORY
@@ -762,11 +1365,11 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 
 		this.sectionsContainer = append(this.tarxContainer, $('.tarx-sections'));
 
-		// CREATE
-		this.createSection('create', 'Create', Codicon.wand, [
-			{ id: 'design', label: 'Design', icon: Codicon.paintcan, command: 'tarx.create.design' },
-			{ id: 'imagine', label: 'Imagine', icon: Codicon.sparkle, command: 'tarx.create.imagine' }
-		]);
+		// CREATE - DISABLED FOR V1 RELEASE (re-enable in next release)
+		// this.createSection('create', 'Create', Codicon.wand, [
+		// 	{ id: 'design', label: 'Design', icon: Codicon.paintcan, command: 'tarx.create.design' },
+		// 	{ id: 'imagine', label: 'Imagine', icon: Codicon.sparkle, command: 'tarx.create.imagine' }
+		// ]);
 
 		// CODE
 		this.createSection('code', 'Code', Codicon.code, [
@@ -775,12 +1378,8 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 			{ id: 'terminal', label: 'Terminal', icon: Codicon.terminal, command: 'workbench.action.terminal.toggleTerminal' }
 		]);
 
-		// FILES
-		this.createSection('files', 'Files', Codicon.files, [
-			{ id: 'explorer', label: 'Explorer', icon: Codicon.files, command: 'workbench.view.explorer' },
-			{ id: 'search', label: 'Search', icon: Codicon.search, command: 'workbench.view.search' },
-			{ id: 'newFile', label: 'New File', icon: Codicon.newFile, command: 'workbench.action.files.newUntitledFile' }
-		]);
+		// FILES (with upload button)
+		this.createFilesSection();
 
 		// PROJECTS (with + button)
 		this.createProjectsSection();
@@ -844,6 +1443,282 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 		}));
 	}
 
+	// Uploaded files data
+	private uploadedFiles: Array<{ id: string; filename: string; size: number; uploadedAt: number }> = [];
+	private filesContentEl: HTMLElement | undefined;
+
+	/**
+	 * FILES section with upload button and uploaded files list
+	 */
+	private createFilesSection(): void {
+		if (!this.sectionsContainer) { return; }
+
+		const section = append(this.sectionsContainer, $('.tarx-section'));
+		section.dataset.sectionId = 'files';
+
+		if (this.sectionState.get('files') ?? false) {
+			section.classList.add('collapsed');
+		}
+
+		// Header: icon + title + upload button + chevron
+		const header = append(section, $('.tarx-section-header'));
+		const iconEl = append(header, $('.tarx-section-icon'));
+		iconEl.classList.add(...ThemeIcon.asClassNameArray(Codicon.files));
+		const titleEl = append(header, $('.tarx-section-title'));
+		titleEl.textContent = 'Files';
+
+		// Upload button (paperclip icon)
+		const uploadBtn = append(header, $('.tarx-action-btn.tarx-section-upload'));
+		uploadBtn.classList.add(...ThemeIcon.asClassNameArray(Codicon.cloudUpload));
+		uploadBtn.title = 'Upload File';
+
+		const chevron = append(header, $('.tarx-section-chevron'));
+		chevron.classList.add(...ThemeIcon.asClassNameArray(Codicon.chevronDown));
+
+		// Content container
+		this.filesContentEl = append(section, $('.tarx-section-content'));
+
+		// Default items (Explorer, Search)
+		const defaultItems: TarxNavItem[] = [
+			{ id: 'explorer', label: 'Explorer', icon: Codicon.files, command: 'workbench.view.explorer' },
+			{ id: 'search', label: 'Search', icon: Codicon.search, command: 'workbench.view.search' }
+		];
+
+		for (const item of defaultItems) {
+			const itemEl = append(this.filesContentEl, $('.tarx-section-item'));
+			itemEl.dataset.itemId = item.id;
+			itemEl.title = item.label;
+
+			const iconEl = append(itemEl, $('.tarx-section-item-icon'));
+			iconEl.classList.add(...ThemeIcon.asClassNameArray(item.icon));
+
+			const label = append(itemEl, $('.tarx-section-item-label'));
+			label.textContent = item.label;
+
+			if (item.command) {
+				this.navDisposables.add(addDisposableListener(itemEl, EventType.CLICK, (e) => {
+					e.stopPropagation();
+					this.openViewInAuxiliaryBar(item.command!, item.label);
+				}));
+			}
+		}
+
+		// Divider for uploaded files
+		const divider = append(this.filesContentEl, $('.tarx-section-divider'));
+		divider.textContent = 'Uploaded';
+
+		// Uploaded files list container
+		const uploadedFilesContainer = append(this.filesContentEl, $('.tarx-uploaded-files'));
+		uploadedFilesContainer.dataset.containerId = 'uploaded-files';
+
+		// Upload button click handler - opens native file picker
+		this.navDisposables.add(addDisposableListener(uploadBtn, EventType.CLICK, (e) => {
+			e.stopPropagation();
+			this.handleFileUpload();
+		}));
+
+		// Header collapse toggle
+		this.navDisposables.add(addDisposableListener(header, EventType.CLICK, () => {
+			const collapsed = section.classList.toggle('collapsed');
+			this.sectionState.set('files', collapsed);
+		}));
+
+		// Load uploaded files
+		this.loadUploadedFiles();
+
+		// Setup drag and drop on the section
+		this.setupFileDragDrop(section);
+	}
+
+	/**
+	 * Handle file upload via native file picker
+	 */
+	private handleFileUpload(): void {
+		console.log('[TARX] Opening file picker...');
+
+		// Create hidden file input
+		const fileInput = document.createElement('input');
+		fileInput.type = 'file';
+		fileInput.multiple = true;
+		fileInput.accept = '.txt,.md,.pdf,.doc,.docx,.py,.js,.ts,.json,.yaml,.yml,.xml,.html,.css';
+
+		fileInput.onchange = async () => {
+			const files = Array.from(fileInput.files || []);
+			console.log('[TARX] Files selected:', files.map(f => f.name));
+
+			for (const file of files) {
+				await this.uploadFile(file);
+			}
+		};
+
+		fileInput.click();
+	}
+
+	/**
+	 * Upload a single file
+	 */
+	private async uploadFile(file: File): Promise<void> {
+		console.log('[TARX] Uploading file:', file.name, 'size:', file.size);
+
+		// Show upload progress
+		this.commandService.executeCommand('tarx.showUploadProgress', `Uploading ${file.name}...`, 0);
+
+		try {
+			// Read file content
+			const content = await this.readFileAsText(file);
+
+			// Call TARX extension command to upload and index
+			await this.commandService.executeCommand('tarx.uploadFile', {
+				filename: file.name,
+				content: content,
+				size: file.size,
+				mimeType: file.type || 'text/plain'
+			});
+
+			// Update progress
+			this.commandService.executeCommand('tarx.showUploadProgress', `Indexing ${file.name}...`, 50);
+
+			// Refresh uploaded files list
+			await this.loadUploadedFiles();
+
+			// Hide progress
+			this.commandService.executeCommand('tarx.hideUploadProgress');
+
+			// Show success notification
+			this.tarxNotificationService.info(`Uploaded ${file.name}`);
+
+		} catch (error) {
+			console.error('[TARX] Upload failed:', error);
+			this.commandService.executeCommand('tarx.hideUploadProgress');
+			this.tarxNotificationService.error(`Failed to upload ${file.name}: ${error}`);
+		}
+	}
+
+	/**
+	 * Read file as text
+	 */
+	private readFileAsText(file: File): Promise<string> {
+		return new Promise((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve(reader.result as string);
+			reader.onerror = () => reject(reader.error);
+			reader.readAsText(file);
+		});
+	}
+
+	/**
+	 * Setup drag and drop for file uploads
+	 */
+	private setupFileDragDrop(section: HTMLElement): void {
+		let dragCounter = 0;
+
+		this.navDisposables.add(addDisposableListener(section, 'dragenter', (e: DragEvent) => {
+			e.preventDefault();
+			dragCounter++;
+			section.classList.add('drag-over');
+		}));
+
+		this.navDisposables.add(addDisposableListener(section, 'dragleave', (e: DragEvent) => {
+			e.preventDefault();
+			dragCounter--;
+			if (dragCounter === 0) {
+				section.classList.remove('drag-over');
+			}
+		}));
+
+		this.navDisposables.add(addDisposableListener(section, 'dragover', (e: DragEvent) => {
+			e.preventDefault();
+			if (e.dataTransfer) {
+				e.dataTransfer.dropEffect = 'copy';
+			}
+		}));
+
+		this.navDisposables.add(addDisposableListener(section, 'drop', async (e: DragEvent) => {
+			e.preventDefault();
+			dragCounter = 0;
+			section.classList.remove('drag-over');
+
+			const files = Array.from(e.dataTransfer?.files || []);
+			console.log('[TARX] Files dropped:', files.map(f => f.name));
+
+			for (const file of files) {
+				await this.uploadFile(file);
+			}
+		}));
+	}
+
+	/**
+	 * Load uploaded files from TARX extension
+	 */
+	private async loadUploadedFiles(): Promise<void> {
+		try {
+			const result = await this.commandService.executeCommand<Array<{
+				id: string;
+				filename: string;
+				size: number;
+				uploadedAt: number;
+			}>>('tarx.getUploadedFiles');
+
+			this.uploadedFiles = result || [];
+			this.renderUploadedFiles();
+		} catch (error) {
+			console.log('[TARX] Could not load uploaded files:', error);
+			this.uploadedFiles = [];
+			this.renderUploadedFiles();
+		}
+	}
+
+	/**
+	 * Render uploaded files list
+	 */
+	private renderUploadedFiles(): void {
+		const container = this.filesContentEl?.querySelector('[data-container-id="uploaded-files"]');
+		if (!container) { return; }
+
+		clearNode(container as HTMLElement);
+
+		if (this.uploadedFiles.length === 0) {
+			const emptyEl = append(container as HTMLElement, $('.tarx-empty-state'));
+			emptyEl.textContent = 'Drop files here or click 📎';
+			return;
+		}
+
+		for (const file of this.uploadedFiles) {
+			const itemEl = append(container as HTMLElement, $('.tarx-uploaded-file'));
+			itemEl.dataset.fileId = file.id;
+
+			const iconEl = append(itemEl, $('.tarx-file-icon'));
+			iconEl.classList.add(...ThemeIcon.asClassNameArray(Codicon.file));
+
+			const nameEl = append(itemEl, $('.tarx-file-name'));
+			nameEl.textContent = file.filename;
+			nameEl.title = file.filename;
+
+			const sizeEl = append(itemEl, $('.tarx-file-size'));
+			sizeEl.textContent = this.formatFileSize(file.size);
+
+			// Delete button (appears on hover)
+			const deleteBtn = append(itemEl, $('.tarx-file-delete'));
+			deleteBtn.classList.add(...ThemeIcon.asClassNameArray(Codicon.trash));
+			deleteBtn.title = 'Remove file';
+
+			this.navDisposables.add(addDisposableListener(deleteBtn, EventType.CLICK, async (e) => {
+				e.stopPropagation();
+				await this.commandService.executeCommand('tarx.deleteUploadedFile', file.id);
+				await this.loadUploadedFiles();
+			}));
+		}
+	}
+
+	/**
+	 * Format file size for display
+	 */
+	private formatFileSize(bytes: number): string {
+		if (bytes < 1024) { return `${bytes} B`; }
+		if (bytes < 1024 * 1024) { return `${(bytes / 1024).toFixed(1)} KB`; }
+		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+	}
+
 	private createProjectsSection(): void {
 		if (!this.sectionsContainer) { return; }
 
@@ -871,10 +1746,18 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 		// Content container (we'll populate this dynamically)
 		this.projectsContentEl = append(section, $('.tarx-section-content'));
 
-		// Add button click handler
-		this.navDisposables.add(addDisposableListener(addBtn, EventType.CLICK, (e) => {
+		// Add button click handler - show modal
+		this.navDisposables.add(addDisposableListener(addBtn, EventType.CLICK, async (e) => {
 			e.stopPropagation();
-			this.commandService.executeCommand('tarx.projects.new');
+			const modal = new TarxProjectModal();
+			const result = await modal.show();
+			if (result) {
+				// Create project with the provided name and instructions
+				console.log('[TARX Sidebar] Creating project:', result.name);
+				await this.commandService.executeCommand('tarx.projects.create', result.name, result.instructions);
+				// Refresh the projects list
+				this.loadProjects();
+			}
 		}));
 
 		// Header collapse toggle
@@ -883,25 +1766,32 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 			this.sectionState.set('projects', collapsed);
 		}));
 
-		// Load projects from database
-		this.loadProjects();
+		// Load projects from database with retry (extension may not be ready on window reload)
+		this.loadProjectsWithRetry(10);  // 10 retries with exponential backoff
 	}
 
 	/**
 	 * Load projects with retry logic (extension may not be ready yet)
+	 * Uses exponential backoff: 500ms, 1s, 2s, 4s, 8s, etc.
 	 */
-	private async loadProjectsWithRetry(retries: number): Promise<void> {
+	private async loadProjectsWithRetry(retries: number, delayMs: number = 500): Promise<void> {
+		console.log(`[TARX Sidebar] loadProjectsWithRetry called (${retries} retries left, ${delayMs}ms delay)`);
 		try {
 			await this.loadProjects();
 			if (this.projects.length === 0 && retries > 0) {
-				// No projects found, but could be extension not ready - retry
-				console.log(`[TARX Sidebar] No projects, retrying in 1s (${retries} left)`);
-				setTimeout(() => this.loadProjectsWithRetry(retries - 1), 1000);
+				// No projects found - could be extension not ready OR actually no projects
+				// Retry with exponential backoff
+				console.log(`[TARX Sidebar] No projects, retrying in ${delayMs}ms (${retries} left)`);
+				setTimeout(() => this.loadProjectsWithRetry(retries - 1, Math.min(delayMs * 2, 8000)), delayMs);
+			} else if (this.projects.length > 0) {
+				console.log(`[TARX Sidebar] ✅ Got ${this.projects.length} projects - stopping retries`);
 			}
 		} catch (e) {
 			if (retries > 0) {
-				console.log(`[TARX Sidebar] loadProjects failed, retrying in 1s (${retries} left):`, e);
-				setTimeout(() => this.loadProjectsWithRetry(retries - 1), 1000);
+				console.log(`[TARX Sidebar] loadProjects failed, retrying in ${delayMs}ms (${retries} left):`, e);
+				setTimeout(() => this.loadProjectsWithRetry(retries - 1, Math.min(delayMs * 2, 8000)), delayMs);
+			} else {
+				console.log('[TARX Sidebar] loadProjects failed, no retries left');
 			}
 		}
 	}
@@ -915,11 +1805,27 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 			const projects = await this.commandService.executeCommand<TarxProject[]>('tarx.projects.list');
 			console.log('[TARX Sidebar] Got projects:', projects?.length || 0, projects);
 			this.projects = projects || [];
-			this.renderProjects();
+
+			// In webview mode, send data to webview instead of rendering DOM
+			if (this.USE_WEBVIEW_MODE) {
+				this.sendWebviewMessage({
+					command: 'projectsLoaded',
+					projects: this.projects
+				});
+			} else {
+				this.renderProjects();
+			}
 		} catch (e) {
 			console.log('[TARX Sidebar] Failed to load projects:', e);
 			this.projects = [];
-			this.renderProjects();
+			if (this.USE_WEBVIEW_MODE) {
+				this.sendWebviewMessage({
+					command: 'projectsLoaded',
+					projects: []
+				});
+			} else {
+				this.renderProjects();
+			}
 		}
 	}
 
@@ -927,31 +1833,40 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 	 * Render project items in the Projects section
 	 */
 	private renderProjects(): void {
-		if (!this.projectsContentEl) { return; }
+		console.log('[TARX Sidebar] renderProjects() called');
+		console.log('[TARX Sidebar] projectsContentEl exists:', !!this.projectsContentEl);
+		console.log('[TARX Sidebar] projects count:', this.projects.length);
+
+		if (!this.projectsContentEl) {
+			console.error('[TARX Sidebar] ERROR: projectsContentEl is null/undefined!');
+			return;
+		}
 
 		// Clear existing content
 		this.projectsContentEl.textContent = '';
+		console.log('[TARX Sidebar] Cleared existing content');
 
 		if (this.projects.length === 0) {
-			// Show empty state with CTA
+			console.log('[TARX Sidebar] No projects - showing empty state');
+			// Show empty state with text link
 			const emptyState = append(this.projectsContentEl, $('.tarx-section-empty-state'));
 
 			const emptyText = append(emptyState, $('.tarx-empty-state-text'));
 			emptyText.textContent = 'No projects yet';
 
-			// Create Project CTA button
-			const createBtn = append(emptyState, $('button.tarx-cta-btn'));
-			const createBtnIcon = append(createBtn, $('span'));
-			createBtnIcon.classList.add(...ThemeIcon.asClassNameArray(Codicon.add));
-			const createBtnLabel = append(createBtn, $('span'));
-			createBtnLabel.textContent = 'Create Project';
+			// Create Project as text link (not button)
+			const createLink = append(emptyState, $('a.tarx-text-link'));
+			createLink.textContent = '+ Create Project';
+			createLink.style.cssText = 'color: var(--vscode-textLink-foreground); cursor: pointer; font-size: 12px; text-decoration: none;';
 
-			this.navDisposables.add(addDisposableListener(createBtn, EventType.CLICK, () => {
+			this.navDisposables.add(addDisposableListener(createLink, EventType.CLICK, () => {
 				this.commandService.executeCommand('workbench.action.files.openFolder');
 			}));
 		} else {
 			// Render project items
+			console.log('[TARX Sidebar] Rendering', this.projects.length, 'projects');
 			for (const project of this.projects) {
+				console.log('[TARX Sidebar] Rendering project:', project.name, 'id:', project.id, 'path:', project.path);
 				const item = append(this.projectsContentEl, $('.tarx-section-item'));
 				item.dataset.projectId = project.id;
 
@@ -972,11 +1887,23 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 				label.textContent = project.name;
 				label.title = project.path;
 
-				// Click to open project
-				this.navDisposables.add(addDisposableListener(item, EventType.CLICK, () => {
-					this.commandService.executeCommand('tarx.projects.open', project.id);
+				// Click to open project - use project.path (filesystem path), NOT project.id (UUID)
+				this.navDisposables.add(addDisposableListener(item, EventType.CLICK, async () => {
+					try {
+						if (!project.path) {
+							console.error('[TARX Sidebar] Project has no path:', project);
+							return;
+						}
+						console.log('[TARX Sidebar] Opening project:', project.name, 'at', project.path);
+						await this.commandService.executeCommand('tarx.projects.open', project.path);
+					} catch (err) {
+						console.error('[TARX Sidebar] Project open crashed:', err);
+						// Don't crash - just log the error
+					}
 				}));
 			}
+
+			console.log('[TARX Sidebar] Finished rendering', this.projects.length, 'projects');
 
 			// Add "Open Folder" at the end
 			const openFolder = append(this.projectsContentEl, $('.tarx-section-item'));
@@ -985,6 +1912,7 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 			openFolderIcon.classList.add(...ThemeIcon.asClassNameArray(Codicon.folderOpened));
 			const openFolderLabel = append(openFolder, $('.tarx-section-item-label'));
 			openFolderLabel.textContent = 'Open Folder...';
+			console.log('[TARX Sidebar] Added Open Folder button. projectsContentEl children:', this.projectsContentEl.childElementCount);
 
 			this.navDisposables.add(addDisposableListener(openFolder, EventType.CLICK, () => {
 				this.commandService.executeCommand('workbench.action.files.openFolder');
@@ -1048,22 +1976,11 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 		container.textContent = '';
 
 		if (this.historyItems.length === 0) {
-			// Show empty state with CTA
+			// Show empty state (no CTA button)
 			const emptyState = append(container, $('.tarx-section-empty-state'));
 
 			const emptyText = append(emptyState, $('.tarx-empty-state-text'));
 			emptyText.textContent = 'No conversations yet';
-
-			// Start a chat CTA button
-			const startChatBtn = append(emptyState, $('button.tarx-cta-btn'));
-			const startChatIcon = append(startChatBtn, $('span'));
-			startChatIcon.classList.add(...ThemeIcon.asClassNameArray(Codicon.comment));
-			const startChatLabel = append(startChatBtn, $('span'));
-			startChatLabel.textContent = 'Start a chat';
-
-			this.navDisposables.add(addDisposableListener(startChatBtn, EventType.CLICK, () => {
-				this.commandService.executeCommand('tarx.chat.new');
-			}));
 			return;
 		}
 
@@ -1098,22 +2015,96 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 		for (const item of items) {
 			const el = append(container, $('.tarx-history-item'));
 			el.dataset.id = item.id;
+			el.dataset.source = item.source;
+			if (item.spaceId) {
+				el.dataset.spaceId = item.spaceId;
+			}
 
-			const icon = append(el, $('.tarx-history-item-icon'));
-			icon.classList.add(...ThemeIcon.asClassNameArray(Codicon.commentDiscussion));
+			// Icon based on source (no emojis)
+			const iconEl = append(el, $('.tarx-history-item-icon'));
+			const isClaude = this.isClaudeSource(item.source, item.title);
+			if (isClaude) {
+				// Use Claude SVG logo via img element (avoids TrustedHTML issues)
+				const img = document.createElement('img');
+				img.src = this.getClaudeSvgDataUri();
+				img.width = 16;
+				img.height = 16;
+				img.alt = 'Claude';
+				iconEl.appendChild(img);
+			} else {
+				// Use TARX eyes icon for TARX chats
+				const img = document.createElement('img');
+				img.src = FileAccess.asBrowserUri('vs/workbench/browser/parts/tarxsidebar/media/tarx-eyes.png').toString(true);
+				img.width = 16;
+				img.height = 16;
+				img.alt = 'TARX';
+				iconEl.appendChild(img);
+			}
 
-			const title = append(el, $('.tarx-history-item-title'));
-			title.textContent = item.title;
+			// Title and time
+			const timeAgo = this.formatTimeAgo(item.timestamp);
+			const titleEl = append(el, $('.tarx-history-item-title'));
+			titleEl.textContent = item.title;
+
+			const timeEl = append(el, $('.tarx-history-item-time'));
+			timeEl.textContent = timeAgo;
 
 			this.navDisposables.add(addDisposableListener(el, EventType.CLICK, () => {
-				this.commandService.executeCommand('tarx.openConversation', item.id);
+				console.log('[TARX Sidebar] History item clicked:', item.id, 'spaceId:', item.spaceId);
+				// Route to appropriate handler based on source
+				if (item.spaceId) {
+					this.commandService.executeCommand('tarx.openSession', item.id, item.spaceId);
+				} else {
+					this.commandService.executeCommand('tarx.openConversation', item.id);
+				}
 			}));
 		}
 	}
 
+	private isClaudeSource(source?: string, title?: string): boolean {
+		if (source) {
+			const s = source.toLowerCase();
+			if (s === 'claude' || s.includes('claude')) return true;
+		}
+		if (title) {
+			const t = title.toLowerCase();
+			if (t.includes('claude')) return true;
+		}
+		return false;
+	}
+
+	private getClaudeSvgDataUri(): string {
+		// Claude logo SVG as data URI (avoids TrustedHTML security issues)
+		const svg = `<svg width="16" height="16" viewBox="0 -.01 39.5 39.53" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="m7.75 26.27 7.77-4.36.13-.38-.13-.21h-.38l-1.3-.08-4.44-.12-3.85-.16-3.73-.2-.94-.2-.88-1.16.09-.58.79-.53 1.13.1 2.5.17 3.75.26 2.72.16 4.03.42h.64l.09-.26-.22-.16-.17-.16-3.88-2.63-4.2-2.78-2.2-1.6-1.19-.81-.6-.76-.26-1.66 1.08-1.19 1.45.1.37.1 1.47 1.13 3.14 2.43 4.1 3.02.6.5.24-.17.03-.12-.27-.45-2.23-4.03-2.38-4.1-1.06-1.7-.28-1.02c-.1-.42-.17-.77-.17-1.2l1.23-1.67.68-.22 1.64.22.69.6 1.02 2.33 1.65 3.67 2.56 4.99.75 1.48.4 1.37.15.42h.26v-.24l.21-2.81.39-3.45.38-4.44.13-1.25.62-1.5 1.23-.81.96.46.79 1.13-.11.73-.47 3.05-.92 4.78-.6 3.2h.35l.4-.4 1.62-2.15 2.72-3.4 1.2-1.35 1.4-1.49.9-.71h1.7l1.25 1.86-.56 1.92-1.75 2.22-1.45 1.88-2.08 2.8-1.3 2.24.12.18.31-.03 4.7-1 2.54-.46 3.03-.52 1.37.64.15.65-.54 1.33-3.24.8-3.8.76-5.66 1.34-.07.05.08.1 2.55.24 1.09.06h2.67l4.97.37 1.3.86.78 1.05-.13.8-2 1.02-2.7-.64-6.3-1.5-2.16-.54h-.3v.18l1.8 1.76 3.3 2.98 4.13 3.84.21.95-.53.75-.56-.08-3.63-2.73-1.4-1.23-3.17-2.67h-.21v.28l.73 1.07 3.86 5.8.2 1.78-.28.58-1 .35-1.1-.2-2.26-3.17-2.33-3.57-1.88-3.2-.23.13-1.11 11.95-.52.61-1.2.46-1-.76-.53-1.23.53-2.43.64-3.17.52-2.52.47-3.13.28-1.04-.02-.07-.23.03-2.36 3.24-3.59 4.85-2.84 3.04-.68.27-1.18-.61.11-1.09.66-.97 3.93-5 2.37-3.1 1.53-1.79-.01-.26h-.09l-10.44 6.78-1.86.24-.8-.75.1-1.23.38-.4 3.14-2.16z" fill="#d97757"/></svg>`;
+		return `data:image/svg+xml;base64,${btoa(svg)}`;
+	}
+
+	private formatTimeAgo(timestamp: number): string {
+		const now = Date.now();
+		const diff = now - timestamp;
+		const minutes = Math.floor(diff / 60000);
+		const hours = Math.floor(diff / 3600000);
+		const days = Math.floor(diff / 86400000);
+
+		if (minutes < 1) return 'now';
+		if (minutes < 60) return `${minutes}m ago`;
+		if (hours < 24) return `${hours}h ago`;
+		if (days < 7) return `${days}d ago`;
+
+		const date = new Date(timestamp);
+		return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+	}
+
 	public updateHistory(items: TarxHistoryItem[]): void {
 		this.historyItems = items;
-		if (this.historyElement) {
+
+		// In webview mode, send data to webview instead of rendering DOM
+		if (this.USE_WEBVIEW_MODE) {
+			this.sendWebviewMessage({
+				command: 'historyLoaded',
+				items: this.historyItems
+			});
+		} else if (this.historyElement) {
 			const content = this.historyElement.querySelector('.tarx-history-content');
 			if (content) { this.renderHistoryItems(content as HTMLElement); }
 		}
@@ -1121,103 +2112,260 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 
 	/**
 	 * Load history with retry logic (extension may not be ready yet)
+	 * Uses exponential backoff: 500ms, 1s, 2s, 4s, 8s
 	 */
-	private async loadHistoryWithRetry(retries: number): Promise<void> {
+	private async loadHistoryWithRetry(retries: number, delayMs: number = 500): Promise<void> {
+		console.log(`[TARX Sidebar] loadHistoryWithRetry called (${retries} retries left, ${delayMs}ms delay)`);
 		try {
-			await this.loadHistory();
+			const foundData = await this.loadHistory();
+			// Retry if no data found (extension may not be ready yet)
+			if (!foundData && retries > 0) {
+				console.log(`[TARX Sidebar] loadHistory returned no data, retrying in ${delayMs}ms (${retries} left)`);
+				setTimeout(() => this.loadHistoryWithRetry(retries - 1, Math.min(delayMs * 2, 8000)), delayMs);
+			} else if (foundData) {
+				console.log('[TARX Sidebar] ✅ Got history data - stopping retries');
+			}
 		} catch (e) {
 			if (retries > 0) {
-				console.log(`[TARX Sidebar] loadHistory failed, retrying in 1s (${retries} left):`, e);
-				setTimeout(() => this.loadHistoryWithRetry(retries - 1), 1000);
+				console.log(`[TARX Sidebar] loadHistory failed, retrying in ${delayMs}ms (${retries} left):`, e);
+				setTimeout(() => this.loadHistoryWithRetry(retries - 1, Math.min(delayMs * 2, 8000)), delayMs);
+			} else {
+				console.log('[TARX Sidebar] loadHistory failed, no retries left');
 			}
 		}
 	}
 
 	/**
-	 * Load history from the TARX extension database
+	 * Load history from both conversations table AND sessions table
+	 * Returns true if any data was found
+	 * OPTIMIZED: Runs both queries in parallel with Promise.all for ~50% faster load
 	 */
-	private async loadHistory(): Promise<void> {
-		console.log('[TARX Sidebar] loadHistory called');
-		try {
-			const result = await this.commandService.executeCommand<{
-				conversations: Array<{
-					id: string;
-					title: string;
-					timestamp: number;
-				}>;
-				turns: unknown[];
-			}>('tarx.getConversationHistory', 20);
+	private async loadHistory(): Promise<boolean> {
+		console.log('[TARX Sidebar] loadHistory called - loading from both tables in parallel');
+		const allItems: TarxHistoryItem[] = [];
 
-			if (result && result.conversations && result.conversations.length > 0) {
-				const items: TarxHistoryItem[] = result.conversations.map(c => ({
+		try {
+			// Run both queries in parallel for faster loading
+			const [convResult, sessResult] = await Promise.all([
+				// Query 1: Load from conversations table (legacy/internal chats)
+				this.commandService.executeCommand<{
+					conversations: Array<{
+						id: string;
+						title: string;
+						timestamp: number;
+						source?: 'claude' | 'tarx';
+					}>;
+					turns: unknown[];
+				}>('tarx.getConversationHistory', 50).catch(() => undefined),
+
+				// Query 2: Load from sessions table (MCP-based chats)
+				this.commandService.executeCommand<{
+					sessions: Array<{
+						id: string;
+						title: string;
+						updatedAt: number;
+						spaceId: string;
+						spaceName: string;
+						model?: string;
+					}>;
+				}>('tarx.getSessionHistory', 50).catch(() => undefined)
+			]);
+
+			// Process conversations
+			if (convResult && convResult.conversations && convResult.conversations.length > 0) {
+				const convItems: TarxHistoryItem[] = convResult.conversations.map(c => ({
 					id: c.id,
 					title: c.title || 'Untitled',
-					timestamp: c.timestamp
+					timestamp: c.timestamp,
+					source: c.source || (c.title?.startsWith('Claude') ? 'claude' : 'tarx')
 				}));
-				console.log('[TARX Sidebar] Loaded history:', items.length, 'conversations');
-				this.updateHistory(items);
-			} else {
-				console.log('[TARX Sidebar] No history found (empty result)');
+				console.log('[TARX Sidebar] Loaded from conversations table:', convItems.length);
+				allItems.push(...convItems);
 			}
+
+			// Process sessions
+			if (sessResult && sessResult.sessions && sessResult.sessions.length > 0) {
+				const sessItems: TarxHistoryItem[] = sessResult.sessions.map(s => ({
+					id: s.id,
+					title: s.title || 'Untitled',
+					timestamp: s.updatedAt,
+					source: s.model === 'claude' ? 'claude' : 'tarx',
+					spaceId: s.spaceId,
+					spaceName: s.spaceName
+				}));
+				console.log('[TARX Sidebar] Loaded from sessions table:', sessItems.length);
+				allItems.push(...sessItems);
+			}
+
+			// Deduplicate by ID (prefer newer timestamp)
+			const uniqueMap = new Map<string, TarxHistoryItem>();
+			for (const item of allItems) {
+				const existing = uniqueMap.get(item.id);
+				if (!existing || item.timestamp > existing.timestamp) {
+					uniqueMap.set(item.id, item);
+				}
+			}
+			const uniqueItems = Array.from(uniqueMap.values());
+
+			// Sort by timestamp descending
+			uniqueItems.sort((a, b) => b.timestamp - a.timestamp);
+
+			console.log('[TARX Sidebar] Total unique history items:', uniqueItems.length);
+			this.updateHistory(uniqueItems);
+
+			// Return true if we found any data
+			return uniqueItems.length > 0;
+
 		} catch (e) {
 			console.log('[TARX Sidebar] Failed to load history:', e);
-			throw e; // Re-throw for retry logic
+			return false;
 		}
 	}
 
 	/**
-	 * Open a view in the Auxiliary Bar (right side panel).
+	 * Open a view in the Auxiliary Bar (right side).
 	 * Since TARX sidebar replaces the primary sidebar, we show views on the right.
+	 * This method ensures the Auxiliary Bar is visible before opening views.
 	 */
-	private async openViewInAuxiliaryBar(command: string, label: string): Promise<void> {
-		console.log('[TARX Sidebar] Opening view in auxiliary bar:', label, '->', command);
-
-		// Map view commands to their auxiliary bar equivalents
-		const viewToAuxiliaryMap: Record<string, string> = {
-			'workbench.view.explorer': 'workbench.files.action.focusFilesExplorer',
-			'workbench.view.search': 'workbench.action.findInFiles',
-			'workbench.view.scm': 'workbench.view.scm',
-			'workbench.view.debug': 'workbench.view.debug',
-			'workbench.view.extensions': 'workbench.view.extensions',
-		};
-
+	private async openViewInAuxiliaryBar(viewContainerId: string, label: string): Promise<void> {
+		console.log(`[TARX Sidebar] Opening view in Auxiliary Bar: ${label} -> ${viewContainerId}`);
 		try {
-			// First, show the auxiliary bar
-			await this.commandService.executeCommand('workbench.action.focusAuxiliaryBar');
+			// Get services - use IViewsService which handles location properly
+			const viewsService = this.instantiationService.invokeFunction(
+				accessor => accessor.get(IViewsService)
+			);
+			const viewDescriptorService = this.instantiationService.invokeFunction(
+				accessor => accessor.get(IViewDescriptorService)
+			);
 
-			// Then execute the view command
-			const actualCommand = viewToAuxiliaryMap[command] || command;
-			await this.commandService.executeCommand(actualCommand);
-
-			console.log('[TARX Sidebar] View opened successfully:', label);
-		} catch (err) {
-			console.error('[TARX Sidebar] Failed to open view:', label, err);
-			// Fallback: just try the original command
-			try {
-				await this.commandService.executeCommand(command);
-			} catch (fallbackErr) {
-				console.error('[TARX Sidebar] Fallback also failed:', fallbackErr);
+			// Ensure Auxiliary Bar is visible FIRST
+			if (!this.layoutService.isVisible(Parts.AUXILIARYBAR_PART)) {
+				console.log('[TARX Sidebar] Showing Auxiliary Bar...');
+				this.layoutService.setPartHidden(false, Parts.AUXILIARYBAR_PART);
+				await new Promise(resolve => setTimeout(resolve, 100));
 			}
+
+			// Get the view container
+			const viewContainer = viewDescriptorService.getViewContainerById(viewContainerId);
+			if (!viewContainer) {
+				console.error(`[TARX Sidebar] View container not found: ${viewContainerId}`);
+				return;
+			}
+
+			const currentLocation = viewDescriptorService.getViewContainerLocation(viewContainer);
+			console.log(`[TARX Sidebar] View container ${viewContainerId} current location: ${currentLocation}`);
+
+			// Move to Auxiliary Bar if not already there
+			if (currentLocation !== ViewContainerLocation.AuxiliaryBar) {
+				console.log('[TARX Sidebar] Moving view container to Auxiliary Bar...');
+				viewDescriptorService.moveViewContainerToLocation(
+					viewContainer,
+					ViewContainerLocation.AuxiliaryBar,
+					undefined,
+					'tarx.sidebar'
+				);
+				// Wait for the move event to process and re-register the pane composite
+				await new Promise(resolve => setTimeout(resolve, 150));
+			}
+
+			// Get pane composite service to explicitly open the view
+			const paneCompositeService = this.instantiationService.invokeFunction(
+				accessor => accessor.get(IPaneCompositePartService)
+			);
+
+			// Explicitly open the pane composite in Auxiliary Bar
+			console.log('[TARX Sidebar] Opening pane composite via IPaneCompositePartService... v4');
+			const pane = await paneCompositeService.openPaneComposite(
+				viewContainerId,
+				ViewContainerLocation.AuxiliaryBar,
+				true // focus
+			);
+
+			if (pane) {
+				console.log(`[TARX Sidebar] Successfully opened: ${label} - pane ID: ${pane.getId()}`);
+				// Ensure auxiliary bar has proper size
+				const currentSize = this.layoutService.getSize(Parts.AUXILIARYBAR_PART);
+				console.log(`[TARX Sidebar] Current auxiliary bar size:`, currentSize);
+				if (!currentSize || currentSize.width < 200) {
+					console.log('[TARX Sidebar] Setting auxiliary bar size to 300px');
+					this.layoutService.setSize(Parts.AUXILIARYBAR_PART, { width: 300, height: -1 });
+				}
+				this.layoutService.focusPart(Parts.AUXILIARYBAR_PART);
+			} else {
+				console.warn(`[TARX Sidebar] Pane composite returned null - Extensions may not be registered in AuxiliaryBar`);
+				// Fallback: try opening via viewsService
+				console.log('[TARX Sidebar] Trying fallback via viewsService.openViewContainer...');
+				await viewsService.openViewContainer(viewContainerId, true);
+			}
+		} catch (err) {
+			console.error(`[TARX Sidebar] Failed to open: ${viewContainerId}`, err);
 		}
 	}
 
 	/**
-	 * Footer: Extensions, Settings, and Collapse toggle (stacked vertically)
+	 * Footer: Compute, Extensions, Settings, and Collapse toggle (stacked vertically)
 	 */
 	private createFooter(): void {
 		if (!this.tarxContainer) { return; }
 
 		this.footerElement = append(this.tarxContainer, $('.tarx-footer'));
+		console.log('[TARX DEBUG] Footer element created:', this.footerElement);
+		// Force footer to be clickable
+		this.footerElement.style.pointerEvents = 'auto';
+		this.footerElement.style.position = 'relative';
+		this.footerElement.style.zIndex = '100';
 
-		// Extensions row
+		// Compute row with dropdown
+		const computeRow = append(this.footerElement, $('.tarx-footer-row.tarx-compute-row'));
+		computeRow.title = 'Compute';
+		this.computePill = computeRow; // Reuse computePill reference for dropdown toggle
+		const computeIcon = append(computeRow, $('span.tarx-compute-chip-icon'));
+		computeIcon.appendChild(this.createChipSvg());
+		const computeLabel = append(computeRow, $('span.tarx-footer-label'));
+		computeLabel.textContent = 'Compute';
+		const computeChevron = append(computeRow, $('span.tarx-compute-chevron'));
+		computeChevron.classList.add(...ThemeIcon.asClassNameArray(Codicon.chevronDown));
+
+		// Click to show dropdown
+		this.navDisposables.add(addDisposableListener(computeRow, EventType.CLICK, (e) => {
+			e.stopPropagation();
+			this.toggleComputeDropdown();
+		}));
+
+		// Create dropdown (hidden by default)
+		this.createComputeDropdown();
+
+		// Close dropdown when clicking outside
+		this.navDisposables.add(addDisposableListener(document, EventType.CLICK, () => {
+			this.hideComputeDropdown();
+		}));
+
+		// Extensions row - with nuclear debugging
 		const extRow = append(this.footerElement, $('.tarx-footer-row'));
+		console.log('[TARX DEBUG] extRow created:', extRow);
 		extRow.title = 'Extensions';
+		// Force clickability
+		extRow.style.cursor = 'pointer';
+		extRow.style.pointerEvents = 'auto';
+		extRow.style.zIndex = '1000';
+
 		const extIcon = append(extRow, $('span'));
 		extIcon.classList.add(...ThemeIcon.asClassNameArray(Codicon.extensions));
 		const extLabel = append(extRow, $('span.tarx-footer-label'));
 		extLabel.textContent = 'Extensions';
-		this.navDisposables.add(addDisposableListener(extRow, EventType.CLICK, () => {
-			this.openViewInAuxiliaryBar('workbench.view.extensions', 'Extensions');
+
+		// Mousedown fires before click - debug if events reach element at all
+		extRow.addEventListener('mousedown', () => console.log('[TARX DEBUG] mousedown on extRow'));
+		extRow.addEventListener('mouseup', () => console.log('[TARX DEBUG] mouseup on extRow'));
+
+		this.navDisposables.add(addDisposableListener(extRow, EventType.CLICK, (e) => {
+			e.stopPropagation();
+			e.preventDefault();
+			console.log('[TARX Sidebar] Extensions clicked - opening custom view');
+
+			// Show custom TARX Extensions modal (no native VS Code viewlet)
+			const modal = new TarxExtensionsModal();
+			modal.show();
 		}));
 
 		// Settings row
@@ -1243,6 +2391,8 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 		this.navDisposables.add(addDisposableListener(collapseRow, EventType.CLICK, () => {
 			this.toggleCollapse();
 		}));
+
+		console.log('[TARX INIT] createFooter completed - footer has', this.footerElement?.childNodes.length, 'children');
 	}
 
 	private collapseIcon: HTMLElement | undefined;
@@ -1260,6 +2410,11 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 			this.tarxContainer.classList.toggle('collapsed', this.isCollapsed);
 		}
 
+		// Notify the webview of the collapsed state
+		if (this._webview.value) {
+			this._webview.value.postMessage({ command: 'setCollapsed', collapsed: this.isCollapsed });
+		}
+
 		// Actually resize the Part via layout service
 		const container = this.getContainer();
 		if (this.isCollapsed) {
@@ -1271,14 +2426,34 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 				}
 			}
 			// Resize to collapsed width
+			console.log('[TARX] About to call setSize to collapse to', TarxSidebarPart.COLLAPSED_WIDTH);
 			this.layoutService.setSize(Parts.SIDEBAR_PART, { width: TarxSidebarPart.COLLAPSED_WIDTH, height: -1 });
+
+			// CRITICAL: Ensure sidebar remains visible after resize
+			// The grid may try to hide the sidebar when it reaches minimum size
+			// Use setTimeout to ensure this runs after the grid's layout cycle
+			setTimeout(() => {
+				console.log('[TARX] Post-resize: ensuring sidebar stays visible');
+				// Force the sidebar part to be visible at the DOM level
+				const partContainer = this.getContainer();
+				if (partContainer) {
+					partContainer.style.display = '';
+					partContainer.style.visibility = 'visible';
+					partContainer.classList.remove('invisible');
+				}
+				// Also ensure the part is registered as visible with the layout service
+				if (!this.layoutService.isVisible(Parts.SIDEBAR_PART)) {
+					console.log('[TARX] Sidebar was hidden! Forcing visible...');
+					this.layoutService.setPartHidden(false, Parts.SIDEBAR_PART);
+				}
+			}, 0);
 		} else {
 			// Restore previous width
 			const expandedWidth = this.storageService.getNumber(TarxSidebarPart.EXPANDED_WIDTH_KEY, StorageScope.PROFILE, TarxSidebarPart.DEFAULT_EXPANDED_WIDTH);
 			this.layoutService.setSize(Parts.SIDEBAR_PART, { width: expandedWidth, height: -1 });
 		}
 
-		// Update the collapse icons (footer and header)
+		// Update the footer collapse icon
 		if (this.collapseIcon) {
 			this.collapseIcon.className = '';
 			if (this.isCollapsed) {
@@ -1286,19 +2461,6 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 			} else {
 				this.collapseIcon.classList.add(...ThemeIcon.asClassNameArray(Codicon.layoutSidebarLeft));
 			}
-		}
-
-		if (this.headerCollapseIcon) {
-			this.headerCollapseIcon.className = 'tarx-header-collapse-icon';
-			if (this.isCollapsed) {
-				this.headerCollapseIcon.classList.add(...ThemeIcon.asClassNameArray(Codicon.layoutSidebarLeftOff));
-			} else {
-				this.headerCollapseIcon.classList.add(...ThemeIcon.asClassNameArray(Codicon.layoutSidebarLeft));
-			}
-		}
-
-		if (this.headerCollapseBtn) {
-			this.headerCollapseBtn.title = this.isCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
 		}
 
 		// Persist collapsed state
@@ -1337,6 +2499,8 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 			this.tarxContainer.style.width = `${width}px`;
 			this.tarxContainer.style.height = `${height}px`;
 		}
+
+		// Webview layout is handled automatically via CSS when mounted with mountTo()
 	}
 
 	protected override createCompositeBar(): ActivityBarCompositeBar {

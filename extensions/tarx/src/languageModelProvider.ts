@@ -5,6 +5,14 @@
 
 import * as vscode from 'vscode';
 import { TarxClient } from './tarxClient';
+// TARX System Prompt v2 — Three-Layer Persona
+import { TARX_SYSTEM_PROMPT_V2 } from './systemPrompt';
+// Context window management for history injection
+import { fitToContextWindow, type Message } from './contextWindow';
+// Database access for conversation history
+import type { DatabaseOperations, ConversationTurn } from './database';
+// Thinking Tokens Integration - Feb 2026
+import { mapQwenToThinking, ThinkingAccumulator, type QwenStreamChunk } from './thinkingMapper';
 
 interface TarxLanguageModelInfo extends vscode.LanguageModelChatInformation {
 	readonly serverUrl: string;
@@ -21,9 +29,24 @@ export class TarxLanguageModelProvider implements vscode.LanguageModelChatProvid
 	private readonly client: TarxClient;
 	private serverUrl: string;
 
+	// Conversation history injection — v2
+	private db?: DatabaseOperations;
+	private activeConversationId?: string;
+	private static readonly MAX_HISTORY_TURNS = 10;
+
 	constructor(serverUrl: string = 'http://localhost:11435') {
 		this.serverUrl = serverUrl;
 		this.client = new TarxClient(serverUrl);
+	}
+
+	/** Wire the database for conversation history persistence */
+	setDatabase(db: DatabaseOperations): void {
+		this.db = db;
+	}
+
+	/** Set the active conversation ID for history loading/saving */
+	setActiveConversation(conversationId: string | undefined): void {
+		this.activeConversationId = conversationId;
 	}
 
 	async provideLanguageModelChatInformation(
@@ -62,6 +85,11 @@ export class TarxLanguageModelProvider implements vscode.LanguageModelChatProvid
 		progress: vscode.Progress<vscode.LanguageModelResponsePart>,
 		token: vscode.CancellationToken
 	): Promise<void> {
+		// QA Timing: Track response timing
+		const requestStart = Date.now();
+		let firstTokenTime: number | null = null;
+		let totalTokens = 0;
+
 		// Convert VS Code messages to our format
 		const chatMessages = messages.map(msg => ({
 			role: msg.role === vscode.LanguageModelChatMessageRole.User ? 'user' as const :
@@ -69,16 +97,62 @@ export class TarxLanguageModelProvider implements vscode.LanguageModelChatProvid
 			content: this.extractTextContent(msg.content as ReadonlyArray<vscode.LanguageModelInputPart>)
 		}));
 
+		// System Prompt v2: Ensure three-layer persona prompt is present
+		const hasSystemMessage = chatMessages.some(m => m.role === 'system');
+		if (!hasSystemMessage) {
+			chatMessages.unshift({ role: 'system', content: TARX_SYSTEM_PROMPT_V2 });
+		}
+
+		// Conversation history injection — load from DB if VS Code didn't provide history
+		const hasExistingHistory = chatMessages.some(m => m.role === 'assistant');
+		if (!hasExistingHistory && this.db && this.activeConversationId) {
+			try {
+				const turns = await this.db.getConversationTurns(this.activeConversationId);
+				const recentTurns = turns.slice(-TarxLanguageModelProvider.MAX_HISTORY_TURNS);
+				if (recentTurns.length > 0) {
+					// Insert history after system prompt, before current user message
+					const userMessage = chatMessages.pop()!;
+					for (const turn of recentTurns) {
+						if (turn.role !== 'system') {
+							chatMessages.push({ role: turn.role as 'user' | 'assistant', content: turn.content });
+						}
+					}
+					chatMessages.push(userMessage);
+					console.log(`[TARX LM] Injected ${recentTurns.length} history turns from DB`);
+				}
+			} catch (e) {
+				console.warn('[TARX LM] Failed to load conversation history:', e);
+			}
+		}
+
 		try {
+			// Detect if this is a conversational query vs a code generation request
+			const lastUserMsg = chatMessages.filter(m => m.role === 'user').pop()?.content || '';
+			const isCodeRequest = /\b(write|code|implement|fix this|show me how|function|class|component|refactor|create a)\b/i.test(lastUserMsg)
+				|| /```/.test(lastUserMsg);
+			const maxTokens = isCodeRequest ? 2048 : 512;
+
+			// Context window management — fit messages within 4096 token limit
+			const fitted = fitToContextWindow(chatMessages as Message[], 4096, maxTokens);
+			if (fitted.length < chatMessages.length) {
+				console.log(`[TARX LM] Context window: truncated ${chatMessages.length} → ${fitted.length} messages`);
+			}
+			// Use fitted messages for the API call
+			const apiMessages = fitted.map(m => ({ role: m.role, content: m.content }));
+
 			const response = await fetch(`${model.serverUrl}/v1/chat/completions`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
-					model: 'local',
-					messages: chatMessages,
+					messages: apiMessages,
 					temperature: 0.7,
-					max_tokens: 2048,
-					stream: true
+					max_tokens: maxTokens,
+					stream: true,
+					repeat_penalty: 1.15,
+					presence_penalty: 0.3,
+					frequency_penalty: 0.1,
+					// Block code fences for conversational queries — force plain text
+					stop: isCodeRequest ? undefined : ['```javascript', '```typescript', '```python', '```js', '```ts', '```\n']
 				})
 			});
 
@@ -93,6 +167,9 @@ export class TarxLanguageModelProvider implements vscode.LanguageModelChatProvid
 
 			const decoder = new TextDecoder();
 			let buffer = '';
+			let fullResponse = ''; // Accumulate for DB persistence
+			const thinkingAcc = new ThinkingAccumulator();
+			let thinkingEmitted = false;
 
 			while (true) {
 				if (token.isCancellationRequested) {
@@ -110,22 +187,95 @@ export class TarxLanguageModelProvider implements vscode.LanguageModelChatProvid
 				for (const line of lines) {
 					if (line.startsWith('data: ')) {
 						const data = line.slice(6);
-						if (data === '[DONE]') return;
+						if (data === '[DONE]') {
+							// Emit accumulated thinking at the end if we have it
+							const thinking = thinkingAcc.getThinking();
+							if (thinking && !thinkingEmitted) {
+								console.log(`[TARX Thinking] Final: ${thinking.substring(0, 100)}...`);
+								// Emit thinking as metadata in a comment-style text part
+								progress.report(new vscode.LanguageModelTextPart(
+									`\n<!-- Thinking Process:\n${thinking}\n-->\n\n`
+								));
+							}
+							return;
+						}
 
 						try {
-							const parsed = JSON.parse(data);
-							const delta = parsed.choices?.[0]?.delta;
-							const content = delta?.content || delta?.reasoning_content;
-							if (content) {
-								progress.report(new vscode.LanguageModelTextPart(content));
+							const parsed = JSON.parse(data) as QwenStreamChunk;
+							const mapped = thinkingAcc.feed(parsed);
+
+							// QA Timing: Track first token
+							if (firstTokenTime === null && (mapped.thinking || mapped.content)) {
+								firstTokenTime = Date.now();
+								console.log(`[TARX QA] TTFT: ${firstTokenTime - requestStart}ms`);
 							}
-						} catch {
+
+							// Log thinking tokens for debugging
+							if (mapped.thinking) {
+								totalTokens++;
+								console.log(`[TARX Thinking] ${mapped.thinking.content.substring(0, 50)}...`);
+
+								// Emit thinking inline if enabled
+								const config = vscode.workspace.getConfiguration('tarx');
+								if (config.get<boolean>('thinking.enabled', true)) {
+									if (!thinkingEmitted) {
+										// First thinking token - emit header
+										progress.report(new vscode.LanguageModelTextPart('\n**Thinking:**\n```\n'));
+										thinkingEmitted = true;
+									}
+									progress.report(new vscode.LanguageModelTextPart(mapped.thinking.content));
+								}
+							}
+
+							// Emit regular content after thinking
+							if (mapped.content) {
+								// Close thinking block if we were emitting it
+								if (thinkingEmitted) {
+									progress.report(new vscode.LanguageModelTextPart('\n```\n\n**Answer:**\n'));
+									thinkingEmitted = false; // Only close once
+								}
+								totalTokens++;
+								fullResponse += mapped.content;
+								progress.report(new vscode.LanguageModelTextPart(mapped.content));
+							}
+						} catch (error) {
 							// Ignore parse errors
+							console.log(`[TARX] Parse error: ${error}`);
 						}
 					}
 				}
 			}
+			// QA Timing: Log response completion
+			const totalTime = Date.now() - requestStart;
+			const ttft = firstTokenTime ? firstTokenTime - requestStart : null;
+			console.log(`[TARX QA] Response complete: ${totalTime}ms total, ${ttft ?? 'N/A'}ms TTFT, ${totalTokens} tokens`);
+
+			// Save conversation turns to DB for history persistence
+			if (this.db && this.activeConversationId && fullResponse.length > 0) {
+				try {
+					await this.db.addConversationTurn({
+						conversationId: this.activeConversationId,
+						role: 'user',
+						content: lastUserMsg,
+						fileRefs: [],
+						artifacts: null
+					});
+					await this.db.addConversationTurn({
+						conversationId: this.activeConversationId,
+						role: 'assistant',
+						content: fullResponse,
+						fileRefs: [],
+						artifacts: null
+					});
+					console.log(`[TARX LM] Saved exchange to conversation ${this.activeConversationId}`);
+				} catch (e) {
+					console.warn('[TARX LM] Failed to save conversation turns:', e);
+				}
+			}
 		} catch (error) {
+			// QA Timing: Log error timing
+			const errorTime = Date.now() - requestStart;
+			console.log(`[TARX QA] Response error after ${errorTime}ms`);
 			if (token.isCancellationRequested) {
 				return;
 			}

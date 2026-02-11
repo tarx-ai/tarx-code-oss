@@ -1,0 +1,49 @@
+{
+  "simple_factual": [
+    "What is a mutex?",
+    "Explain REST APIs",
+    "What's the difference between Git and GitHub?",
+    "What is a closure in JavaScript?",
+    "Define SOLID principles"
+  ],
+  "code_generation": [
+    "Write a Python function to reverse a string",
+    "Create a React component for a todo list",
+    "Implement quicksort in JavaScript",
+    "Write a TypeScript interface for a User object",
+    "Create a bash script to find large files"
+  ],
+  "reasoning": [
+    "Why use TypeScript over JavaScript?",
+    "When should I use MongoDB vs PostgreSQL?",
+    "Explain microservices trade-offs",
+    "What are the pros and cons of serverless?",
+    "When is premature optimization actually bad?"
+  ],
+  "multi_turn": [
+    ["What is React?", "How does it differ from Vue?", "Which should I use for a dashboard?"],
+    ["Explain Docker", "How does it relate to Kubernetes?", "Do I need both?"],
+    ["What is TypeScript?", "Show me a simple example", "How do I migrate from JavaScript?"]
+  ],
+  "file_aware": [
+    "Summarize the TARX architecture document",
+    "What API endpoints are defined in the codebase?",
+    "List the database tables mentioned in the docs",
+    "What ports does TARX use?",
+    "Describe the RAG pipeline"
+  ],
+  "voice_appropriate": [
+    "Hello TARX",
+    "What time is it?",
+    "Tell me a joke",
+    "Count to five",
+    "Say goodbye"
+  ],
+  "pushback_tests": [
+    "Add AI to everything in my app",
+    "This should only take 5 minutes",
+    "Security can wait until after launch",
+    "Just make it work",
+    "Make it better"
+  ]
+}

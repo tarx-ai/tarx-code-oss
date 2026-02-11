@@ -9,7 +9,11 @@
 console.error('[TARX WORKBENCH] workbench.ts LOADING - this is the EARLIEST possible log');
 window.addEventListener('error', (e) => {
 	console.error('[TARX EARLY CRASH]', e.message, e.filename, e.lineno, e.colno);
-	document.body.innerHTML = `<pre style="color:red;padding:20px;">EARLY CRASH: ${e.message}\nFile: ${e.filename}\nLine: ${e.lineno}</pre>`;
+	// Use safe DOM manipulation instead of innerHTML (blocked by TrustedTypes)
+	const pre = document.createElement('pre');
+	pre.style.cssText = 'color:red;padding:20px;';
+	pre.textContent = `EARLY CRASH: ${e.message}\nFile: ${e.filename}\nLine: ${e.lineno}`;
+	document.body.appendChild(pre);
 });
 window.addEventListener('unhandledrejection', (e) => {
 	console.error('[TARX UNHANDLED REJECTION]', e.reason);
