@@ -86,7 +86,6 @@
 			}
 		}
 	],
-	"_comment_defaultChatAgent": "TARX: Disabled Copilot - using local llama-server on port 11435",
 	"extensionEnabledApiProposals": {
 		"tarx-ai.tarx": [
 			"defaultChatParticipant",

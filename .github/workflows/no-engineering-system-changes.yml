@@ -21,22 +21,16 @@ jobs:
             echo "engineering_systems_modified=false" >> $GITHUB_OUTPUT
             echo "No engineering systems were modified in this PR"
           fi
-      - name: Prevent Copilot from modifying engineering systems
-        if: ${{ steps.engineering_systems_check.outputs.engineering_systems_modified == 'true' && github.event.pull_request.user.login == 'Copilot' }}
-        run: |
-          echo "Copilot is not allowed to modify .github/workflows, build folder files, or package.json files."
-          echo "If you need to update engineering systems, please do so manually or through authorized means."
-          exit 1
       - uses: octokit/request-action@dad4362715b7fb2ddedf9772c8670824af564f0d # v2.4.0
         id: get_permissions
-        if: ${{ steps.engineering_systems_check.outputs.engineering_systems_modified == 'true' && github.event.pull_request.user.login != 'Copilot' }}
+        if: ${{ steps.engineering_systems_check.outputs.engineering_systems_modified == 'true' }}
         with:
           route: GET /repos/microsoft/vscode/collaborators/${{ github.event.pull_request.user.login }}/permission
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Set control output variable
         id: control
-        if: ${{ steps.engineering_systems_check.outputs.engineering_systems_modified == 'true' && github.event.pull_request.user.login != 'Copilot' }}
+        if: ${{ steps.engineering_systems_check.outputs.engineering_systems_modified == 'true' }}
         run: |
           echo "user: ${{ github.event.pull_request.user.login }}"
           echo "role: ${{ fromJson(steps.get_permissions.outputs.data).permission }}"
