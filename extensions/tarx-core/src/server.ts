@@ -6,17 +6,13 @@
  * - tarx-mcp-server (core inference, spaces, sessions, files/RAG, sidebar tools)
  * - tarx-claude-memory (memory tools: store, search, recall, list, forget, stats + session sync)
  *
- * Tool categories (41 total):
- *   Core: 7         | tarx_health, tarx_chat, tarx_stress_test, tarx_reason_stream, tarx_prewarm, tarx_cancel, tarx_list_active
+ * Tool categories (21 total):
+ *   Core: 3         | tarx_health, tarx_chat, tarx_stress_test
  *   Spaces: 3       | tarx_list_spaces, tarx_create_space, tarx_get_space
  *   Sessions: 4     | tarx_list_sessions, tarx_create_session, tarx_get_chat_history, tarx_send_message
- *   Memory: 8       | memory_store, memory_store_observation, memory_search, memory_search_index, memory_recall, memory_list, memory_forget, memory_stats
- *   Memory Sess: 4  | memory_create_session, memory_thread_to_session, memory_get_session, memory_list_sessions
- *   Thread: 1       | thread_message
- *   Files/RAG: 5    | tarx_list_files, tarx_upload_file, tarx_get_file, tarx_search_knowledge, tarx_knowledge_stats
- *   Training: 3     | tarx_export_training_data, tarx_rate_response, tarx_training_stats
- *   Sidebar: 3      | tarx_sidebar_refresh, tarx_sidebar_navigate, tarx_sidebar_get_state
- *   Smart: 3        | tarx_system_brief, tarx_project_context, tarx_session_context
+ *   Memory: 6       | tarx_memory_store, tarx_memory_search, tarx_memory_recall, tarx_memory_list, tarx_memory_delete, tarx_memory_thread_to_session
+ *   Files: 3        | tarx_list_files, tarx_upload_file, tarx_get_file
+ *   Smart: 2        | tarx_system_brief, tarx_project_context
  *
  * @package tarx-core
  * @version 1.0.0
@@ -522,247 +518,9 @@ server.tool(
 
 // Tool: Stream reasoning separately from answer
 
-server.tool(
-  "tarx_reason_stream",
-  "Stream a prompt to TARX LLM with separate reasoning and answer token callbacks. Returns reasoning and answer as separate fields.",
-  {
-    prompt: z.string().describe("The prompt to send to the LLM"),
-    systemPrompt: z.string().optional().describe("Optional system prompt"),
-    maxTokens: z.number().optional().describe("Maximum tokens in response (default: 500)")
-  },
-  async ({ prompt, systemPrompt, maxTokens = 500 }) => {
-    const start = Date.now();
-    const requestId = crypto.randomBytes(8).toString("hex");
-    const controller = new AbortController();
-    activeRequests.set(requestId, controller);
-
-    const reasoningTokens: string[] = [];
-    const answerTokens: string[] = [];
-
-    try {
-      const messages: Array<{ role: string; content: string }> = [];
-      messages.push({ role: "system", content: systemPrompt || TARX_LOCAL_REASONING_PROMPT });
-      messages.push({ role: "user", content: prompt });
-
-      const response = await fetch(`http://localhost:${INFERENCE_PORT}/v1/chat/completions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "ollama-7b",
-          messages,
-          max_tokens: maxTokens,
-          stream: true
-        }),
-        signal: controller.signal
-      });
-
-      if (!response.ok) {
-        throw new Error(`Inference server returned ${response.status}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error("No response body");
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
-            if (data === "[DONE]") break;
-
-            try {
-              const parsed = JSON.parse(data);
-              const delta = parsed.choices?.[0]?.delta;
-
-              // Separate reasoning from answer content
-              if (delta?.reasoning_content) {
-                reasoningTokens.push(delta.reasoning_content);
-              }
-              if (delta?.content) {
-                answerTokens.push(delta.content);
-              }
-            } catch {}
-          }
-        }
-      }
-
-      activeRequests.delete(requestId);
-      const latency = Date.now() - start;
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            requestId,
-            reasoning: reasoningTokens.join(""),
-            answer: answerTokens.join("") || reasoningTokens.join(""), // Fallback if no separate answer
-            reasoning_token_count: reasoningTokens.length,
-            answer_token_count: answerTokens.length,
-            latency_ms: latency,
-            status: "complete"
-          }, null, 2)
-        }]
-      };
-    } catch (error) {
-      activeRequests.delete(requestId);
-      const isAborted = (error as Error).name === "AbortError";
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            requestId,
-            reasoning: reasoningTokens.join(""),
-            answer: answerTokens.join(""),
-            error: isAborted ? "cancelled" : (error instanceof Error ? error.message : "Unknown error"),
-            latency_ms: Date.now() - start,
-            status: isAborted ? "cancelled" : "error"
-          })
-        }],
-        isError: !isAborted
-      };
-    }
-  }
-);
 
 // Tool: Pre-warm model cache with partial prompt
 
-server.tool(
-  "tarx_prewarm",
-  "Pre-warm the model cache with a partial prompt while user is typing. Reduces latency for the full request.",
-  {
-    partialPrompt: z.string().describe("The partial prompt to warm the cache with"),
-    systemPrompt: z.string().optional().describe("Optional system prompt to include in warm-up")
-  },
-  async ({ partialPrompt, systemPrompt }) => {
-    const start = Date.now();
-
-    try {
-      const messages: Array<{ role: string; content: string }> = [];
-      messages.push({ role: "system", content: systemPrompt || TARX_LOCAL_REASONING_PROMPT });
-      messages.push({ role: "user", content: partialPrompt });
-
-      // Send a request with max_tokens=1 to warm the prompt cache without generating
-      const response = await fetch(`http://localhost:${INFERENCE_PORT}/v1/chat/completions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "ollama-7b",
-          messages,
-          max_tokens: 1, // Minimal generation, just cache the prompt
-          stream: false
-        }),
-        signal: AbortSignal.timeout(10000)
-      });
-
-      if (!response.ok) {
-        throw new Error(`Inference server returned ${response.status}`);
-      }
-
-      const data = await response.json() as {
-        usage?: { prompt_tokens?: number };
-        timings?: { prompt_ms?: number; cache_n?: number };
-      };
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            warmed: true,
-            context_loaded: true,
-            prompt_tokens: data.usage?.prompt_tokens || 0,
-            prompt_ms: data.timings?.prompt_ms || (Date.now() - start),
-            cache_tokens: data.timings?.cache_n || 0,
-            latency_ms: Date.now() - start,
-            partial_prompt_length: partialPrompt.length
-          }, null, 2)
-        }]
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            warmed: false,
-            context_loaded: false,
-            error: error instanceof Error ? error.message : "Pre-warm failed",
-            latency_ms: Date.now() - start
-          })
-        }],
-        isError: true
-      };
-    }
-  }
-);
-
-// Tool: Cancel an in-flight generation request
-server.tool(
-  "tarx_cancel",
-  "Cancel an in-flight generation request by its request ID",
-  {
-    requestId: z.string().describe("The request ID to cancel (returned from tarx_reason_stream)")
-  },
-  async ({ requestId }) => {
-    const controller = activeRequests.get(requestId);
-
-    if (!controller) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            cancelled: false,
-            error: "Request not found or already completed",
-            requestId
-          })
-        }],
-        isError: true
-      };
-    }
-
-    controller.abort();
-    activeRequests.delete(requestId);
-
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify({
-          cancelled: true,
-          requestId,
-          timestamp: new Date().toISOString()
-        }, null, 2)
-      }]
-    };
-  }
-);
-
-// Tool: List active requests
-server.tool(
-  "tarx_list_active",
-  "List all active/in-flight generation requests",
-  {},
-  async () => {
-    const active = Array.from(activeRequests.keys());
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify({
-          active_requests: active,
-          count: active.length,
-          timestamp: new Date().toISOString()
-        }, null, 2)
-      }]
-    };
-  }
-);
 
 // ============================================================================
 // SPACE MANAGEMENT TOOLS (3)
@@ -1102,7 +860,7 @@ server.tool(
 // Tool: Store a memory
 
 server.tool(
-  "memory_store",
+  "tarx_memory_store",
   "Store information in TARX memory for future recall. Use this to save important context, decisions, preferences, or facts you want to remember.",
   {
     content: z.string().describe("The information to remember"),
@@ -1142,60 +900,11 @@ server.tool(
 
 // Tool: Store a structured observation (claude-mem inspired)
 
-server.tool(
-  "memory_store_observation",
-  "Store a structured observation in TARX memory. Use this for rich, categorized memories with title, narrative, facts, concepts, and file references.",
-  {
-    title: z.string().describe("Short descriptive title for the observation"),
-    observationType: z.enum(['bugfix', 'feature', 'decision', 'discovery', 'change', 'pattern', 'context'])
-      .describe("Category: bugfix, feature, decision, discovery, change, pattern, or context"),
-    narrative: z.string().describe("What happened, why, and what was learned"),
-    facts: z.array(z.string()).optional().describe("Key facts extracted from this observation"),
-    concepts: z.array(z.string()).optional().describe("Abstract concepts or patterns identified"),
-    filesRead: z.array(z.string()).optional().describe("Files that were read/analyzed"),
-    filesModified: z.array(z.string()).optional().describe("Files that were created or modified"),
-    importance: z.number().min(0).max(1).optional().describe("Importance score 0-1 (default: 0.6)")
-  },
-  async (args) => {
-    try {
-      const observation = storeObservation(args);
-
-      threadMessage('system', `[Observation: ${args.observationType}] ${args.title}`);
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            success: true,
-            observationId: observation.id,
-            title: observation.title,
-            type: observation.observation_type,
-            factsCount: observation.facts.length,
-            conceptsCount: observation.concepts.length,
-            filesModifiedCount: observation.files_modified.length,
-            importance: observation.importance,
-            message: "Structured observation stored successfully"
-          }, null, 2)
-        }]
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            error: error instanceof Error ? error.message : "Failed to store observation"
-          })
-        }],
-        isError: true
-      };
-    }
-  }
-);
 
 // Tool: Search memories semantically
 
 server.tool(
-  "memory_search",
+  "tarx_memory_search",
   "Search TARX memory for relevant information. Returns memories that match your query.",
   {
     query: z.string().describe("What to search for"),
@@ -1237,55 +946,11 @@ server.tool(
 
 // Tool: Progressive disclosure search - index mode (lightweight, ~50 tokens/result)
 
-server.tool(
-  "memory_search_index",
-  "Lightweight memory search returning only IDs, titles, and short snippets (~50 tokens/result vs ~500 for full). Use this FIRST to scan, then fetch full content with memory_search for relevant entries.",
-  {
-    query: z.string().describe("What to search for"),
-    limit: z.number().min(1).max(50).optional().describe("Maximum results (default: 20)")
-  },
-  async ({ query, limit = 20 }) => {
-    try {
-      const entries = searchMemoriesIndex(query, limit);
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            success: true,
-            mode: "index",
-            count: entries.length,
-            tokenEstimate: entries.length * 50,
-            hint: "Use memory_search with specific IDs/terms to fetch full content for relevant entries",
-            entries: entries.map(e => ({
-              id: e.id,
-              title: e.title || '(untitled)',
-              type: e.observation_type || 'raw',
-              importance: e.importance,
-              snippet: e.snippet,
-              createdAt: new Date(e.created_at).toISOString()
-            }))
-          }, null, 2)
-        }]
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            error: error instanceof Error ? error.message : "Index search failed"
-          })
-        }],
-        isError: true
-      };
-    }
-  }
-);
 
 // Tool: Recall context for the current conversation
 
 server.tool(
-  "memory_recall",
+  "tarx_memory_recall",
   "Recall relevant context from TARX memory based on the current topic. Use this at the start of conversations to load relevant history.",
   {
     topic: z.string().describe("The current topic or context to recall memories for"),
@@ -1334,7 +999,7 @@ server.tool(
 // Tool: List all memories
 
 server.tool(
-  "memory_list",
+  "tarx_memory_list",
   "List all stored memories in TARX, optionally filtered by recency",
   {
     limit: z.number().min(1).max(100).optional().describe("Maximum memories to list (default: 20)")
@@ -1375,7 +1040,7 @@ server.tool(
 
 // Tool: Delete a memory
 server.tool(
-  "memory_forget",
+  "tarx_memory_delete",
   "Remove a specific memory from TARX storage",
   {
     memoryId: z.string().describe("The ID of the memory to forget")
@@ -1407,41 +1072,6 @@ server.tool(
   }
 );
 
-// Tool: Get memory stats
-server.tool(
-  "memory_stats",
-  "Get statistics about TARX memory usage",
-  {},
-  async () => {
-    try {
-      const stats = getMemoryStats();
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            success: true,
-            stats: {
-              totalMemories: stats.totalMemories,
-              totalMessages: stats.totalMessages,
-              totalSessions: stats.totalSessions
-            }
-          }, null, 2)
-        }]
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            error: error instanceof Error ? error.message : "Failed to get stats"
-          })
-        }],
-        isError: true
-      };
-    }
-  }
-);
 
 // ============================================================================
 // MEMORY SESSION TOOLS (4) - Claude.ai session sync, deduplicated
@@ -1449,50 +1079,11 @@ server.tool(
 
 // Tool: Create a dedicated session for conversation tracking
 
-server.tool(
-  "memory_create_session",
-  "Create a new session in TARX for Claude.ai conversation. Use this to start a new conversation thread that will be persisted and visible in TARX Desktop.",
-  {
-    title: z.string().describe("Session title"),
-    topic: z.string().optional().describe("Main topic or theme"),
-    metadata: z.record(z.string(), z.unknown()).optional().describe("Additional metadata (tags, context, etc.)")
-  },
-  async ({ title, topic, metadata }) => {
-    try {
-      const result = createMemorySession({ title, topic, metadata });
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            success: true,
-            session_id: result.session_id,
-            title: result.title,
-            space_id: result.space_id,
-            created_at: result.created_at,
-            view_url: result.view_url,
-            message: `Session "${title}" created successfully`
-          }, null, 2)
-        }]
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            error: error instanceof Error ? error.message : "Failed to create session"
-          })
-        }],
-        isError: true
-      };
-    }
-  }
-);
 
 // Tool: Thread a message to a specific session
 
 server.tool(
-  "memory_thread_to_session",
+  "tarx_memory_thread_to_session",
   "Thread a message to a specific TARX session. Use this to add messages to an existing conversation that will be persisted.",
   {
     session_id: z.string().describe("Session ID to thread to"),
@@ -1533,130 +1124,11 @@ server.tool(
 
 // Tool: Get full conversation history for a session
 
-server.tool(
-  "memory_get_session",
-  "Get full conversation history for a TARX session. Use this to retrieve all messages from a previous conversation.",
-  {
-    session_id: z.string().describe("Session ID to retrieve"),
-    limit: z.number().min(1).max(1000).optional().describe("Max messages to return (default: 100)"),
-    include_metadata: z.boolean().optional().describe("Include message metadata (default: true)")
-  },
-  async ({ session_id, limit, include_metadata }) => {
-    try {
-      const result = getSessionHistory({ session_id, limit, include_metadata });
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            success: true,
-            session_id: result.session_id,
-            title: result.title,
-            topic: result.topic,
-            created_at: result.created_at,
-            last_activity: result.last_activity,
-            messages: result.messages,
-            total_messages: result.total_messages,
-            token_estimate: result.token_estimate,
-            view_url: result.view_url
-          }, null, 2)
-        }]
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            error: error instanceof Error ? error.message : "Failed to get session"
-          })
-        }],
-        isError: true
-      };
-    }
-  }
-);
-
-// Tool: List all Claude.ai sessions
-server.tool(
-  "memory_list_sessions",
-  "List all sessions synced from Claude.ai conversations",
-  {},
-  async () => {
-    try {
-      const sessions = listMemorySessions();
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            success: true,
-            sessions: sessions.map(s => ({
-              session_id: s.id,
-              title: s.title,
-              topic: s.topic,
-              message_count: s.message_count,
-              created_at: s.created_at,
-              last_activity: s.last_activity
-            })),
-            count: sessions.length,
-            timestamp: new Date().toISOString()
-          }, null, 2)
-        }]
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            error: error instanceof Error ? error.message : "Failed to list sessions"
-          })
-        }],
-        isError: true
-      };
-    }
-  }
-);
 
 // ============================================================================
 // THREAD TOOL (1)
 // ============================================================================
 
-// Tool: Thread a message into TARX chat history
-server.tool(
-  "thread_message",
-  "Thread the current message into TARX chat history for persistent storage",
-  {
-    role: z.enum(["user", "assistant"]).describe("Who sent the message"),
-    content: z.string().describe("The message content")
-  },
-  async ({ role, content }) => {
-    try {
-      const { messageId, sessionId } = threadMessage(role, content);
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            success: true,
-            messageId,
-            sessionId,
-            message: "Message threaded to TARX"
-          }, null, 2)
-        }]
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            error: error instanceof Error ? error.message : "Failed to thread message"
-          })
-        }],
-        isError: true
-      };
-    }
-  }
-);
 
 // ============================================================================
 // FILE MANAGEMENT TOOLS (5)
@@ -1794,270 +1266,11 @@ server.tool(
 
 // Tool: Search knowledge base (RAG)
 
-server.tool(
-  "tarx_search_knowledge",
-  "Search the RAG knowledge base for relevant content using semantic search",
-  {
-    spaceId: z.string().describe("ID of the space to search"),
-    query: z.string().describe("Search query (natural language)"),
-    limit: z.number().optional().describe("Max results to return (default: 5)")
-  },
-  async ({ spaceId, query, limit = 5 }) => {
-    try {
-      const results = await searchKnowledgeEmbeddings(spaceId, query, limit);
-
-      if (results.length === 0) {
-        return {
-          content: [{
-            type: "text",
-            text: JSON.stringify({
-              message: "No matching knowledge found",
-              query,
-              spaceId,
-              embeddings_count: getKnowledgeEmbeddingCount(spaceId)
-            }, null, 2)
-          }]
-        };
-      }
-
-      // Format results with similarity scores
-      const formattedResults = results.map((r, i) => ({
-        rank: i + 1,
-        title: r.title,
-        similarity: Math.round(r.similarity * 100) / 100,
-        content: r.content.slice(0, 500) + (r.content.length > 500 ? '...' : ''),
-        sourceId: r.sourceId
-      }));
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            query,
-            spaceId,
-            results: formattedResults,
-            total_embeddings: getKnowledgeEmbeddingCount(spaceId)
-          }, null, 2)
-        }]
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            error: error instanceof Error ? error.message : "Search failed"
-          })
-        }],
-        isError: true
-      };
-    }
-  }
-);
-
-// Tool: Get knowledge base stats
-server.tool(
-  "tarx_knowledge_stats",
-  "Get statistics about the knowledge base embeddings for a space",
-  {
-    spaceId: z.string().describe("ID of the space to check")
-  },
-  async ({ spaceId }) => {
-    try {
-      const count = getKnowledgeEmbeddingCount(spaceId);
-      const files = listFiles(spaceId);
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            spaceId,
-            embedding_count: count,
-            file_count: files.length,
-            files: files.map(f => ({
-              id: f.id,
-              filename: f.filename,
-              size: f.size_bytes
-            }))
-          }, null, 2)
-        }]
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            error: error instanceof Error ? error.message : "Failed to get stats"
-          })
-        }],
-        isError: true
-      };
-    }
-  }
-);
 
 // ============================================================================
 // TRAINING DATA TOOLS (3 tools)
 // ============================================================================
 
-// Tool: Export training data for fine-tuning
-server.tool(
-  "tarx_export_training_data",
-  "Export training data in JSONL format for fine-tuning. Supports filters for date range, quality signal, and minimum tokens.",
-  {
-    format: z.enum(["json", "jsonl"]).optional().describe("Output format (default: jsonl)"),
-    minTokens: z.number().optional().describe("Minimum total tokens (prompt + completion)"),
-    qualitySignal: z.enum(["thumbs_up", "thumbs_down", "none"]).optional().describe("Filter by quality rating"),
-    startDate: z.number().optional().describe("Start timestamp (ms since epoch)"),
-    endDate: z.number().optional().describe("End timestamp (ms since epoch)"),
-    limit: z.number().optional().describe("Maximum number of records to export"),
-    outputFile: z.string().optional().describe("Optional file path to write the output")
-  },
-  async ({ format = "jsonl", minTokens, qualitySignal, startDate, endDate, limit, outputFile }) => {
-    try {
-      const records = exportTrainingData({
-        minTokens,
-        qualitySignal,
-        startDate,
-        endDate,
-        limit
-      });
-
-      let output: string;
-      if (format === "jsonl") {
-        // JSONL format: one JSON object per line (standard for fine-tuning)
-        output = records.map(record => {
-          const trainingExample = {
-            messages: [
-              { role: "user", content: record.instruction },
-              { role: "assistant", content: record.response }
-            ],
-            metadata: {
-              model: record.model_used,
-              route: record.route,
-              rag_chunks: record.rag_chunks_used,
-              quality: record.quality_signal,
-              tokens: {
-                prompt: record.tokens_prompt,
-                completion: record.tokens_completion
-              },
-              latency_ms: record.latency_ms,
-              created_at: record.created_at
-            }
-          };
-          return JSON.stringify(trainingExample);
-        }).join('\n');
-      } else {
-        // JSON format: array of records
-        output = JSON.stringify(records, null, 2);
-      }
-
-      // Write to file if requested
-      if (outputFile) {
-        const fs = await import('fs');
-        fs.writeFileSync(outputFile, output, 'utf8');
-      }
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            success: true,
-            format,
-            record_count: records.length,
-            output_file: outputFile || null,
-            preview: format === "jsonl" ? output.split('\n').slice(0, 3).join('\n') + '\n...' : output.substring(0, 500) + '...',
-            data: outputFile ? null : output
-          }, null, 2)
-        }]
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            error: error instanceof Error ? error.message : "Failed to export training data"
-          })
-        }],
-        isError: true
-      };
-    }
-  }
-);
-
-// Tool: Rate a response for training data quality
-server.tool(
-  "tarx_rate_response",
-  "Rate a message response for training data quality. Use this to mark good/bad responses for fine-tuning dataset curation.",
-  {
-    messageId: z.string().describe("The assistant message ID to rate"),
-    rating: z.enum(["thumbs_up", "thumbs_down", "none"]).describe("Quality rating")
-  },
-  async ({ messageId, rating }) => {
-    try {
-      const success = rateTrainingResponse(messageId, rating);
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            success,
-            messageId,
-            rating,
-            message: success ? "Rating applied successfully" : "Message not found in training data"
-          }, null, 2)
-        }]
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            error: error instanceof Error ? error.message : "Failed to rate response"
-          })
-        }],
-        isError: true
-      };
-    }
-  }
-);
-
-// Tool: Get training data statistics
-server.tool(
-  "tarx_training_stats",
-  "Get statistics about collected training data including total records, quality breakdown, and model distribution.",
-  {},
-  async () => {
-    try {
-      const stats = getTrainingDataStats();
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            total_records: stats.totalRecords,
-            quality_breakdown: {
-              thumbs_up: stats.thumbsUp,
-              thumbs_down: stats.thumbsDown,
-              unrated: stats.totalRecords - stats.thumbsUp - stats.thumbsDown
-            },
-            avg_tokens_per_record: stats.avgTokens,
-            model_breakdown: stats.modelBreakdown
-          }, null, 2)
-        }]
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            error: error instanceof Error ? error.message : "Failed to get training stats"
-          })
-        }],
-        isError: true
-      };
-    }
-  }
-);
 
 // ============================================================================
 // SIDEBAR CONTROL TOOLS (3 core)
@@ -2065,119 +1278,6 @@ server.tool(
 
 // Tool: Refresh sidebar UI sections
 
-server.tool(
-  "tarx_sidebar_refresh",
-  "Refresh sidebar UI sections and return updated state. Use this after creating/deleting data to update the sidebar.",
-  {
-    section: z.enum(["projects", "history", "files", "all"]).optional()
-      .describe("Section to refresh (default: all)")
-  },
-  async ({ section = "all" }) => {
-    try {
-      // Get fresh state from harness (which triggers re-fetch from commands)
-      const state = await callHarness("/sidebar/state");
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            success: true,
-            refreshed: section,
-            state,
-            timestamp: new Date().toISOString()
-          }, null, 2)
-        }]
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            error: error instanceof Error ? error.message : "Failed to refresh sidebar"
-          })
-        }],
-        isError: true
-      };
-    }
-  }
-);
-
-// Tool: Navigate sidebar to a specific view
-server.tool(
-  "tarx_sidebar_navigate",
-  "Navigate the sidebar to a specific view (chat, projects, history, files)",
-  {
-    view: z.enum(["chat", "projects", "history", "files"])
-      .describe("View to navigate to")
-  },
-  async ({ view }) => {
-    try {
-      // Map view names to sidebar actions
-      const actionMap: Record<string, string> = {
-        chat: "openChat",
-        projects: "openChat", // Projects are in sidebar, chat opens the panel
-        history: "openChat",
-        files: "openChat"
-      };
-
-      const result = await callHarness("/sidebar/action", "POST", {
-        action: actionMap[view] || "openChat"
-      });
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            success: true,
-            navigatedTo: view,
-            result,
-            timestamp: new Date().toISOString()
-          }, null, 2)
-        }]
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            error: error instanceof Error ? error.message : "Failed to navigate",
-            view
-          })
-        }],
-        isError: true
-      };
-    }
-  }
-);
-
-// Tool: Get current sidebar state
-server.tool(
-  "tarx_sidebar_get_state",
-  "Get current sidebar UI state including projects, history, files, and connection status from the running Workbench UI",
-  {},
-  async () => {
-    try {
-      // Call the harness to get actual sidebar state
-      const state = await callHarness("/sidebar/state");
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify(state, null, 2)
-        }]
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            error: error instanceof Error ? error.message : "Failed to get sidebar state",
-            note: "Make sure Workbench is running with the test harness active on port 11439"
-          })
-        }],
-        isError: true
-      };
-    }
-  }
-);
 
 // ============================================================================
 // SMART ENDPOINTS (3)
@@ -2328,182 +1428,11 @@ server.tool(
   }
 );
 
-// Tool: Session context - auto-context injection for Claude Code hooks
-server.tool(
-  "tarx_session_context",
-  "Get optimized session context for auto-injection at session start. Combines system health, recent memories, and active project context into a single lightweight payload. Designed for Claude Code hooks (SessionStart).",
-  {
-    topic: z.string().optional().describe("Optional topic to focus memory recall on"),
-    includeHealth: z.boolean().optional().describe("Include system health check (default: true)")
-  },
-  async ({ topic, includeHealth = true }) => {
-    try {
-      // Parallel: health check + memory recall + recent messages
-      const [healthResult, memories, recentMsgs, memStats] = await Promise.all([
-        includeHealth ? Promise.all([
-          checkPort(INFERENCE_PORT),
-          checkPort(EMBED_PORT),
-          checkPort(MESH_PORT)
-        ]) : Promise.resolve(null),
-        Promise.resolve(topic ? searchMemoriesIndex(topic, 10) : searchMemoriesIndex('', 5)),
-        Promise.resolve(getRecentMessages(5)),
-        Promise.resolve(getMemoryStats())
-      ]);
-
-      const context: Record<string, unknown> = {
-        timestamp: new Date().toISOString(),
-        memory_stats: memStats
-      };
-
-      // Health summary (compact)
-      if (healthResult) {
-        const [inf, emb, mesh] = healthResult;
-        context.health = {
-          inference: inf, embeddings: emb, mesh,
-          issues: [
-            !inf && 'inference offline',
-            !emb && 'embeddings offline',
-            !mesh && 'mesh offline'
-          ].filter(Boolean)
-        };
-      }
-
-      // Memory index (lightweight)
-      if (memories.length > 0) {
-        context.relevant_memories = memories.map(m => ({
-          id: m.id,
-          title: m.title || '(untitled)',
-          type: m.observation_type || 'raw',
-          snippet: m.snippet
-        }));
-      }
-
-      // Recent conversation (compact)
-      if (recentMsgs.length > 0) {
-        context.recent_conversation = recentMsgs.slice(0, 3).reverse().map(msg => ({
-          role: msg.role,
-          preview: msg.content.substring(0, 120) + (msg.content.length > 120 ? '...' : '')
-        }));
-      }
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify(context, null, 2)
-        }]
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            error: error instanceof Error ? error.message : "Failed to build session context"
-          })
-        }],
-        isError: true
-      };
-    }
-  }
-);
 
 // ============================================================================
 // FILE ORGANIZATION (Phase 1)
 // ============================================================================
 
-server.tool(
-  "tarx_delete_file",
-  "Delete a file from the TARX file index. Removes embeddings and disk copy (for uploaded files). Reference files only lose their index entry.",
-  {
-    fileId: z.string().describe("The file ID to delete")
-  },
-  async ({ fileId }) => {
-    const result = deleteFile(fileId);
-    return {
-      content: [{ type: "text" as const, text: JSON.stringify({ deleted: result, fileId }) }]
-    };
-  }
-);
-
-server.tool(
-  "tarx_scan_directory",
-  "Scan a local directory and index all files as references (no copies). Text files under 1MB get embedded for semantic search. Skips node_modules, .git, etc.",
-  {
-    path: z.string().describe("Absolute path to directory to scan"),
-    depth: z.number().optional().default(3).describe("Max recursion depth (default 3)"),
-    includePatterns: z.array(z.string()).optional().default([]).describe("Glob patterns to include (empty = all)"),
-    excludePatterns: z.array(z.string()).optional().default([]).describe("Glob patterns to exclude")
-  },
-  async ({ path: dirPath, depth, includePatterns, excludePatterns }) => {
-    if (!fs.existsSync(dirPath)) {
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify({ error: `Directory not found: ${dirPath}` }) }],
-        isError: true
-      };
-    }
-    const result = await scanDirectory(dirPath, depth, includePatterns, excludePatterns);
-    return {
-      content: [{ type: "text" as const, text: JSON.stringify({ ...result, path: dirPath }) }]
-    };
-  }
-);
-
-server.tool(
-  "tarx_add_watch",
-  "Register a directory for periodic scanning. Files from watched directories can be re-scanned to detect changes.",
-  {
-    path: z.string().describe("Absolute path to watch"),
-    label: z.string().optional().describe("Friendly label (default: directory name)"),
-    depth: z.number().optional().default(3).describe("Max scan depth"),
-    includePatterns: z.array(z.string()).optional().default([]).describe("Glob include patterns"),
-    excludePatterns: z.array(z.string()).optional().default([]).describe("Glob exclude patterns")
-  },
-  async ({ path: dirPath, label, depth, includePatterns, excludePatterns }) => {
-    if (!fs.existsSync(dirPath)) {
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify({ error: `Directory not found: ${dirPath}` }) }],
-        isError: true
-      };
-    }
-    const watch = addWatch(dirPath, label, depth, includePatterns, excludePatterns);
-    return {
-      content: [{ type: "text" as const, text: JSON.stringify({ created: true, watch }) }]
-    };
-  }
-);
-
-server.tool(
-  "tarx_remove_watch",
-  "Remove a watched directory and soft-delete all files scanned from it.",
-  {
-    watchId: z.string().describe("The watch ID to remove")
-  },
-  async ({ watchId }) => {
-    const result = removeWatch(watchId);
-    return {
-      content: [{ type: "text" as const, text: JSON.stringify({ removed: result, watchId }) }]
-    };
-  }
-);
-
-server.tool(
-  "tarx_rescan",
-  "Re-scan watched directories to detect new, modified, and deleted files. Optionally target a specific watch.",
-  {
-    watchId: z.string().optional().describe("Specific watch to rescan (default: all)")
-  },
-  async ({ watchId }) => {
-    const watches = listWatches();
-    if (watches.length === 0) {
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify({ error: "No watched directories configured. Use tarx_add_watch first." }) }]
-      };
-    }
-    const result = await rescan(watchId);
-    return {
-      content: [{ type: "text" as const, text: JSON.stringify({ ...result, watches: watches.length }) }]
-    };
-  }
-);
 
 // ============================================================================
 // STARTUP
@@ -2514,7 +1443,7 @@ async function main() {
   await server.connect(transport);
   console.error("TARX Core MCP Server v1.1.0 started");
   console.error("  Merged: tarx-local + tarx-claude-memory + claude-mem patterns");
-  console.error("  Tools: 46 (core:7, spaces:3, sessions:4, memory:8, memory-sessions:4, thread:1, files:10, training:3, sidebar:3, smart:3)");
+  console.error("  Tools: 21 (core:3, spaces:3, sessions:4, memory:6, files:3, smart:2)");
 }
 
 main().catch(console.error);
