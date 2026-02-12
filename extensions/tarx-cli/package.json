@@ -1,0 +1,30 @@
+{
+  "name": "@tarx/cli",
+  "version": "1.1.0",
+  "description": "TARX CLI - Local AI command-line interface",
+  "main": "dist/cli.js",
+  "bin": {
+    "tarx": "./bin/tarx"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/cli.js",
+    "test": "node dist/cli.js --health"
+  },
+  "keywords": ["tarx", "ai", "cli", "local", "llm"],
+  "author": "John Wantz",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^11.0.0",
+    "chalk": "^5.3.0",
+    "ora": "^7.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
