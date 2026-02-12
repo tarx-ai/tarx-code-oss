@@ -375,23 +375,38 @@ export class TarxEmbeddingSidecarService extends Disposable implements ITarxEmbe
 				return;
 			}
 
-			this.logService.info(`[TARX Embeddings] Found ${pids.length} orphaned process(es) on port ${this.port}`);
+			this.logService.info(`[TARX Embeddings] Found ${pids.length} process(es) on port ${this.port}, checking if they are llama-server...`);
 
 			for (const pidStr of pids) {
 				const pid = parseInt(pidStr, 10);
 				if (!isNaN(pid)) {
-					this.logService.info(`[TARX Embeddings] Killing orphaned process (PID: ${pid})`);
+					// CRITICAL: Only kill llama-server processes, not VS Code or extension host processes
 					try {
-						process.kill(pid, 'SIGKILL');
+						const { stdout: psOutput } = await execAsync(`ps -p ${pid} -o comm= 2>/dev/null || true`);
+						const processName = psOutput.trim().toLowerCase();
+
+						// Only kill if it's llama-server or llama (the embedding server binary)
+						if (processName.includes('llama')) {
+							this.logService.info(`[TARX Embeddings] Killing orphaned llama-server (PID: ${pid}, name: ${processName})`);
+							try {
+								process.kill(pid, 'SIGKILL');
+							} catch (e) {
+								this.logService.warn(`[TARX Embeddings] Failed to kill PID ${pid}: ${e}`);
+							}
+						} else {
+							// Not llama-server - DO NOT KILL (could be VS Code, extension host, etc.)
+							this.logService.info(`[TARX Embeddings] Skipping non-llama process on port ${this.port} (PID: ${pid}, name: ${processName})`);
+						}
 					} catch (e) {
-						this.logService.warn(`[TARX Embeddings] Failed to kill PID ${pid}: ${e}`);
+						// If we can't identify the process, skip it to be safe
+						this.logService.warn(`[TARX Embeddings] Could not identify PID ${pid}, skipping to avoid killing wrong process`);
 					}
 				}
 			}
 
-			// Wait for port to free (critical for reliability)
+			// Wait for port to free (shorter wait since we're more selective now)
 			this.logService.info('[TARX Embeddings] Waiting for port to free...');
-			await this.delay(2000);
+			await this.delay(1000);
 
 			// Verify port is free
 			const { stdout: checkStdout } = await execAsync(`lsof -ti :${this.port} 2>/dev/null || true`);
@@ -402,7 +417,7 @@ export class TarxEmbeddingSidecarService extends Disposable implements ITarxEmbe
 				this.logService.info(`[TARX Embeddings] Port ${this.port} is now free`);
 			}
 		} catch (e) {
-			this.logService.error(`[TARX Embeddings] Failed to kill orphaned processes: ${e}`);
+			this.logService.error(`[TARX Embeddings] Failed to check orphaned processes: ${e}`);
 		}
 	}
 

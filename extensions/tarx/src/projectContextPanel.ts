@@ -75,6 +75,8 @@ export class ProjectContextPanel {
 	private _createMode: boolean = false;
 	private _pendingWorkspacePath: string | null = null;
 	private _chatHistory: Array<{ role: string; content: string }> = [];
+	private _isLoading: boolean = false;
+	private _loadError: string | null = null;
 
 	// ========================================
 	// PUBLIC GETTERS FOR UI TESTING
@@ -148,10 +150,10 @@ export class ProjectContextPanel {
 	public static createOrShow(extensionUri: vscode.Uri, projectId?: string, options?: { createMode?: boolean; workspacePath?: string }): ProjectContextPanel {
 		const createMode = options?.createMode ?? false;
 		const workspacePath = options?.workspacePath;
-		console.log('[TARX] ProjectContextPanel.createOrShow called, projectId:', projectId, 'createMode:', createMode);
+		console.log('[TARX EVENT] ProjectContextPanel.createOrShow called, projectId:', projectId, 'createMode:', createMode);
 
-		// Use main column for create mode, beside for viewing existing projects
-		const column = createMode ? vscode.ViewColumn.One : vscode.ViewColumn.Beside;
+		// FIXED: Use ViewColumn.Active (center tab) for both modes - ViewColumn.Beside can cause blank tabs
+		const column = vscode.ViewColumn.Active;
 		const title = createMode ? 'Create Project' : 'Project Context';
 
 		// If we already have a panel, show it
@@ -251,20 +253,27 @@ export class ProjectContextPanel {
 	 * Load project data from database
 	 */
 	public async loadProject(projectId: string): Promise<void> {
+		console.log('[TARX EVENT] loadProject called for:', projectId);
 		this._projectId = projectId;
+		this._isLoading = true;
+		this._loadError = null;
+		this._updateWebview(); // Show loading state immediately
 
 		try {
 			const mcpDbPath = path.join(os.homedir(), 'Library', 'Application Support', 'tarx', 'memory.db');
 
 			if (!fs.existsSync(mcpDbPath)) {
-				console.warn('[TARX] MCP database not found');
+				console.warn('[TARX] MCP database not found at:', mcpDbPath);
+				this._isLoading = false;
+				this._loadError = 'TARX database not found. Please ensure TARX is properly initialized.';
+				this._updateWebview();
 				return;
 			}
 
 			// Use sqlite3 CLI to avoid better-sqlite3 version mismatch
 			const escapedProjectId = projectId.replace(/'/g, "''");
 
-			// Load project data
+			// First try to load from projects table (file-system projects)
 			const projectQuery = `
 				SELECT id, name, root, type, created_at as createdAt
 				FROM projects WHERE id = '${escapedProjectId}' LIMIT 1;
@@ -274,102 +283,191 @@ export class ProjectContextPanel {
 				input: projectQuery
 			});
 			const projects = JSON.parse(projectResult || '[]') as any[];
-			const project = projects[0];
+			let project = projects[0];
 
-			if (project) {
-				// Validate project root is a valid path (not a UUID)
-				const uuidCheck = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-				if (!project.root || uuidCheck.test(project.root) || uuidCheck.test(project.root.replace(/^\//, ''))) {
-					console.error('[TARX] Project has invalid root path (UUID):', project.root);
-					this._panel.webview.postMessage({
-						type: 'error',
-						message: `Project "${project.name}" has an invalid path. Please re-create the project.`
+			// If not found in projects, try spaces table (chat spaces)
+			if (!project) {
+				console.log('[TARX] Not found in projects table, checking spaces table...');
+				const spaceQuery = `
+					SELECT id, name, description, emoji, created_at as createdAt
+					FROM spaces WHERE id = '${escapedProjectId}' AND deleted_at IS NULL LIMIT 1;
+				`;
+				const spaceResult = execSync(`sqlite3 "${mcpDbPath}" -json`, {
+					encoding: 'utf8',
+					input: spaceQuery
+				});
+				const spaces = JSON.parse(spaceResult || '[]') as any[];
+				const space = spaces[0];
+
+				if (space) {
+					console.log('[TARX] Found space:', space.name);
+					// Create a virtual project from the space
+					this._projectData = {
+						id: space.id,
+						name: space.name,
+						root: '', // Spaces don't have a file system root
+						type: 'space',
+						instructions: space.description || '',
+						createdAt: space.createdAt
+					};
+
+					// Load sessions for this space
+					const sessionsQuery = `
+						SELECT s.id, s.title, s.updated_at as timestamp, s.message_count as messageCount,
+						       s.space_id as spaceId
+						FROM sessions s
+						WHERE s.space_id = '${escapedProjectId}'
+						ORDER BY s.updated_at DESC
+						LIMIT 20;
+					`;
+					const sessionsResult = execSync(`sqlite3 "${mcpDbPath}" -json`, {
+						encoding: 'utf8',
+						input: sessionsQuery
 					});
+					const sessions = JSON.parse(sessionsResult || '[]') as any[];
+
+					this._conversations = sessions.map(s => ({
+						id: s.id,
+						title: s.title || 'Untitled',
+						timestamp: s.timestamp,
+						messageCount: s.messageCount || 0,
+						source: 'mcp' as const,
+						spaceId: s.spaceId
+					}));
+
+					// Load recent memories
+					const memoriesQuery = `
+						SELECT id, title, content, source_type as type, created_at as createdAt
+						FROM knowledge_embeddings
+						ORDER BY created_at DESC
+						LIMIT 20;
+					`;
+					const memoriesResult = execSync(`sqlite3 "${mcpDbPath}" -json`, {
+						encoding: 'utf8',
+						input: memoriesQuery
+					});
+					const memories = JSON.parse(memoriesResult || '[]') as any[];
+
+					this._memories = memories.map(m => ({
+						id: m.id,
+						content: m.title || m.content?.substring(0, 100) || 'Memory',
+						type: m.type,
+						createdAt: m.createdAt
+					}));
+
+					this._files = []; // Spaces don't have project files
+
+					this._isLoading = false;
+					console.log('[TARX EVENT] Space loaded successfully:', this._projectData?.name);
+					this._updateWebview();
 					return;
 				}
-
-				// Load instructions from .tarx/instructions.md if exists
-				let instructions = '';
-				const instructionsPath = path.join(project.root, '.tarx', 'instructions.md');
-				if (fs.existsSync(instructionsPath)) {
-					instructions = fs.readFileSync(instructionsPath, 'utf-8');
-				}
-
-				this._projectData = {
-					...project,
-					instructions
-				};
-
-				// Load project files
-				const filesQuery = `
-					SELECT id, file_path as path, file_size as size, mime_type as mimeType,
-					       last_indexed as indexed
-					FROM project_files WHERE project_id = '${escapedProjectId}'
-					ORDER BY file_path;
-				`;
-				const filesResult = execSync(`sqlite3 "${mcpDbPath}" -json`, {
-					encoding: 'utf8',
-					input: filesQuery
-				});
-				const files = JSON.parse(filesResult || '[]') as any[];
-
-				this._files = files.map(f => ({
-					id: f.id,
-					filename: path.basename(f.path),
-					path: f.path,
-					size: f.size || 0,
-					mimeType: f.mimeType || 'application/octet-stream',
-					indexed: !!f.indexed
-				}));
-
-				// Load conversations from sessions table
-				const sessionsQuery = `
-					SELECT s.id, s.title, s.updated_at as timestamp, s.message_count as messageCount,
-					       s.space_id as spaceId
-					FROM sessions s
-					WHERE s.space_id = '${escapedProjectId}'
-					ORDER BY s.updated_at DESC
-					LIMIT 20;
-				`;
-				const sessionsResult = execSync(`sqlite3 "${mcpDbPath}" -json`, {
-					encoding: 'utf8',
-					input: sessionsQuery
-				});
-				const sessions = JSON.parse(sessionsResult || '[]') as any[];
-
-				this._conversations = sessions.map(s => ({
-					id: s.id,
-					title: s.title || 'Untitled',
-					timestamp: s.timestamp,
-					messageCount: s.messageCount || 0,
-					source: 'mcp' as const,
-					spaceId: s.spaceId
-				}));
-
-				// Load memories from knowledge_embeddings
-				const memoriesQuery = `
-					SELECT id, title, content, source_type as type, created_at as createdAt
-					FROM knowledge_embeddings
-					ORDER BY created_at DESC
-					LIMIT 20;
-				`;
-				const memoriesResult = execSync(`sqlite3 "${mcpDbPath}" -json`, {
-					encoding: 'utf8',
-					input: memoriesQuery
-				});
-				const memories = JSON.parse(memoriesResult || '[]') as any[];
-
-				this._memories = memories.map(m => ({
-					id: m.id,
-					content: m.title || m.content?.substring(0, 100) || 'Memory',
-					type: m.type,
-					createdAt: m.createdAt
-				}));
 			}
 
+			if (!project) {
+				console.error('[TARX] Project/Space not found in database:', projectId);
+				this._isLoading = false;
+				this._loadError = `Project not found: ${projectId}`;
+				this._updateWebview();
+				return;
+			}
+
+			// Validate project root is a valid path (not a UUID)
+			const uuidCheck = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+			if (!project.root || uuidCheck.test(project.root) || uuidCheck.test(project.root.replace(/^\//, ''))) {
+				console.error('[TARX] Project has invalid root path (UUID):', project.root);
+				this._isLoading = false;
+				this._loadError = `Project "${project.name}" has an invalid path. Please re-create the project.`;
+				this._updateWebview();
+				return;
+			}
+
+			// Load instructions from .tarx/instructions.md if exists
+			let instructions = '';
+			const instructionsPath = path.join(project.root, '.tarx', 'instructions.md');
+			if (fs.existsSync(instructionsPath)) {
+				instructions = fs.readFileSync(instructionsPath, 'utf-8');
+			}
+
+			this._projectData = {
+				...project,
+				instructions
+			};
+
+			// Load project files
+			const filesQuery = `
+				SELECT id, file_path as path, file_size as size, mime_type as mimeType,
+				       last_indexed as indexed
+				FROM project_files WHERE project_id = '${escapedProjectId}'
+				ORDER BY file_path;
+			`;
+			const filesResult = execSync(`sqlite3 "${mcpDbPath}" -json`, {
+				encoding: 'utf8',
+				input: filesQuery
+			});
+			const files = JSON.parse(filesResult || '[]') as any[];
+
+			this._files = files.map(f => ({
+				id: f.id,
+				filename: path.basename(f.path),
+				path: f.path,
+				size: f.size || 0,
+				mimeType: f.mimeType || 'application/octet-stream',
+				indexed: !!f.indexed
+			}));
+
+			// Load conversations from sessions table
+			const sessionsQuery = `
+				SELECT s.id, s.title, s.updated_at as timestamp, s.message_count as messageCount,
+				       s.space_id as spaceId
+				FROM sessions s
+				WHERE s.space_id = '${escapedProjectId}'
+				ORDER BY s.updated_at DESC
+				LIMIT 20;
+			`;
+			const sessionsResult = execSync(`sqlite3 "${mcpDbPath}" -json`, {
+				encoding: 'utf8',
+				input: sessionsQuery
+			});
+			const sessions = JSON.parse(sessionsResult || '[]') as any[];
+
+			this._conversations = sessions.map(s => ({
+				id: s.id,
+				title: s.title || 'Untitled',
+				timestamp: s.timestamp,
+				messageCount: s.messageCount || 0,
+				source: 'mcp' as const,
+				spaceId: s.spaceId
+			}));
+
+			// Load memories from knowledge_embeddings
+			const memoriesQuery = `
+				SELECT id, title, content, source_type as type, created_at as createdAt
+				FROM knowledge_embeddings
+				ORDER BY created_at DESC
+				LIMIT 20;
+			`;
+			const memoriesResult = execSync(`sqlite3 "${mcpDbPath}" -json`, {
+				encoding: 'utf8',
+				input: memoriesQuery
+			});
+			const memories = JSON.parse(memoriesResult || '[]') as any[];
+
+			this._memories = memories.map(m => ({
+				id: m.id,
+				content: m.title || m.content?.substring(0, 100) || 'Memory',
+				type: m.type,
+				createdAt: m.createdAt
+			}));
+
+			this._isLoading = false;
+			console.log('[TARX EVENT] Project loaded successfully:', this._projectData?.name);
 			this._updateWebview();
 		} catch (error) {
-			console.error('[TARX] Error loading project:', error);
+			console.error('[TARX EVENT ERROR] Error loading project:', error);
+			this._isLoading = false;
+			this._loadError = error instanceof Error ? error.message : String(error);
+			this._updateWebview();
 			vscode.window.showErrorMessage(`Failed to load project: ${error}`);
 		}
 	}
@@ -889,6 +987,16 @@ export class ProjectContextPanel {
 		// If in create mode, show create project UI
 		if (this._createMode) {
 			return this._getCreateProjectContent();
+		}
+
+		// Show loading state while project is being loaded
+		if (this._isLoading) {
+			return this._getLoadingContent();
+		}
+
+		// Show error state if loading failed
+		if (this._loadError) {
+			return this._getErrorContent(this._loadError);
 		}
 
 		const project = this._projectData;
@@ -2313,6 +2421,144 @@ export class ProjectContextPanel {
 		function removePendingFile(index) {
 			pendingFiles.splice(index, 1);
 			updateFileList();
+		}
+	</script>
+</body>
+</html>`;
+	}
+
+	/**
+	 * Generate loading state HTML
+	 */
+	private _getLoadingContent(): string {
+		const projectId = this._projectId || 'unknown';
+		return `<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Loading Project...</title>
+	<style>
+		body {
+			font-family: var(--vscode-font-family);
+			color: var(--vscode-foreground);
+			background: var(--vscode-editor-background);
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			min-height: 100vh;
+			margin: 0;
+		}
+		.loading-container {
+			text-align: center;
+			padding: 40px;
+		}
+		.spinner {
+			width: 40px;
+			height: 40px;
+			border: 3px solid var(--vscode-panel-border);
+			border-radius: 50%;
+			border-top-color: #B026FF;
+			animation: spin 1s linear infinite;
+			margin: 0 auto 20px;
+		}
+		@keyframes spin {
+			to { transform: rotate(360deg); }
+		}
+		.loading-text {
+			font-size: 14px;
+			color: var(--vscode-descriptionForeground);
+		}
+		.project-id {
+			font-size: 12px;
+			color: var(--vscode-descriptionForeground);
+			opacity: 0.6;
+			margin-top: 8px;
+			font-family: var(--vscode-editor-font-family);
+		}
+	</style>
+</head>
+<body>
+	<div class="loading-container">
+		<div class="spinner"></div>
+		<div class="loading-text">Loading project...</div>
+		<div class="project-id">${this._escapeHtml(projectId)}</div>
+	</div>
+</body>
+</html>`;
+	}
+
+	/**
+	 * Generate error state HTML
+	 */
+	private _getErrorContent(error: string): string {
+		return `<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Error Loading Project</title>
+	<style>
+		body {
+			font-family: var(--vscode-font-family);
+			color: var(--vscode-foreground);
+			background: var(--vscode-editor-background);
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			min-height: 100vh;
+			margin: 0;
+		}
+		.error-container {
+			text-align: center;
+			padding: 40px;
+			max-width: 400px;
+		}
+		.error-icon {
+			font-size: 48px;
+			margin-bottom: 16px;
+			color: var(--vscode-errorForeground);
+		}
+		.error-title {
+			font-size: 18px;
+			font-weight: 600;
+			margin-bottom: 8px;
+		}
+		.error-message {
+			font-size: 13px;
+			color: var(--vscode-descriptionForeground);
+			margin-bottom: 20px;
+			padding: 12px;
+			background: var(--vscode-inputValidation-errorBackground);
+			border-radius: 6px;
+		}
+		.retry-btn {
+			padding: 10px 20px;
+			background: var(--vscode-button-background);
+			color: var(--vscode-button-foreground);
+			border: none;
+			border-radius: 6px;
+			cursor: pointer;
+			font-size: 13px;
+		}
+		.retry-btn:hover {
+			background: var(--vscode-button-hoverBackground);
+		}
+	</style>
+</head>
+<body>
+	<div class="error-container">
+		<div class="error-icon">⚠️</div>
+		<div class="error-title">Failed to Load Project</div>
+		<div class="error-message">${this._escapeHtml(error)}</div>
+		<button class="retry-btn" onclick="retryLoad()">
+			<i class="codicon codicon-refresh"></i> Try Again
+		</button>
+	</div>
+	<script>
+		const vscode = acquireVsCodeApi();
+		function retryLoad() {
+			vscode.postMessage({ type: 'refreshData' });
 		}
 	</script>
 </body>

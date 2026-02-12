@@ -23,6 +23,13 @@ export class ExtensionStoragePaths extends CommonExtensionStoragePaths {
 			return workspaceStorageURI;
 		}
 
+		// TARX: Skip lock acquisition for invalid /mock paths (prevents EACCES errors)
+		const fsPath = workspaceStorageURI.fsPath;
+		if (fsPath === '/mock' || fsPath.startsWith('/mock/')) {
+			this._logService.warn(`[ExtHostStorage] Skipping workspace storage lock for mock path: "${fsPath}"`);
+			return workspaceStorageURI;
+		}
+
 		if (this._environment.skipWorkspaceStorageLock) {
 			this._logService.info(`Skipping acquiring lock for ${workspaceStorageURI.fsPath}.`);
 			return workspaceStorageURI;

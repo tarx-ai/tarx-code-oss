@@ -765,48 +765,10 @@
 }
 
 /* ============================================================================
-   Hide Native Activity Bar - TARX replaces it
+   Native Activity Bar + Sidebar — restored to standard VS Code behavior.
+   Previous TARX overrides (hide activitybar, sidebar title, auxiliarybar)
+   have been removed to allow the native layout to render correctly.
    ============================================================================ */
-.monaco-workbench .part.activitybar {
-	display: none !important;
-	width: 0 !important;
-	min-width: 0 !important;
-	max-width: 0 !important;
-	visibility: hidden !important;
-	overflow: hidden !important;
-	flex: 0 0 0 !important;
-}
-
-/* Position sidebar at the far left */
-.monaco-workbench .part.sidebar {
-	left: 0 !important;
-	margin-left: 0 !important;
-	min-width: 48px !important;
-}
-
-/* Hide the native sidebar title bar and pane composite bar */
-.monaco-workbench .part.sidebar > .title {
-	display: none !important;
-}
-
-.monaco-workbench .part.sidebar > .content > .composite > .pane-composite-part-title {
-	display: none !important;
-}
-
-/* Ensure sidebar content area fills the space */
-.monaco-workbench .part.sidebar > .content > .composite > .content {
-	height: 100% !important;
-}
-
-/* Ensure no leftover space from activity bar container */
-.monaco-workbench > .monaco-grid-view > .monaco-grid-branch-node > .monaco-split-view2.horizontal > .split-view-container > .split-view-view:first-child {
-	min-width: 0 !important;
-}
-
-/* Hide auxiliary bar by default if visible */
-.monaco-workbench .part.auxiliarybar {
-	display: none !important;
-}
 
 /* Minimize the sash (resize handle) between sidebar and editor */
 .monaco-workbench .sash.vertical {

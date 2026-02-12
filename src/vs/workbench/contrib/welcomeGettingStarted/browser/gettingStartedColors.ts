@@ -15,6 +15,6 @@ export const welcomePageTileBorder = registerColor('welcomePage.tileBorder', { d
 
 
 export const welcomePageProgressBackground = registerColor('welcomePage.progress.background', inputBackground, localize('welcomePage.progress.background', 'Foreground color for the Welcome page progress bars.'));
-export const welcomePageProgressForeground = registerColor('welcomePage.progress.foreground', textLinkForeground, localize('welcomePage.progress.foreground', 'Background color for the Welcome page progress bars.'));
+export const welcomePageProgressForeground = registerColor('welcomePage.progress.foreground', { dark: '#a855f7', light: '#9333ea', hcDark: textLinkForeground, hcLight: textLinkForeground }, localize('welcomePage.progress.foreground', 'Background color for the Welcome page progress bars.'));
 
 export const walkthroughStepTitleForeground = registerColor('walkthrough.stepTitle.foreground', { light: '#000000', dark: '#ffffff', hcDark: null, hcLight: null }, localize('walkthrough.stepTitle.foreground', 'Foreground color of the heading of each walkthrough step'));

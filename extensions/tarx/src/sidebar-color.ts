@@ -9,6 +9,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as os from 'os';
 import { execSync } from 'child_process';
+import { execute, executeTransaction } from './secureDatabase';
 
 // ========================================
 // NEON CYBERPUNK PALETTE
@@ -166,13 +167,10 @@ export async function getProjectsWithColors(): Promise<ProjectWithColor[]> {
  * Update project color in DB
  */
 export async function setProjectColor(projectId: string, color: string): Promise<boolean> {
-	const dbPath = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
-
 	try {
-		execSync(`sqlite3 "${dbPath}" "UPDATE projects SET color = '${color}' WHERE id = '${projectId}'"`, {
-			encoding: 'utf8'
-		});
-		return true;
+		// Use parameterized query to prevent SQL injection
+		const changes = execute('UPDATE projects SET color = ? WHERE id = ?', color, projectId);
+		return changes > 0;
 	} catch (e) {
 		console.error('[TARX] Failed to set project color:', e);
 		return false;
@@ -693,23 +691,26 @@ export function registerColorCommands(context: vscode.ExtensionContext): void {
 	// Set active project
 	context.subscriptions.push(
 		vscode.commands.registerCommand('tarx.setActiveProject', async (projectId: string) => {
-			const dbPath = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
-
 			try {
-				// Deactivate all, activate selected
-				execSync(`sqlite3 "${dbPath}" "UPDATE projects SET is_active = 0; UPDATE projects SET is_active = 1 WHERE id = '${projectId}'"`, {
-					encoding: 'utf8'
-				});
+				// Deactivate all, activate selected using parameterized queries
+				const success = executeTransaction([
+					['UPDATE projects SET is_active = 0'],
+					['UPDATE projects SET is_active = 1 WHERE id = ?', projectId]
+				]);
 
-				// Get project color and apply to tabs
-				const projects = await getProjectsWithColors();
-				const active = projects.find(p => p.id === projectId);
-				if (active) {
-					await injectTabStyles(active.color);
+				if (success) {
+					// Get project color and apply to tabs
+					const projects = await getProjectsWithColors();
+					const active = projects.find(p => p.id === projectId);
+					if (active) {
+						await injectTabStyles(active.color);
+					}
+
+					await vscode.commands.executeCommand('tarx.projects.refresh');
+					vscode.window.showInformationMessage(`✓ Active project set`);
+				} else {
+					console.error('[TARX] Failed to set active project');
 				}
-
-				await vscode.commands.executeCommand('tarx.projects.refresh');
-				vscode.window.showInformationMessage(`✓ Active project set`);
 			} catch (e) {
 				console.error('[TARX] Failed to set active project:', e);
 			}

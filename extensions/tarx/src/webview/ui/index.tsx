@@ -81,22 +81,30 @@ class TarxErrorBoundary extends React.Component<{ children: React.ReactNode }, E
 // MOUNT APPLICATION
 // ═══════════════════════════════════════════════════════════════════════════════
 
+console.log('[TARX WEBVIEW] index.tsx executing - about to mount React app');
+
 // Get the root element
 const rootElement = document.getElementById('root');
 if (!rootElement) {
+	console.error('[TARX WEBVIEW] FATAL: #root element not found!');
 	throw new Error('Root element not found');
 }
+console.log('[TARX WEBVIEW] #root element found, proceeding with mount');
 
-// Get asset URIs from data attributes
+// Get asset URIs and mode from data attributes
 const logoUri = rootElement.dataset.logoUri || '';
 const eyesUri = rootElement.dataset.eyesUri || '';
+const mode = (rootElement.dataset.mode || 'sidebar') as 'sidebar' | 'dashboard';
 
 // Create React root and render with error boundary
+console.log('[TARX WEBVIEW] >>>>>> TARX React App mounting <<<<<<');
+console.log('[TARX WEBVIEW] Mode:', mode, 'LogoUri:', logoUri ? 'present' : 'missing');
 const root = createRoot(rootElement);
 root.render(
 	<React.StrictMode>
 		<TarxErrorBoundary>
-			<App logoUri={logoUri} eyesUri={eyesUri} />
+			<App mode={mode} logoUri={logoUri} eyesUri={eyesUri} />
 		</TarxErrorBoundary>
 	</React.StrictMode>
 );
+console.log('[TARX WEBVIEW] React render() called - app should be visible');

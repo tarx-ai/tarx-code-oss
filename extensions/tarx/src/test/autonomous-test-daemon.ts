@@ -28,6 +28,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { execSync } from 'child_process';
+import Database from 'better-sqlite3';
 
 // ============================================================
 // CONFIGURATION
@@ -144,17 +145,36 @@ function execDB(sql: string): boolean {
 }
 
 function spaceExists(name: string): boolean {
-	const rows = queryDB(`SELECT COUNT(*) as count FROM spaces WHERE name = '${name.replace(/'/g, "''")}'`);
-	return rows.length > 0 && rows[0].count > 0;
+	try {
+		const db = new Database(CONFIG.DB_PATH, { readonly: true });
+		const result = db.prepare('SELECT COUNT(*) as count FROM spaces WHERE name = ?').get(name) as { count: number } | undefined;
+		db.close();
+		return result ? result.count > 0 : false;
+	} catch (e) {
+		return false;
+	}
 }
 
 function getSpaceCount(): number {
-	const rows = queryDB(`SELECT COUNT(*) as count FROM spaces`);
-	return rows.length > 0 ? rows[0].count : 0;
+	try {
+		const db = new Database(CONFIG.DB_PATH, { readonly: true });
+		const result = db.prepare('SELECT COUNT(*) as count FROM spaces').get() as { count: number } | undefined;
+		db.close();
+		return result ? result.count : 0;
+	} catch (e) {
+		return 0;
+	}
 }
 
 function deleteSpaceByName(name: string): boolean {
-	return execDB(`DELETE FROM spaces WHERE name = '${name.replace(/'/g, "''")}'`);
+	try {
+		const db = new Database(CONFIG.DB_PATH);
+		db.prepare('DELETE FROM spaces WHERE name = ?').run(name);
+		db.close();
+		return true;
+	} catch (e) {
+		return false;
+	}
 }
 
 // ============================================================

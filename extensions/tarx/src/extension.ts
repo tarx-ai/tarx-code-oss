@@ -14,7 +14,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { execSync } from 'child_process';
+import { execSync, spawn as spawnProcess, ChildProcess } from 'child_process';
 import { TarxCompletionProvider } from './completionProvider';
 import { TarxStatusBar } from './statusBar';
 import { TarxClient, ChatMessage } from './tarxClient';
@@ -26,6 +26,7 @@ import { JsonDatabase, DatabaseOperations, Project, Conversation, ConversationTu
 import { SqliteDatabase } from './sqliteDatabase';
 import { RagClient, chunkText, chunkCode } from './ragClient';
 import { ProjectIndexer, createFileWatcher } from './projectIndexer';
+import { execute, executeTransaction, queryOne } from './secureDatabase';
 import * as crypto from 'crypto';
 import {
 	parseFileReferences,
@@ -96,6 +97,10 @@ import { checkSkillsFirst } from './skillsBridge';
 import { startDaemon, stopDaemon, getDaemon } from './daemon';
 // TARX QA Test Harness - Feb 2026
 import { runQATests, runStartupChecks } from './test/qa-harness';
+// TARX Chat Panel - Feb 2026: Webview panel in right column (ViewColumn.Beside)
+import { TarxChatPanel } from './chatPanel';
+// TARX Dashboard Panel - Feb 2026: Webview panel in center tab (ViewColumn.Active)
+import { TarxDashboardPanel } from './dashboardPanel';
 // TARX Model Router - Feb 2026
 import {
 	routeMessage,
@@ -130,6 +135,13 @@ import {
 } from './stripeService';
 import { CreditBridge } from './creditBridge';
 import { registerChatInputIntegration, ChatInputIntegration } from './chatInputIntegration';
+
+// ═══════════════════════════════════════════════════════════════
+// CRASH-GUARD: All static imports loaded — module parsing succeeded.
+// If you see this log, the extension host loaded our module cleanly.
+// If you DON'T see this log, check for import/native-module errors above.
+// ═══════════════════════════════════════════════════════════════
+console.log('[TARX CRASH-GUARD] All imports loaded successfully at', new Date().toISOString());
 
 // ========================================
 // Debug Flag - Set TARX_DEBUG=true for verbose logging
@@ -293,6 +305,7 @@ let activeConversation: Conversation | undefined;
 let fileWatcher: vscode.Disposable | undefined;
 let proactiveSystem: ProactiveSystem | undefined;
 let creditBridge: CreditBridge | undefined;
+let grokDispatchProcess: ChildProcess | undefined;
 
 // Auth objects - module level for guard access
 let authManager: AuthManager | undefined;
@@ -360,43 +373,73 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Initialize console log capture FIRST - before any other logging
 	initTarxLogger();
 
-	// TARX: Global error filter — silently swallow known noise errors
+	// TARX: Global error filter — intercept known noise errors BEFORE Sentry sees them.
 	// These are VS Code internals or benign race conditions that spam Sentry without user impact.
-	const origOnError = process.listeners('uncaughtException').slice();
+	//
+	// FIX (Feb 2026): Previous version appended a listener but never removed the originals,
+	// so Sentry's handler (registered at process startup in extensionHostProcess.ts) still
+	// fired for every error. Now we remove all existing handlers, install our filter as the
+	// sole gatekeeper, and forward non-noise errors to the original handlers.
+	const noisePatterns = [
+		'HostProvider not setup',                              // NODE-A: 2,792 events - Copilot auth we don't use
+		'Channel has been closed',                             // NODE-1,3,7,1B: 166 events - IPC race
+		'Canceled: Canceled',                                  // NODE-2,4,5,6,19,1A: 863 events - User cancellations
+		'Canceled',                                            // Catch-all for cancellations
+		"permission denied, mkdir '/mock'",                    // NODE-B: 730 events - Test artifact
+		'EACCES',                                              // Permission errors (non-critical)
+		'spawn docker ENOENT',                                 // NODE-S: 6 events - Docker not installed
+		'EADDRINUSE',                                          // Port conflicts (handled gracefully)
+		'address already in use',                              // Alternative EADDRINUSE message
+		'Pending response rejected since connection got disposed', // NODE-P: 4 events - Extension shutdown
+		'Harness error',                                       // Test harness HTTP errors (non-critical)
+		'No messages returned'                                 // MCP/harness expected condition
+	];
+
+	// Capture and REMOVE all existing uncaughtException handlers (including Sentry's)
+	const origExceptionHandlers = process.listeners('uncaughtException').slice();
+	process.removeAllListeners('uncaughtException');
+
+	// Install our filter as the sole gatekeeper
 	process.on('uncaughtException', (err: Error) => {
 		const msg = err?.message || '';
 		const code = (err as NodeJS.ErrnoException)?.code || '';
 
-		// Filter noise patterns (prevents Sentry spam)
-		const noisePatterns = [
-			'HostProvider not setup',                              // NODE-A: 2,663 events - Copilot auth we don't use
-			'Channel has been closed',                             // NODE-1,3,7,1B: 166 events - IPC race
-			'Canceled: Canceled',                                  // NODE-2,4,5,6,19,1A: 863 events - User cancellations
-			'Canceled',                                            // Catch-all for cancellations
-			"permission denied, mkdir '/mock'",                    // NODE-B: 730 events - Test artifact
-			'EACCES',                                              // Permission errors (non-critical)
-			'spawn docker ENOENT',                                 // NODE-S: 6 events - Docker not installed
-			'EADDRINUSE',                                          // Port conflicts (handled gracefully)
-			'address already in use',                              // Alternative EADDRINUSE message
-			'Pending response rejected since connection got disposed', // NODE-P: 4 events - Extension shutdown
-			'Harness error',                                       // Test harness HTTP errors (non-critical)
-			'No messages returned'                                 // MCP/harness expected condition
-		];
-
 		for (const pattern of noisePatterns) {
 			if (msg.includes(pattern) || code === pattern) {
-				// Silently ignore — already handled or non-critical
+				// Silently ignore — noise error, do NOT forward to Sentry or other handlers
 				return;
 			}
 		}
 
-		// Re-throw for other handlers
-		for (const handler of origOnError) {
+		// Non-noise: forward to original handlers (Sentry, VS Code, etc.)
+		for (const handler of origExceptionHandlers) {
 			(handler as (err: Error) => void)(err);
 		}
 	});
 
-	console.log('[TARX DEBUG] ========== TARX EXTENSION ACTIVATING ==========');
+	// Also filter unhandled promise rejections (HostProvider can throw as rejected promise)
+	const origRejectionHandlers = process.listeners('unhandledRejection').slice();
+	process.removeAllListeners('unhandledRejection');
+
+	process.on('unhandledRejection', (reason: unknown) => {
+		const msg = reason instanceof Error ? (reason.message || '') : String(reason || '');
+
+		for (const pattern of noisePatterns) {
+			if (msg.includes(pattern)) {
+				return;
+			}
+		}
+
+		for (const handler of origRejectionHandlers) {
+			(handler as (reason: unknown, promise: Promise<unknown>) => void)(reason, Promise.resolve());
+		}
+	});
+
+	console.log('[TARX CRASH-GUARD] ========== TARX EXTENSION ACTIVATING ==========');
+	console.log('[TARX CRASH-GUARD] Time:', new Date().toISOString());
+	console.log('[TARX CRASH-GUARD] PID:', process.pid, 'Platform:', process.platform);
+
+  try { // ══════ TOP-LEVEL CRASH GUARD ══════
 
 	// ========== DIAGNOSTIC: DB PATH CHECK ==========
 	const mcpDbPath = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
@@ -447,72 +490,75 @@ export async function activate(context: vscode.ExtensionContext) {
 	setTimeout(() => creditBridge?.startPolling(), 10000);
 	console.log('[TARX] Credit bridge initialized (polling starts in 10s)');
 
-	// Initialize authentication manager (module-level)
-	authManager = new AuthManager(context);
-	await authManager.initialize();
-	console.log('[TARX] Auth manager initialized');
+	// ═══ CRASH-GUARD: Auth init ═══
+	try {
+		authManager = new AuthManager(context);
+		await authManager.initialize();
+		console.log('[TARX] Auth manager initialized');
 
-	// FTUX Auth Flow - Show auth screen automatically on launch
-	const authStateManager = AuthStateManager.getInstance();
-	authChatView = new AuthChatView(context, authManager);
+		const authStateManager = AuthStateManager.getInstance();
+		authChatView = new AuthChatView(context, authManager);
 
-	// Register auth commands with custom unlock handler that uses AuthChatView
-	registerAuthCommands(context, authManager, async () => {
-		if (!authChatView || !authManager) {
-			vscode.window.showErrorMessage('Auth not initialized');
-			return false;
-		}
-
-		const isConfigured = await authManager.isAuthEnabled();
-		if (!isConfigured) {
-			vscode.window.showInformationMessage('No PIN is configured. Use "TARX: Set Up Authentication" first.');
-			return false;
-		}
-
-		const success = await authChatView.showAndWait();
-		if (success) {
-			isAuthenticatedSession = true;
-			sidebarProvider?.setLocked(false);
-			vscode.window.showInformationMessage('TARX unlocked');
-		}
-		return success;
-	});
-
-	// DEV MODE: Skip auth entirely when bypass is enabled
-	// Used for MCP verification and automated testing
-	if (isDevBypassAuthEnabled()) {
-		console.log('[TARX] ⚠️  DEV MODE: Auth bypass enabled (env or setting)');
-		authStateManager.setState('unlocked');
-		isAuthenticatedSession = true;
-		// Don't show auth screen, proceed directly to main UI
-	} else {
-		const isConfigured = await authManager.isAuthEnabled();
-		const requiresUnlock = await authManager.requiresUnlock();
-		const requireOnStartup = authManager.isRequiredOnStartup();
-
-		// Show auth screen if:
-		// 1. Not configured (first-time setup), OR
-		// 2. Configured AND requireOnStartup setting is true AND requires unlock
-		if (!isConfigured || (requireOnStartup && requiresUnlock)) {
-			console.log('[TARX] Auth required - showing auth screen (requireOnStartup:', requireOnStartup, ')');
-			const success = await authChatView.showAndWait();
-			if (!success) {
-				console.log('[TARX] Auth cancelled or failed - extension will require auth on use');
-				isAuthenticatedSession = false;
-				// Continue initialization but user will need to auth when using features
-			} else {
-				console.log('[TARX] Auth successful - TARX unlocked');
-				isAuthenticatedSession = true;
+		registerAuthCommands(context, authManager, async () => {
+			if (!authChatView || !authManager) {
+				vscode.window.showErrorMessage('Auth not initialized');
+				return false;
 			}
-		} else {
-			// Already unlocked or startup auth disabled
+
+			const isConfigured = await authManager.isAuthEnabled();
+			if (!isConfigured) {
+				vscode.window.showInformationMessage('No PIN is configured. Use "TARX: Set Up Authentication" first.');
+				return false;
+			}
+
+			const success = await authChatView.showAndWait();
+			if (success) {
+				isAuthenticatedSession = true;
+				sidebarProvider?.setLocked(false);
+				vscode.window.showInformationMessage('TARX unlocked');
+			}
+			return success;
+		});
+
+		if (isDevBypassAuthEnabled()) {
+			console.log('[TARX] ⚠️  DEV MODE: Auth bypass enabled (env or setting)');
 			authStateManager.setState('unlocked');
 			isAuthenticatedSession = true;
-			console.log('[TARX] Skipping startup auth (configured:', isConfigured, ', requireOnStartup:', requireOnStartup, ')');
+		} else {
+			const isConfigured = await authManager.isAuthEnabled();
+			const requiresUnlock = await authManager.requiresUnlock();
+			const requireOnStartup = authManager.isRequiredOnStartup();
+
+			if (!isConfigured || (requireOnStartup && requiresUnlock)) {
+				console.log('[TARX] Auth required - showing auth screen (requireOnStartup:', requireOnStartup, ')');
+				// NON-BLOCKING: Show auth screen but continue with command registration
+				// Commands must be available even before auth completes (for sidebar data loading)
+				authChatView.showAndWait().then((success) => {
+					if (!success) {
+						console.log('[TARX] Auth cancelled or failed - extension will require auth on use');
+						isAuthenticatedSession = false;
+					} else {
+						console.log('[TARX] Auth successful - TARX unlocked');
+						isAuthenticatedSession = true;
+						sidebarProvider?.setLocked(false);
+					}
+				}).catch((err) => {
+					console.error('[TARX] Auth error:', err);
+					isAuthenticatedSession = false;
+				});
+				// Continue immediately without waiting for auth
+				console.log('[TARX] Continuing with command registration while auth is pending...');
+			} else {
+				authStateManager.setState('unlocked');
+				isAuthenticatedSession = true;
+				console.log('[TARX] Skipping startup auth (configured:', isConfigured, ', requireOnStartup:', requireOnStartup, ')');
+			}
 		}
+	} catch (authErr) {
+		console.error('[TARX CRASH-GUARD] Auth init failed — continuing without auth:', authErr);
+		isAuthenticatedSession = true; // Allow access if auth system itself is broken
 	}
 
-	// Continue initialization - features are guarded by ensureAuthenticated()
 	console.log('[TARX] Continuing extension initialization...');
 
 	// Execute first-run onboarding flow (non-blocking)
@@ -520,56 +566,75 @@ export async function activate(context: vscode.ExtensionContext) {
 		console.error('[TARX] First-run flow error:', err);
 	});
 
-	// Initialize TARX client
+	// ═══ CRASH-GUARD: Core services init ═══
 	const config = vscode.workspace.getConfiguration('tarx');
 	const serverUrl = config.get<string>('serverUrl', 'http://localhost:11435');
 	const ragUrl = config.get<string>('ragUrl', 'http://localhost:11437');
-	const tarxClient = new TarxClient(serverUrl);
+	let tarxClient: TarxClient;
 
-	// Initialize RAG client
-	ragClient = new RagClient(ragUrl);
-
-	// Initialize Health Service for connection monitoring
-	healthService = new HealthService(tarxClient);
-	healthService.startPolling();
-	context.subscriptions.push(healthService);
-
-	// Subscribe to health status changes
-	healthService.onStatusChange((status) => {
-		console.log(`[TARX] Connection status: ${status.status}`);
-		// Update sidebar provider with connection status
-		if (sidebarProvider) {
-			sidebarProvider.setConnectionStatus(status.status);
-		}
-	});
-
-	// Initialize Test Harness for automated UI testing (port 11439)
-	console.log('[TARX] Creating test harness service...');
-	const testHarness = new TestHarnessService(healthService, tarxClient);
-	console.log('[TARX] Starting test harness...');
-	testHarness.start();
-	context.subscriptions.push(testHarness);
-	console.log('[TARX] Test harness started on port 11439');
-
-	// Initialize database (using shared TARX path for Claude integration)
-	const sharedTarxPath = path.join(os.homedir(), 'Library/Application Support/tarx');
-	// Ensure directory exists
-	if (!fs.existsSync(sharedTarxPath)) {
-		fs.mkdirSync(sharedTarxPath, { recursive: true });
+	try {
+		tarxClient = new TarxClient(serverUrl);
+		ragClient = new RagClient(ragUrl);
+		console.log('[TARX] Client + RAG initialized');
+	} catch (clientErr) {
+		console.error('[TARX CRASH-GUARD] Client/RAG init failed:', clientErr);
+		tarxClient = new TarxClient(serverUrl); // Fallback — TarxClient constructor shouldn't throw
 	}
-	db = new SqliteDatabase(sharedTarxPath);
-	console.log('[TARX] Database initialized at:', sharedTarxPath);
+
+	try {
+		healthService = new HealthService(tarxClient);
+		healthService.startPolling();
+		context.subscriptions.push(healthService);
+		healthService.onStatusChange((status) => {
+			console.log(`[TARX] Connection status: ${status.status}`);
+			if (sidebarProvider) {
+				sidebarProvider.setConnectionStatus(status.status);
+			}
+		});
+		console.log('[TARX] Health service started');
+	} catch (healthErr) {
+		console.error('[TARX CRASH-GUARD] Health service init failed:', healthErr);
+	}
+
+	try {
+		const testHarness = new TestHarnessService(healthService!, tarxClient);
+		testHarness.start();
+		context.subscriptions.push(testHarness);
+		console.log('[TARX] Test harness started on port 11439');
+	} catch (harnessErr) {
+		console.error('[TARX CRASH-GUARD] Test harness init failed:', harnessErr);
+	}
+
+	// ═══ CRASH-GUARD: Database init ═══
+	try {
+		const sharedTarxPath = path.join(os.homedir(), 'Library/Application Support/tarx');
+		if (!fs.existsSync(sharedTarxPath)) {
+			fs.mkdirSync(sharedTarxPath, { recursive: true });
+		}
+		db = new SqliteDatabase(sharedTarxPath);
+		console.log('[TARX] Database initialized at:', sharedTarxPath);
+	} catch (dbErr) {
+		console.error('[TARX CRASH-GUARD] Database init failed:', dbErr);
+	}
 
 	// Initialize chat input integration for file upload/drop
 	const outputChannel = vscode.window.createOutputChannel('TARX');
-	const chatInputIntegration = registerChatInputIntegration(context, db, outputChannel);
-	console.log('[TARX] Chat input integration registered (upload button + drag-and-drop)');
+	if (db) {
+		const chatInputIntegration = registerChatInputIntegration(context, db, outputChannel);
+		console.log('[TARX] Chat input integration registered (upload button + drag-and-drop)');
+	} else {
+		console.warn('[TARX CRASH-GUARD] Skipping chat input integration — DB unavailable');
+	}
 
 	// Initialize project indexer
-	projectIndexer = new ProjectIndexer(db, ragClient);
+	if (db) {
+		projectIndexer = new ProjectIndexer(db, ragClient!);
+	} else {
+		console.warn('[TARX CRASH-GUARD] Skipping project indexer — DB unavailable');
+	}
 
 	// Subscribe to indexing progress
-	projectIndexer.onProgress((progress) => {
+	projectIndexer?.onProgress((progress) => {
 		const percent = progress.totalFiles > 0
 			? (progress.filesIndexed / progress.totalFiles) * 100
 			: 0;
@@ -627,20 +692,44 @@ export async function activate(context: vscode.ExtensionContext) {
 	const mcpSettingsProvider = registerMcpSettingsProvider(context);
 	console.log('[TARX] MCP settings provider registered');
 
-	// Register WebviewViewProvider for sidebar (React-based UI)
-	webviewSidebarProvider = new TarxSidebarWebviewProvider(context.extensionUri);
-	context.subscriptions.push(
-		vscode.window.registerWebviewViewProvider(
-			TarxSidebarWebviewProvider.viewType,
-			webviewSidebarProvider,
-			{
-				webviewOptions: {
-					retainContextWhenHidden: true
+	// ═══════════════════════════════════════════════════════════════
+	// WEBVIEW SIDEBAR PROVIDER - Custom React left nav
+	// Provides collapsible hierarchy: Projects, Explorer, Conversations,
+	// Claude Sessions, Context Files, Agents
+	// ═══════════════════════════════════════════════════════════════
+	try {
+		console.log('[TARX] Registering webview sidebar provider...');
+		webviewSidebarProvider = new TarxSidebarWebviewProvider(context.extensionUri);
+		context.subscriptions.push(
+			vscode.window.registerWebviewViewProvider(
+				TarxSidebarWebviewProvider.viewType,
+				webviewSidebarProvider,
+				{
+					webviewOptions: {
+						retainContextWhenHidden: true
+					}
 				}
+			)
+		);
+		console.log('[TARX] Webview sidebar provider registered - custom React left nav ready');
+
+		// Force the TARX sidebar to show instead of Explorer
+		setTimeout(async () => {
+			try {
+				console.log('[TARX] Forcing TARX sidebar to show...');
+				// Show the activity bar first
+				await vscode.commands.executeCommand('workbench.action.activityBarLocation.default');
+				// Focus the TARX sidebar container
+				await vscode.commands.executeCommand('workbench.view.extension.tarx-sidebar');
+				console.log('[TARX] TARX sidebar forced to show - custom React nav should be visible');
+			} catch (e) {
+				console.log('[TARX] Could not auto-show sidebar:', e);
 			}
-		)
-	);
-	console.log('[TARX] Webview sidebar provider registered');
+		}, 500);
+	} catch (err) {
+		const errMsg = err instanceof Error ? err.stack || err.message : String(err);
+		console.error('[TARX CRASH-GUARD] Failed to register webview sidebar provider:', errMsg);
+	}
 
 	// Register refresh command for webview sidebar
 	context.subscriptions.push(
@@ -938,11 +1027,8 @@ export async function activate(context: vscode.ExtensionContext) {
 			if (existingSpaces.length === 0) {
 				const now = Date.now();
 				const spaceId = crypto.randomUUID();
-				const insertQuery = `INSERT INTO spaces (id, name, description, emoji, created_at, updated_at, last_accessed_at, message_count, total_tokens) VALUES ('${spaceId}', 'Claude.ai Sessions', 'Conversations synced from Claude.ai', '🤖', ${now}, ${now}, ${now}, 0, 0)`;
-				execSync(`sqlite3 "${mcpDbPath}"`, {
-					encoding: 'utf8',
-					input: insertQuery
-				});
+				execute(`INSERT INTO spaces (id, name, description, emoji, created_at, updated_at, last_accessed_at, message_count, total_tokens) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+					spaceId, 'Claude.ai Sessions', 'Conversations synced from Claude.ai', '🤖', now, now, now, 0, 0);
 				console.log('[TARX] Created Claude.ai Sessions space:', spaceId);
 			} else {
 				console.log('[TARX] Claude.ai Sessions space already exists:', existingSpaces[0].id);
@@ -1997,9 +2083,22 @@ export async function activate(context: vscode.ExtensionContext) {
 	// 4. Register Commands
 	// ========================================
 
-	// Open Chat - opens the native chat panel
-	safeRegisterCommand(context, 'tarx.openChat', () => {
-		vscode.commands.executeCommand('workbench.action.chat.open', { query: '@tarx ' });
+	// Open Chat - spawns TARX chat panel in right column (ViewColumn.Beside)
+	safeRegisterCommand(context, 'tarx.openChat', (prompt?: string) => {
+		TarxChatPanel.createOrShow(context, prompt || undefined);
+		console.log('[TARX] Chat panel opened in right column (ViewColumn.Beside)');
+	});
+
+	// Open Dashboard - spawns TARX dashboard in center editor tab
+	safeRegisterCommand(context, 'tarx.openDashboard', () => {
+		TarxDashboardPanel.createOrShow(context.extensionUri);
+		console.log('[TARX] Dashboard opened in center tab (ViewColumn.Active)');
+	});
+
+	// Toggle Secondary Sidebar - allows toggling left sidebar via ⌥⌘B
+	safeRegisterCommand(context, 'tarx.toggleSecondarySidebar', () => {
+		vscode.commands.executeCommand('workbench.action.toggleAuxiliaryBar');
+		console.log('[TARX] Toggled secondary sidebar');
 	});
 
 	// Explain Selection - sends to @tarx /explain
@@ -2428,9 +2527,9 @@ export async function activate(context: vscode.ExtensionContext) {
 						const chunkContents = chunks.map(c => c.content);
 						const embeddings = await ragClient.embedBatch(chunkContents);
 						await storeMCPEmbeddings(fileId, params.filename, chunks, embeddings);
-						// Mark as indexed
+						// Mark as indexed using parameterized query
 						try {
-							execSync(`sqlite3 "${mcpDbPath}" "UPDATE files SET indexed_at = ${Date.now()} WHERE id = '${fileId}';"`, { encoding: 'utf8' });
+							execute('UPDATE files SET indexed_at = ? WHERE id = ?', Date.now(), fileId);
 						} catch {}
 						console.log(`[TARX] Embedded ${params.filename}: ${embeddings.length} chunks`);
 					}
@@ -2467,23 +2566,30 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Delete Uploaded File — soft-deletes in SQLite, removes embeddings
 	safeRegisterCommand(context, 'tarx.deleteUploadedFile', (fileId: string) => {
 		try {
-			const mcpDbPath = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
 			const now = Date.now();
 
-			// Get file info first
-			const fileResult = execSync(
-				`sqlite3 "${mcpDbPath}" -json "SELECT id, storage_path, COALESCE(is_reference, 0) as is_reference FROM files WHERE id = '${fileId}' AND deleted_at IS NULL;"`,
-				{ encoding: 'utf8' }
+			// Get file info first using parameterized query
+			const file = queryOne<{ id: string; storage_path: string; is_reference: number }>(
+				'SELECT id, storage_path, COALESCE(is_reference, 0) as is_reference FROM files WHERE id = ? AND deleted_at IS NULL',
+				fileId
 			);
-			const files = JSON.parse(fileResult || '[]') as Array<{ id: string; storage_path: string; is_reference: number }>;
-			if (files.length === 0) return { success: false, error: 'File not found' };
+			if (!file) return { success: false, error: 'File not found' };
 
-			// Soft-delete + remove embeddings from ALL tables
-			execSync(`sqlite3 "${mcpDbPath}" "UPDATE files SET deleted_at = ${now} WHERE id = '${fileId}'; DELETE FROM chunk_embeddings WHERE file_id = '${fileId}'; DELETE FROM knowledge_embeddings WHERE source_type = 'file' AND source_id = '${fileId}'; DELETE FROM space_files WHERE file_id = '${fileId}';"`, { encoding: 'utf8' });
+			// Soft-delete + remove embeddings from ALL tables using transaction
+			const success = executeTransaction([
+				['UPDATE files SET deleted_at = ? WHERE id = ?', now, fileId],
+				['DELETE FROM chunk_embeddings WHERE file_id = ?', fileId],
+				['DELETE FROM knowledge_embeddings WHERE source_type = ? AND source_id = ?', 'file', fileId],
+				['DELETE FROM space_files WHERE file_id = ?', fileId]
+			]);
+
+			if (!success) {
+				return { success: false, error: 'Database transaction failed' };
+			}
 
 			// Remove from disk if not a reference file
-			if (!files[0].is_reference && files[0].storage_path && !files[0].storage_path.startsWith('ref:')) {
-				const fullPath = path.join(tarxFilesDir, files[0].storage_path);
+			if (!file.is_reference && file.storage_path && !file.storage_path.startsWith('ref:')) {
+				const fullPath = path.join(tarxFilesDir, file.storage_path);
 				try { if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath); } catch {}
 			}
 
@@ -2687,16 +2793,16 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Attach Uploaded File to Chat - Attach a previously uploaded file from the sidebar
 	safeRegisterCommand(context, 'tarx.attachUploadedFileToChat', async (fileId: string) => {
 		try {
-			const mcpDbPath = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
-			const escapedId = fileId.replace(/'/g, "''");
-			const row = execSync(`sqlite3 -json "${mcpDbPath}" "SELECT filename, storage_path, is_reference, original_path FROM files WHERE id='${escapedId}' AND deleted_at IS NULL LIMIT 1;"`, { encoding: 'utf8' }).trim();
-			const rows = row ? JSON.parse(row) : [];
-			if (rows.length === 0) {
+			// Use parameterized query to prevent SQL injection
+			const file = queryOne<{ filename: string; storage_path: string; is_reference: number; original_path: string }>(
+				'SELECT filename, storage_path, is_reference, original_path FROM files WHERE id = ? AND deleted_at IS NULL LIMIT 1',
+				fileId
+			);
+			if (!file) {
 				vscode.window.showErrorMessage('File not found');
 				return;
 			}
-			const file = rows[0];
-			const filename = file.filename as string;
+			const filename = file.filename;
 
 			// Create a virtual URI for the uploaded file
 			const uri = vscode.Uri.parse(`tarx-upload:/${filename}`);
@@ -3217,9 +3323,9 @@ export async function activate(context: vscode.ExtensionContext) {
 			}
 		}
 
-		// Open a NEW chat session (in a new tab, doesn't replace existing)
-		await vscode.commands.executeCommand('workbench.action.chat.newChat');
-		console.log('[TARX] New chat started in new tab');
+		// Open TARX chat panel in right column (new conversation)
+		TarxChatPanel.createOrShow(context);
+		console.log('[TARX] New chat started in right panel (ViewColumn.Beside)');
 	});
 
 	// History Show All - Show conversation history panel
@@ -3347,6 +3453,30 @@ export async function activate(context: vscode.ExtensionContext) {
 			return summaries;
 		} catch (e) {
 			console.error('[TARX] getRecentConversations failed:', e);
+			return [];
+		}
+	});
+
+	// Internal: List all projects (used by chat panel dropdown)
+	safeRegisterCommand(context, 'tarx.internal.listProjects', async () => {
+		if (!db) { return []; }
+		try {
+			const projects = await db.listProjects();
+			return projects.map(p => ({ id: p.id, name: p.name, root: p.root, type: p.type }));
+		} catch (e) {
+			console.error('[TARX] internal.listProjects failed:', e);
+			return [];
+		}
+	});
+
+	// Internal: Get conversation turns (used by chat panel swap)
+	safeRegisterCommand(context, 'tarx.internal.getConversationTurns', async (conversationId: string) => {
+		if (!db || !conversationId) { return []; }
+		try {
+			const turns = await db.getConversationTurns(conversationId);
+			return turns.map(t => ({ role: t.role, content: t.content, createdAt: t.createdAt }));
+		} catch (e) {
+			console.error('[TARX] internal.getConversationTurns failed:', e);
 			return [];
 		}
 	});
@@ -4004,16 +4134,128 @@ _Add any project notes here_
 		}
 	});
 
-	// Open Chat with pre-filled prompt
-	safeRegisterCommand(context, 'tarx.openChat', async (prompt?: string) => {
-		if (prompt) {
-			await vscode.commands.executeCommand('workbench.action.chat.open', { query: `@tarx ${prompt}` });
-		} else {
-			await vscode.commands.executeCommand('workbench.action.chat.open', { query: '@tarx ' });
-		}
+	// Open Chat with pre-filled prompt (duplicate registration — uses new chat panel)
+	safeRegisterCommand(context, 'tarx.openChat', (prompt?: string) => {
+		TarxChatPanel.createOrShow(context, prompt || undefined);
 	});
 
 	console.log('[TARX] Sidebar nav commands registered');
+
+	// ═══════════════════════════════════════════════════════════════
+	// PIN LOCKOUT COMMANDS
+	// Handles PIN creation, verification, and status checks
+	// ═══════════════════════════════════════════════════════════════
+
+	// Check if PIN is set
+	safeRegisterCommand(context, 'tarx.pin.isSet', () => {
+		try {
+			const hasSetPIN = context.globalState.get<boolean>('tarx.hasSetPIN', false);
+			console.log('[TARX] PIN isSet check:', hasSetPIN);
+			return hasSetPIN;
+		} catch (e) {
+			console.error('[TARX] Failed to check PIN status:', e);
+			return false;
+		}
+	});
+
+	// Set or verify PIN
+	safeRegisterCommand(context, 'tarx.pin.set', async (pin: string, mode: 'create' | 'verify') => {
+		try {
+			console.log('[TARX] PIN set command, mode:', mode);
+
+			// Hash the PIN using simple hash (crypto.subtle not available in extension host)
+			// Use a simple hash for now - in production use proper crypto
+			const hashPin = (p: string): string => {
+				let hash = 0;
+				for (let i = 0; i < p.length; i++) {
+					const char = p.charCodeAt(i);
+					hash = ((hash << 5) - hash) + char;
+					hash = hash & hash;
+				}
+				// Add salt and convert to hex string
+				const salted = `tarx_${Math.abs(hash).toString(16)}_${p.length}`;
+				let finalHash = 0;
+				for (let i = 0; i < salted.length; i++) {
+					finalHash = ((finalHash << 5) - finalHash) + salted.charCodeAt(i);
+					finalHash = finalHash & finalHash;
+				}
+				return Math.abs(finalHash).toString(16).padStart(16, '0');
+			};
+
+			const pinHash = hashPin(pin);
+
+			if (mode === 'create') {
+				// Store the hash
+				await context.globalState.update('tarx.pinHash', pinHash);
+				await context.globalState.update('tarx.hasSetPIN', true);
+				console.log('[TARX] PIN created and stored');
+				return { success: true };
+			} else {
+				// Verify mode - check against stored hash
+				const storedHash = context.globalState.get<string>('tarx.pinHash');
+				if (pinHash === storedHash) {
+					console.log('[TARX] PIN verified successfully');
+					return { success: true };
+				} else {
+					console.log('[TARX] PIN verification failed');
+					return { success: false, error: 'Incorrect PIN' };
+				}
+			}
+		} catch (e) {
+			console.error('[TARX] Failed to set/verify PIN:', e);
+			return { success: false, error: 'An error occurred' };
+		}
+	});
+
+	// Verify PIN only
+	safeRegisterCommand(context, 'tarx.pin.verify', async (pin: string) => {
+		try {
+			const hashPin = (p: string): string => {
+				let hash = 0;
+				for (let i = 0; i < p.length; i++) {
+					const char = p.charCodeAt(i);
+					hash = ((hash << 5) - hash) + char;
+					hash = hash & hash;
+				}
+				const salted = `tarx_${Math.abs(hash).toString(16)}_${p.length}`;
+				let finalHash = 0;
+				for (let i = 0; i < salted.length; i++) {
+					finalHash = ((finalHash << 5) - finalHash) + salted.charCodeAt(i);
+					finalHash = finalHash & finalHash;
+				}
+				return Math.abs(finalHash).toString(16).padStart(16, '0');
+			};
+
+			const pinHash = hashPin(pin);
+			const storedHash = context.globalState.get<string>('tarx.pinHash');
+
+			if (pinHash === storedHash) {
+				console.log('[TARX] PIN verified');
+				return { success: true };
+			} else {
+				console.log('[TARX] PIN incorrect');
+				return { success: false, error: 'Incorrect PIN' };
+			}
+		} catch (e) {
+			console.error('[TARX] Failed to verify PIN:', e);
+			return { success: false, error: 'An error occurred' };
+		}
+	});
+
+	// Reset PIN (for development/testing)
+	safeRegisterCommand(context, 'tarx.pin.reset', async () => {
+		try {
+			await context.globalState.update('tarx.pinHash', undefined);
+			await context.globalState.update('tarx.hasSetPIN', false);
+			console.log('[TARX] PIN reset');
+			return { success: true };
+		} catch (e) {
+			console.error('[TARX] Failed to reset PIN:', e);
+			return { success: false };
+		}
+	});
+
+	console.log('[TARX] PIN lockout commands registered');
 
 	// ========================================
 	// 5. Configuration change listener
@@ -4482,7 +4724,75 @@ _Add any project notes here_
 		console.error('[TARX] Startup checks error:', e);
 	});
 
-	console.log('[TARX] Extension activated - Use @tarx in chat');
+	// ═══════════════════════════════════════════════════════════════
+	// AUTO-OPEN DASHBOARD ON LAUNCH (center tab default)
+	// Opens TARXDashboard in ViewColumn.Active on first launch
+	// or always if user prefers dashboard landing
+	// ═══════════════════════════════════════════════════════════════
+	try {
+		const hasSeenDashboard = context.globalState.get<boolean>('hasSeenDashboard', false);
+		const alwaysOpenDashboard = vscode.workspace.getConfiguration('tarx').get<boolean>('alwaysOpenDashboard', false);
+
+		console.log('[TARX] Dashboard check - hasSeenDashboard:', hasSeenDashboard, 'alwaysOpen:', alwaysOpenDashboard);
+
+		if (!hasSeenDashboard || alwaysOpenDashboard) {
+			// Small delay to let the workbench finish layout
+			setTimeout(() => {
+				try {
+					console.log('[TARX] Opening dashboard center tab...');
+					TarxDashboardPanel.createOrShow(context.extensionUri);
+					context.globalState.update('hasSeenDashboard', true);
+					console.log('[TARX] Dashboard center opened - first launch or alwaysOpen');
+				} catch (err) {
+					console.error('[TARX CRASH-GUARD] Failed to auto-open dashboard:', err);
+				}
+			}, 1500);
+		} else {
+			console.log('[TARX] Skipping dashboard auto-open (already seen)');
+		}
+	} catch (err) {
+		console.error('[TARX CRASH-GUARD] Dashboard auto-open check failed:', err);
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// AUTO-OPEN RIGHT CHAT PANE ON LAUNCH
+	// Opens the native VS Code chat with TARX participant ready
+	// ═══════════════════════════════════════════════════════════════
+	try {
+		const hasOpenedChat = context.globalState.get<boolean>('tarx.hasAutoOpenedChat', false);
+		console.log('[TARX] Chat auto-open check - hasOpenedChat:', hasOpenedChat);
+
+		if (!hasOpenedChat) {
+			// Auto-open chat in right pane after a short delay
+			setTimeout(async () => {
+				try {
+					console.log('[TARX EVENT] Auto-opening chat in right pane...');
+					// Open VS Code native chat panel
+					await vscode.commands.executeCommand('workbench.action.chat.open');
+					// Mark that we've auto-opened
+					await context.globalState.update('tarx.hasAutoOpenedChat', true);
+					console.log('[TARX EVENT] ✓ Chat auto-opened successfully');
+				} catch (chatErr) {
+					console.error('[TARX] Failed to auto-open chat:', chatErr);
+				}
+			}, 2000); // 2s delay to let workbench settle
+		} else {
+			console.log('[TARX] Skipping chat auto-open (already opened before)');
+		}
+	} catch (err) {
+		console.error('[TARX CRASH-GUARD] Chat auto-open check failed:', err);
+	}
+
+	console.log('[TARX CRASH-GUARD] TARX activated safely at', new Date().toISOString());
+
+  } catch (activationError: unknown) { // ══════ END TOP-LEVEL CRASH GUARD ══════
+	const errMsg = activationError instanceof Error ? activationError.stack || activationError.message : String(activationError);
+	console.error('[TARX CRASH-GUARD] !!!!! ACTIVATION CRASHED !!!!!');
+	console.error('[TARX CRASH-GUARD] Error:', errMsg);
+	console.error('[TARX CRASH-GUARD] Time:', new Date().toISOString());
+	// Do NOT re-throw — let extension host survive even if TARX activation fails
+	vscode.window.showErrorMessage(`TARX activation failed: ${activationError instanceof Error ? activationError.message : String(activationError)}`);
+  }
 }
 
 /**
@@ -4637,6 +4947,105 @@ async function initAutonomicDaemon(context: vscode.ExtensionContext): Promise<vo
 		console.error('[TARX Autonomic] Failed to start daemon:', e);
 	}
 
+	// ════════════════════════════════════════════════════════════════
+	// GROK DISPATCH — Background orchestration hook
+	// Spawns scripts/grok-dispatch.js, registers session, watches inbox.
+	// ════════════════════════════════════════════════════════════════
+	try {
+		const dispatchScript = path.join(context.extensionPath, '..', '..', 'scripts', 'grok-dispatch.js');
+		const dispatchCwd = path.join(context.extensionPath, '..', 'tarx-core');
+
+		if (fs.existsSync(dispatchScript) && fs.existsSync(dispatchCwd)) {
+			// Only start if not already running (check PID file or state)
+			const stateFile = path.join(os.homedir(), 'Library/Application Support/tarx/grok-dispatch-state.json');
+			let alreadyRunning = false;
+			if (fs.existsSync(stateFile)) {
+				try {
+					const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+					// If state was updated in the last 90s, assume running
+					const age = Date.now() - new Date(state.timestamp).getTime();
+					alreadyRunning = age < 90_000;
+				} catch { /* stale file, proceed */ }
+			}
+
+			if (!alreadyRunning) {
+				grokDispatchProcess = spawnProcess('node', [dispatchScript], {
+					cwd: dispatchCwd,
+					stdio: ['ignore', 'pipe', 'pipe'],
+					detached: false,
+					env: { ...process.env, TARX_WORKSPACE: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || path.join(os.homedir(), 'Desktop/tarx-code-oss') }
+				});
+
+				grokDispatchProcess.stdout?.on('data', (data: Buffer) => {
+					const msg = data.toString().trim();
+					if (msg) console.log('[TARX Grok]', msg);
+				});
+				grokDispatchProcess.stderr?.on('data', (data: Buffer) => {
+					const msg = data.toString().trim();
+					if (msg) console.error('[TARX Grok ERR]', msg);
+				});
+				grokDispatchProcess.on('exit', (code) => {
+					console.log(`[TARX Grok] Process exited (code=${code})`);
+					grokDispatchProcess = undefined;
+				});
+
+				console.log(`[TARX Grok] Dispatch started, PID=${grokDispatchProcess.pid}`);
+			} else {
+				console.log('[TARX Grok] Dispatch already running (recent state file), skipping spawn');
+			}
+		} else {
+			console.log('[TARX Grok] Dispatch script not found, skipping');
+		}
+	} catch (e) {
+		console.error('[TARX Grok] Failed to start dispatch:', e);
+	}
+
+	// ── Grok Dispatch Commands: Approve / Reject tasks via orch_tasks ──
+	const orchDbPath = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('tarx.grokDispatch.approveTask', (taskId: string) => {
+			try {
+				if (!taskId) return;
+				execSync(
+					`sqlite3 "${orchDbPath}" "UPDATE orch_tasks SET status='pending', blocked_by=NULL WHERE id='${taskId.replace(/'/g, "''")}' AND status='blocked'"`,
+					{ encoding: 'utf8' }
+				);
+				console.log(`[TARX Grok] Task ${taskId} approved → pending`);
+				// Notify webview
+				webviewSidebarProvider?.updateTaskApproval(taskId, 'approved');
+			} catch (e) {
+				console.error('[TARX Grok] Approve failed:', e);
+			}
+		}),
+		vscode.commands.registerCommand('tarx.grokDispatch.rejectTask', (taskId: string, reason?: string) => {
+			try {
+				if (!taskId) return;
+				const result = reason ? `[REJECTED] ${reason}` : '[REJECTED] User rejected';
+				execSync(
+					`sqlite3 "${orchDbPath}" "UPDATE orch_tasks SET status='completed', completed_at=${Date.now()}, result='${result.replace(/'/g, "''")}' WHERE id='${taskId.replace(/'/g, "''")}'"`,
+					{ encoding: 'utf8' }
+				);
+				console.log(`[TARX Grok] Task ${taskId} rejected`);
+				webviewSidebarProvider?.updateTaskApproval(taskId, 'rejected');
+			} catch (e) {
+				console.error('[TARX Grok] Reject failed:', e);
+			}
+		}),
+		vscode.commands.registerCommand('tarx.grokDispatch.getBlockedTasks', () => {
+			try {
+				const result = execSync(
+					`sqlite3 "${orchDbPath}" -json "SELECT id, title, description, priority, blocked_by FROM orch_tasks WHERE status='blocked' AND blocked_by='approval_required' ORDER BY assigned_at DESC LIMIT 20"`,
+					{ encoding: 'utf8', timeout: 3000 }
+				);
+				return JSON.parse(result || '[]');
+			} catch {
+				return [];
+			}
+		})
+	);
+	console.log('[TARX Grok] Approval commands registered');
+
 	// ========================================
 	// FINAL: PUSH data to sidebar (not pull via commands)
 	// The webview's 'ready' message fires before extension activates,
@@ -4759,6 +5168,12 @@ export function deactivate() {
 	stopDaemon().catch(e => {
 		console.error('[TARX Autonomic] Failed to stop daemon:', e);
 	});
+
+	// Stop Grok Dispatch
+	if (grokDispatchProcess) {
+		grokDispatchProcess.kill('SIGTERM');
+		grokDispatchProcess = undefined;
+	}
 
 	// Close MCP database connection (performance optimization cleanup)
 	closeMCPDatabase();

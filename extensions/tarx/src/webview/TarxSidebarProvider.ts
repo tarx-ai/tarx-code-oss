@@ -66,6 +66,8 @@ export type WebviewMessage =
 	| { command: 'selectProject'; projectId: string }
 	| { command: 'openChat' }
 	| { command: 'newChat' }
+	| { command: 'startConversation'; prompt?: string }
+	| { command: 'openDashboard' }
 	| { command: 'openSession'; sessionId: string; spaceId?: string }
 	| { command: 'openConversation'; conversationId: string }
 	| { command: 'uploadFile'; filename: string; content: string; size: number; mimeType: string }
@@ -90,7 +92,24 @@ export type WebviewMessage =
 	| { command: 'startCheckout'; tier: string }
 	| { command: 'openBillingPortal' }
 	// QA/Error reporting messages
-	| { command: 'webviewError'; error: string; stack?: string; componentStack?: string };
+	| { command: 'webviewError'; error: string; stack?: string; componentStack?: string }
+	// Grok Dispatch — task approvals
+	| { command: 'approveTask'; taskId: string }
+	| { command: 'rejectTask'; taskId: string; reason?: string }
+	| { command: 'getBlockedTasks' }
+	// HierarchyNav commands
+	| { command: 'refreshClaudeSessions' }
+	| { command: 'openContextFile'; fileId: string }
+	| { command: 'toggleAgent'; agentId: string }
+	| { command: 'openMcpConfig' }
+	| { command: 'getClaudeSessions' }
+	| { command: 'getContextFiles' }
+	| { command: 'getAgents' }
+	| { command: 'getSkills' }
+	| { command: 'installSkill'; skillId: string }
+	| { command: 'ragSearch'; query: string }
+	| { command: 'setPIN'; pin: string; mode: 'create' | 'verify' }
+	| { command: 'verifyPIN'; pin: string };
 
 /**
  * TARX Sidebar Webview Provider
@@ -111,41 +130,50 @@ export class TarxSidebarProvider implements vscode.WebviewViewProvider {
 		_context: vscode.WebviewViewResolveContext,
 		_token: vscode.CancellationToken
 	): void {
-		console.log('[TARX Webview] resolveWebviewView called');
+		console.log('[TARX SIDEBAR] >>>>>> resolveWebviewView called <<<<<<');
+		console.log('[TARX SIDEBAR] Webview view resolving at', new Date().toISOString());
 
-		this._view = webviewView;
+		try {
+			this._view = webviewView;
 
-		webviewView.webview.options = {
-			enableScripts: true,
-			localResourceRoots: [this._extensionUri]
-		};
+			webviewView.webview.options = {
+				enableScripts: true,
+				localResourceRoots: [this._extensionUri]
+			};
 
-		webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
-		console.log('[TARX Webview] Webview HTML set');
+			console.log('[TARX SIDEBAR] Setting webview HTML with #root div for React mount...');
+			webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
+			console.log('[TARX SIDEBAR] Webview HTML set - React should mount shortly');
 
-		// Handle messages from webview with QA logging
-		webviewView.webview.onDidReceiveMessage(async (message: WebviewMessage) => {
-			const startTime = Date.now();
-			if (QA_LOGGING) {
-				console.log(`[TARX QA] >> RECV: ${JSON.stringify(message).substring(0, 200)}`);
-			}
+			// Handle messages from webview with QA logging
+			webviewView.webview.onDidReceiveMessage(async (message: WebviewMessage) => {
+				const startTime = Date.now();
+				if (QA_LOGGING) {
+					console.log(`[TARX QA] >> RECV: ${JSON.stringify(message).substring(0, 200)}`);
+				}
 
-			await this._handleMessage(message);
+				await this._handleMessage(message);
 
-			if (QA_LOGGING) {
-				console.log(`[TARX QA] << DONE: ${message.command} (${Date.now() - startTime}ms)`);
-			}
-		});
+				if (QA_LOGGING) {
+					console.log(`[TARX QA] << DONE: ${message.command} (${Date.now() - startTime}ms)`);
+				}
+			});
 
-		// Start connection status polling
-		this._startConnectionStatusPolling();
+			// Start connection status polling
+			this._startConnectionStatusPolling();
 
-		// Cleanup on dispose
-		webviewView.onDidDispose(() => {
-			if (this._connectionCheckInterval) {
-				clearInterval(this._connectionCheckInterval);
-			}
-		});
+			// Cleanup on dispose
+			webviewView.onDidDispose(() => {
+				if (this._connectionCheckInterval) {
+					clearInterval(this._connectionCheckInterval);
+				}
+			});
+		} catch (err: unknown) {
+			const errMsg = err instanceof Error ? err.stack || err.message : String(err);
+			console.error('[TARX CRASH-GUARD] resolveWebviewView CRASHED at', new Date().toISOString());
+			console.error('[TARX CRASH-GUARD] Error:', errMsg);
+			webviewView.webview.html = `<html><body><p style="color:#f44;font-family:monospace;">TARX sidebar failed to load.<br><br><pre>${err instanceof Error ? err.message : String(err)}</pre><br>Check Developer Tools (Help → Toggle Developer Tools) for full stack.</p></body></html>`;
+		}
 	}
 
 	/**
@@ -191,6 +219,13 @@ export class TarxSidebarProvider implements vscode.WebviewViewProvider {
 	}
 
 	/**
+	 * Notify webview that a task approval status changed
+	 */
+	public updateTaskApproval(taskId: string, status: 'approved' | 'rejected'): void {
+		this._postMessage({ command: 'taskApprovalUpdated', taskId, status });
+	}
+
+	/**
 	 * Show upload progress in webview
 	 */
 	public showUploadProgress(text: string, percent: number): void {
@@ -214,6 +249,7 @@ export class TarxSidebarProvider implements vscode.WebviewViewProvider {
 				console.log('[TARX SIDEBAR] >>>>>> RECEIVED "ready" FROM WEBVIEW <<<<<<');
 				await this._sendInitialData();
 				console.log('[TARX SIDEBAR] _sendInitialData completed');
+				// Note: PIN check is now handled by core tarxSidebarPart.ts
 				break;
 
 			case 'getProjects':
@@ -241,9 +277,26 @@ export class TarxSidebarProvider implements vscode.WebviewViewProvider {
 				break;
 
 			case 'openProjectTab':
-				await vscode.commands.executeCommand('tarx.openProjectContext', message.projectId);
-				await vscode.commands.executeCommand('tarx.projects.select', message.projectId);
-				this._postMessage({ command: 'projectSelected', data: { projectId: message.projectId } });
+				try {
+					console.log('[TARX EVENT] openProjectTab fired for:', message.projectId);
+					// Notify webview that event was received
+					this._postMessage({ command: 'eventFired', event: 'openProjectTab', data: { projectId: message.projectId } });
+
+					// Select the project (sets it as active)
+					console.log('[TARX EVENT] Executing tarx.projects.select...');
+					await vscode.commands.executeCommand('tarx.projects.select', message.projectId);
+
+					// Open the Project Context Panel (Grok-style center tab) - NOT the folder
+					console.log('[TARX EVENT] Executing tarx.openProjectContext...');
+					await vscode.commands.executeCommand('tarx.openProjectContext', message.projectId);
+
+					this._postMessage({ command: 'projectSelected', data: { projectId: message.projectId } });
+					console.log('[TARX EVENT] Project context panel opened for:', message.projectId);
+				} catch (e) {
+					console.error('[TARX EVENT ERROR] Failed to open project context:', e);
+					this._postMessage({ command: 'eventError', event: 'openProjectTab', error: e instanceof Error ? e.message : String(e) });
+					vscode.window.showErrorMessage(`Failed to open project context: ${e instanceof Error ? e.message : String(e)}`);
+				}
 				break;
 
 			case 'createProject':
@@ -263,19 +316,83 @@ export class TarxSidebarProvider implements vscode.WebviewViewProvider {
 				break;
 
 			case 'openChat':
-				await vscode.commands.executeCommand('workbench.action.chat.open');
+				try {
+					console.log('[TarxSidebarProvider] Opening native chat panel');
+					await vscode.commands.executeCommand('workbench.action.chat.open');
+					console.log('[TarxSidebarProvider] Chat opened successfully');
+				} catch (e) {
+					console.error('[TarxSidebarProvider] Failed to open chat:', e);
+					// Fallback to TARX chat if native fails
+					await vscode.commands.executeCommand('tarx.openChat');
+				}
+				break;
+
+			case 'startConversation':
+				try {
+					console.log('[TARX EVENT] startConversation fired with prompt:', message.prompt?.substring(0, 50));
+					// Open chat with a pre-filled prompt so user doesn't get empty chat
+					const query = message.prompt || 'Hello! What would you like to work on?';
+					await vscode.commands.executeCommand('workbench.action.chat.open', { query: `@tarx ${query}` });
+					console.log('[TARX EVENT] ✓ Conversation started with prompt');
+					this._postMessage({ command: 'eventFired', event: 'startConversation', data: { hasPrompt: !!message.prompt } });
+				} catch (e) {
+					console.error('[TARX EVENT ERROR] Failed to start conversation:', e);
+					// Fallback: just open chat
+					await vscode.commands.executeCommand('workbench.action.chat.open');
+					this._postMessage({ command: 'eventError', event: 'startConversation', error: e instanceof Error ? e.message : String(e) });
+				}
 				break;
 
 			case 'newChat':
-				await vscode.commands.executeCommand('tarx.chat.new');
+				try {
+					console.log('[TarxSidebarProvider] Starting new native chat');
+					await vscode.commands.executeCommand('workbench.action.chat.newChat');
+					console.log('[TarxSidebarProvider] New chat started successfully');
+				} catch (e) {
+					console.error('[TarxSidebarProvider] Failed to start new chat:', e);
+					// Fallback to TARX chat
+					await vscode.commands.executeCommand('tarx.chat.new');
+				}
+				break;
+
+			case 'openDashboard':
+				await vscode.commands.executeCommand('tarx.openDashboard');
 				break;
 
 			case 'openSession':
-				await vscode.commands.executeCommand('tarx.openSession', message.sessionId, message.spaceId);
+				try {
+					console.log('[TARX EVENT] openSession fired for:', message.sessionId, 'spaceId:', message.spaceId);
+					// Notify webview that event was received
+					this._postMessage({ command: 'eventFired', event: 'openSession', data: { sessionId: message.sessionId, spaceId: message.spaceId } });
+
+					console.log('[TARX EVENT] Executing tarx.openSession...');
+					await vscode.commands.executeCommand('tarx.openSession', message.sessionId, message.spaceId);
+
+					console.log('[TARX EVENT] Session opened successfully:', message.sessionId);
+					this._postMessage({ command: 'sessionOpened', sessionId: message.sessionId });
+				} catch (e) {
+					console.error('[TARX EVENT ERROR] Failed to open session:', e);
+					this._postMessage({ command: 'eventError', event: 'openSession', error: e instanceof Error ? e.message : String(e) });
+					vscode.window.showErrorMessage(`Failed to open session: ${e instanceof Error ? e.message : String(e)}`);
+				}
 				break;
 
 			case 'openConversation':
-				await vscode.commands.executeCommand('tarx.openConversation', message.conversationId);
+				try {
+					console.log('[TARX EVENT] openConversation fired for:', message.conversationId);
+					// Notify webview that event was received
+					this._postMessage({ command: 'eventFired', event: 'openConversation', data: { conversationId: message.conversationId } });
+
+					console.log('[TARX EVENT] Executing tarx.openConversation...');
+					await vscode.commands.executeCommand('tarx.openConversation', message.conversationId);
+
+					console.log('[TARX EVENT] Conversation opened successfully:', message.conversationId);
+					this._postMessage({ command: 'conversationOpened', conversationId: message.conversationId });
+				} catch (e) {
+					console.error('[TARX EVENT ERROR] Failed to open conversation:', e);
+					this._postMessage({ command: 'eventError', event: 'openConversation', error: e instanceof Error ? e.message : String(e) });
+					vscode.window.showErrorMessage(`Failed to open conversation: ${e instanceof Error ? e.message : String(e)}`);
+				}
 				break;
 
 			case 'uploadFile':
@@ -401,6 +518,241 @@ export class TarxSidebarProvider implements vscode.WebviewViewProvider {
 					vscode.window.showErrorMessage(`TARX Webview Error: ${message.error}`);
 				}
 				break;
+
+			// ════════════════════════════════════════════════════════════════
+			// GROK DISPATCH — Task Approvals
+			// ════════════════════════════════════════════════════════════════
+
+			case 'approveTask':
+				await vscode.commands.executeCommand('tarx.grokDispatch.approveTask', message.taskId);
+				break;
+
+			case 'rejectTask':
+				await vscode.commands.executeCommand('tarx.grokDispatch.rejectTask', message.taskId, message.reason);
+				break;
+
+			case 'getBlockedTasks':
+				try {
+					const tasks = await vscode.commands.executeCommand('tarx.grokDispatch.getBlockedTasks');
+					this._postMessage({ command: 'blockedTasksLoaded', tasks: tasks || [] });
+				} catch (e) {
+					console.error('[TarxSidebarProvider] Failed to load blocked tasks:', e);
+					this._postMessage({ command: 'blockedTasksLoaded', tasks: [] });
+				}
+				break;
+
+			// ════════════════════════════════════════════════════════════════
+			// HIERARCHY NAV COMMANDS
+			// ════════════════════════════════════════════════════════════════
+
+			case 'refreshClaudeSessions':
+				console.log('[TarxSidebarProvider] Refreshing Claude sessions');
+				await vscode.commands.executeCommand('tarx.refreshClaudeSessions');
+				await this._loadClaudeSessions();
+				break;
+
+			case 'openContextFile':
+				try {
+					console.log('[TarxSidebarProvider] Opening context file:', message.fileId);
+					await vscode.commands.executeCommand('tarx.context.openFile', message.fileId);
+					console.log('[TarxSidebarProvider] Context file opened successfully');
+				} catch (e) {
+					console.error('[TarxSidebarProvider] Failed to open context file:', e);
+					vscode.window.showErrorMessage(`Failed to open file: ${e instanceof Error ? e.message : String(e)}`);
+				}
+				break;
+
+			case 'toggleAgent':
+				await vscode.commands.executeCommand('tarx.toggleMcpServer', message.agentId);
+				await this._loadAgents();
+				break;
+
+			case 'openMcpConfig':
+				await vscode.commands.executeCommand('tarx.openMcpConfig');
+				break;
+
+			case 'getClaudeSessions':
+				await this._loadClaudeSessions();
+				break;
+
+			case 'getContextFiles':
+				await this._loadContextFiles();
+				break;
+
+			case 'getAgents':
+				await this._loadAgents();
+				break;
+
+			case 'getSkills':
+				await this._loadSkills();
+				break;
+
+			case 'installSkill':
+				await this._installSkill((message as { command: 'installSkill'; skillId: string }).skillId);
+				break;
+
+			case 'ragSearch':
+				await this._performRAGSearch(message.query);
+				break;
+
+			// Note: setPIN and verifyPIN are now handled by core tarxSidebarPart.ts
+		}
+	}
+
+	// Note: PIN methods removed - handled by core tarxSidebarPart.ts
+
+	/**
+	 * Perform RAG search on knowledge base
+	 */
+	private async _performRAGSearch(query: string): Promise<void> {
+		try {
+			console.log('[TarxSidebarProvider] RAG search:', query);
+			// Try to use the tarx_search_knowledge command if available
+			const results = await vscode.commands.executeCommand<Array<{
+				id: string;
+				filename: string;
+				path: string;
+				snippet: string;
+				score: number;
+			}>>('tarx.searchKnowledge', query) || [];
+			console.log('[TarxSidebarProvider] RAG search returned', results.length, 'results');
+			this._postMessage({ command: 'ragSearchResults', results });
+		} catch (e) {
+			console.error('[TarxSidebarProvider] RAG search failed:', e);
+			// Return empty results on error
+			this._postMessage({ command: 'ragSearchResults', results: [] });
+		}
+	}
+
+	/**
+	 * Load Claude sessions for HierarchyNav
+	 */
+	private async _loadClaudeSessions(): Promise<void> {
+		try {
+			const sessions = await vscode.commands.executeCommand<Array<{
+				id: string;
+				title: string;
+				spaceName?: string;
+			}>>('tarx.getClaudeSessions') || [];
+			console.log('[TarxSidebarProvider] Loaded', sessions.length, 'Claude sessions');
+			this._postMessage({ command: 'claudeSessionsLoaded', sessions });
+		} catch (e) {
+			console.error('[TarxSidebarProvider] Failed to load Claude sessions:', e);
+			this._postMessage({ command: 'claudeSessionsLoaded', sessions: [] });
+		}
+	}
+
+	/**
+	 * Load context files for HierarchyNav
+	 */
+	private async _loadContextFiles(): Promise<void> {
+		try {
+			const files = await vscode.commands.executeCommand<Array<{
+				id: string;
+				filename: string;
+				path: string;
+			}>>('tarx.context.list') || [];
+			console.log('[TarxSidebarProvider] Loaded', files.length, 'context files');
+			this._postMessage({ command: 'contextFilesLoaded', files });
+		} catch (e) {
+			console.error('[TarxSidebarProvider] Failed to load context files:', e);
+			this._postMessage({ command: 'contextFilesLoaded', files: [] });
+		}
+	}
+
+	/**
+	 * Load agents (MCP servers) for HierarchyNav
+	 */
+	private async _loadAgents(): Promise<void> {
+		try {
+			const agents = await vscode.commands.executeCommand<Array<{
+				id: string;
+				name: string;
+				description?: string;
+				enabled?: boolean;
+			}>>('tarx.getMcpServers') || [];
+			console.log('[TarxSidebarProvider] Loaded', agents.length, 'agents');
+			this._postMessage({ command: 'agentsLoaded', agents });
+		} catch (e) {
+			console.error('[TarxSidebarProvider] Failed to load agents:', e);
+			this._postMessage({ command: 'agentsLoaded', agents: [] });
+		}
+	}
+
+	/**
+	 * Load skills from database for Skills Marketplace
+	 */
+	private async _loadSkills(): Promise<void> {
+		try {
+			// Load skills from SQLite
+			const os = require('os');
+			const path = require('path');
+			const { execSync } = require('child_process');
+
+			const dbPath = path.join(os.homedir(), 'Library', 'Application Support', 'tarx', 'memory.db');
+			const query = `SELECT id, name, category, prompt_template as description, utility_score as utilityScore, COALESCE(installed, 0) as installed FROM skills ORDER BY utility_score DESC LIMIT 20`;
+
+			const result = execSync(`sqlite3 "${dbPath}" -json`, {
+				encoding: 'utf8',
+				input: query
+			});
+
+			const skills = JSON.parse(result || '[]').map((s: any) => ({
+				...s,
+				installed: s.installed === 1
+			}));
+
+			console.log('[TarxSidebarProvider] Loaded', skills.length, 'skills');
+			this._postMessage({ command: 'skillsLoaded', skills });
+		} catch (e) {
+			console.error('[TarxSidebarProvider] Failed to load skills:', e);
+			// Return mock skills as fallback
+			const mockSkills = [
+				{ id: 'skill-commit', name: 'Git Commit', category: 'git', description: 'Create conventional commit messages', installed: false },
+				{ id: 'skill-refactor', name: 'Refactor Code', category: 'code', description: 'Analyze and suggest refactoring improvements', installed: false },
+				{ id: 'skill-explain', name: 'Explain Code', category: 'code', description: 'Explain what selected code does', installed: true },
+				{ id: 'skill-test', name: 'Generate Tests', category: 'testing', description: 'Generate unit tests for code', installed: false },
+				{ id: 'skill-review', name: 'Code Review', category: 'code', description: 'Review code for issues and improvements', installed: false },
+			];
+			this._postMessage({ command: 'skillsLoaded', skills: mockSkills });
+		}
+	}
+
+	/**
+	 * Install a skill (toggle installed state)
+	 */
+	private async _installSkill(skillId: string): Promise<void> {
+		try {
+			console.log('[TarxSidebarProvider] Installing skill:', skillId);
+
+			// Toggle installed state in database
+			const os = require('os');
+			const path = require('path');
+			const { execSync } = require('child_process');
+
+			const dbPath = path.join(os.homedir(), 'Library', 'Application Support', 'tarx', 'memory.db');
+
+			// Add installed column if not exists and toggle
+			const query = `
+				ALTER TABLE skills ADD COLUMN installed INTEGER DEFAULT 0;
+				UPDATE skills SET installed = CASE WHEN installed = 1 THEN 0 ELSE 1 END WHERE id = '${skillId}';
+			`;
+
+			try {
+				execSync(`sqlite3 "${dbPath}"`, { encoding: 'utf8', input: query });
+			} catch {
+				// Column might already exist, just do the update
+				const updateQuery = `UPDATE skills SET installed = CASE WHEN installed = 1 THEN 0 ELSE 1 END WHERE id = '${skillId}';`;
+				execSync(`sqlite3 "${dbPath}"`, { encoding: 'utf8', input: updateQuery });
+			}
+
+			console.log('[TarxSidebarProvider] Skill toggled:', skillId);
+			this._postMessage({ command: 'skillInstalled', skillId });
+
+			// Reload skills to reflect change
+			await this._loadSkills();
+		} catch (e) {
+			console.error('[TarxSidebarProvider] Failed to install skill:', e);
 		}
 	}
 
@@ -503,9 +855,13 @@ export class TarxSidebarProvider implements vscode.WebviewViewProvider {
 			this._loadProjects(),
 			this._loadHistory(),
 			this._loadUploadedFiles(),
-			this._checkConnectionStatus()
+			this._checkConnectionStatus(),
+			// HierarchyNav data
+			this._loadClaudeSessions(),
+			this._loadContextFiles(),
+			this._loadAgents()
 		]);
-		console.log('[TARX SIDEBAR] _sendInitialData all promises resolved');
+		console.log('[TARX SIDEBAR] _sendInitialData all promises resolved (including HierarchyNav data)');
 	}
 
 	/**
@@ -740,7 +1096,7 @@ export class TarxSidebarProvider implements vscode.WebviewViewProvider {
 	<title>TARX</title>
 </head>
 <body>
-	<div id="root" data-logo-uri="${logoUri}" data-eyes-uri="${eyesUri}"></div>
+	<div id="root" data-mode="sidebar" data-logo-uri="${logoUri}" data-eyes-uri="${eyesUri}"></div>
 	<script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;

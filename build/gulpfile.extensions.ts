@@ -22,6 +22,7 @@ import plumber from 'gulp-plumber';
 import * as ext from './lib/extensions.ts';
 import * as tsb from './lib/tsb/index.ts';
 import sourcemaps from 'gulp-sourcemaps';
+import { spawn } from 'child_process';
 
 const root = path.dirname(import.meta.dirname);
 const commit = getVersion(root);
@@ -204,6 +205,123 @@ const tasks = compilations.map(function (tsconfigFile) {
 
 	return { transpileTask, compileTask, watchTask };
 });
+
+//#region TARX webview build integration
+
+/**
+ * Build TARX webview bundle using esbuild (after clean, before TypeScript compile)
+ */
+function compileTarxWebview() {
+	return new Promise((resolve, reject) => {
+		const webviewScript = path.join(root, 'extensions', 'tarx', 'esbuild.webview.js');
+		const child = spawn('node', [webviewScript, '--production'], {
+			cwd: path.join(root, 'extensions', 'tarx'),
+			stdio: 'inherit'
+		});
+
+		child.on('close', (code) => {
+			if (code === 0) {
+				resolve(undefined);
+			} else {
+				reject(new Error(`Webview build failed with code ${code}`));
+			}
+		});
+
+		child.on('error', reject);
+	});
+}
+
+/**
+ * Inline TARX webview CSS/JS into TypeScript constants (after webview build)
+ */
+function inlineTarxWebview() {
+	return new Promise((resolve, reject) => {
+		const inlineScript = path.join(root, 'build', 'lib', 'tarx-webview-inline.js');
+		const child = spawn('node', [inlineScript], {
+			cwd: root,
+			stdio: 'inherit'
+		});
+
+		child.on('close', (code) => {
+			if (code === 0) {
+				resolve(undefined);
+			} else {
+				reject(new Error(`Webview inline failed with code ${code}`));
+			}
+		});
+
+		child.on('error', reject);
+	});
+}
+
+/**
+ * Override the tarx extension's compile task to include webview build after clean
+ */
+const tarxTaskIndex = compilations.findIndex(c => c === 'extensions/tarx/tsconfig.json');
+if (tarxTaskIndex >= 0) {
+	const tarxTask = tasks[tarxTaskIndex];
+	const originalTask = tarxTask.compileTask;
+
+	// Get the task components - we need to inject webview build after clean
+	const out = path.join(root, 'extensions', 'tarx', 'out');
+	const cleanTask = task.define('clean-extension-tarx', util.rimraf(out));
+	const webviewBuildTask = task.define('compile-tarx-webview', compileTarxWebview);
+	const webviewInlineTask = task.define('inline-tarx-webview', inlineTarxWebview);
+
+	// Create new compile task: clean → webview build → inline → TypeScript compile
+	const srcRoot = path.dirname('extensions/tarx/tsconfig.json');
+	const srcBase = path.join(srcRoot, 'src');
+	const src = path.join(srcBase, '**');
+	const srcOpts = { cwd: root, base: srcBase, dot: true };
+	const absolutePath = path.join(root, 'extensions/tarx/tsconfig.json');
+
+	const overrideOptions: { sourceMap?: boolean; inlineSources?: boolean; base?: string } = {};
+	overrideOptions.sourceMap = true;
+	overrideOptions.inlineSources = false;
+	overrideOptions.base = path.dirname(absolutePath);
+
+	const reporter = createReporter('extensions');
+	const compilation = tsb.create(absolutePath, overrideOptions, { verbose: false, transpileOnly: false, transpileOnlyIncludesDts: false, transpileWithEsbuild: true }, err => reporter(err.toString()));
+
+	tarxTask.compileTask = task.define('compile-extension:tarx', task.series(cleanTask, webviewBuildTask, webviewInlineTask, () => {
+		const pipeline = function () {
+			const input = es.through();
+			const tsFilter = filter(['**/*.ts', '!**/lib/lib*.d.ts', '!**/node_modules/**'], { restore: true, dot: true });
+			const baseUrl = getBaseUrl(out);
+			const output = input
+				.pipe(plumber({
+					errorHandler: function (err) {
+						if (err && !err.__reporter__) {
+							reporter(err);
+						}
+					}
+				}))
+				.pipe(tsFilter)
+				.pipe(util.loadSourcemaps())
+				.pipe(compilation())
+				.pipe(util.stripSourceMappingURL())
+				.pipe(sourcemaps.write('.', {
+					sourceMappingURL: f => `${baseUrl}/${f.relative}.map`,
+					addComment: true,
+					includeContent: true,
+					sourceRoot: '../src/',
+				}))
+				.pipe(tsFilter.restore)
+				.pipe(reporter.end(true));
+
+			return es.duplex(input, output);
+		};
+
+		const nonts = gulp.src(src, srcOpts).pipe(filter(['**', '!**/*.ts']));
+		const input = es.merge(nonts, compilation.src(srcOpts));
+
+		return input
+			.pipe(pipeline())
+			.pipe(gulp.dest(out));
+	}));
+}
+
+//#endregion
 
 const transpileExtensionsTask = task.define('transpile-extensions', task.parallel(...tasks.map(t => t.transpileTask)));
 gulp.task(transpileExtensionsTask);

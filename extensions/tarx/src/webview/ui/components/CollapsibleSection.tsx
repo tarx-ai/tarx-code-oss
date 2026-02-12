@@ -45,23 +45,23 @@ export const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
 	return (
 		<div className={`tarx-section ${collapsed ? 'collapsed' : ''}`} data-section-id={id}>
 			<div className="tarx-section-header" onClick={handleHeaderClick}>
-				<span className={`tarx-section-icon codicon codicon-${icon}`} />
+				<i className={`tarx-section-icon codicon codicon-${icon}`} />
 				<span className="tarx-section-title">{title}</span>
 				{onAdd && (
-					<span
+					<i
 						className="tarx-action-btn tarx-section-add codicon codicon-add"
 						title={addTitle || 'Add'}
 						onClick={handleAddClick}
 					/>
 				)}
 				{onSeeAll && (
-					<span
+					<i
 						className="tarx-action-btn tarx-section-see-all codicon codicon-arrow-right"
 						title="See all"
 						onClick={handleSeeAllClick}
 					/>
 				)}
-				<span className="tarx-section-chevron codicon codicon-chevron-down" />
+				<i className="tarx-section-chevron codicon codicon-chevron-down" />
 			</div>
 			<div className="tarx-section-content">
 				{children}

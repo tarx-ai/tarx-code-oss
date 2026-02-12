@@ -54,9 +54,9 @@ export class ExtensionStoragePaths implements IExtensionStoragePaths {
 
 		// TARX: Validate storage path before attempting mkdir (prevents EACCES on /mock)
 		if (storageUri?.path) {
-			const parts = storageUri.path.split('/').filter(Boolean);
-			if (parts.length < 2) {
-				this._logService.warn(`[ExtHostStorage] Skipping workspace storage creation for suspicious path: "${storageUri.path}"`);
+			const p = storageUri.path;
+			if (p === '/mock' || p.startsWith('/mock/') || p.split('/').filter(Boolean).length < 2) {
+				this._logService.warn(`[ExtHostStorage] Skipping workspace storage creation for suspicious path: "${p}"`);
 				return undefined;
 			}
 		}
@@ -99,8 +99,8 @@ export class ExtensionStoragePaths implements IExtensionStoragePaths {
 		// TARX: Validate globalStorageHome to prevent EACCES errors on invalid paths like '/mock'
 		const home = this._environment.globalStorageHome;
 		if (home?.path) {
-			const parts = home.path.split('/').filter(Boolean);
-			if (parts.length < 2) {
+			const hp = home.path;
+			if (hp === '/mock' || hp.startsWith('/mock/') || hp.split('/').filter(Boolean).length < 2) {
 				this._logService.warn(`[ExtHostStorage] globalStorageHome path invalid: "${home.path}" — using fallback to prevent EACCES error`);
 				// Return a safe fallback path instead of attempting to use invalid path
 				const fallbackHome = URI.file(process.env['HOME'] || process.env['USERPROFILE'] || '/tmp');

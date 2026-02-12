@@ -406,9 +406,17 @@ function pollTick(): void {
   if (!state.running) return;
   if (state.pausedAt) return;
 
-  // Check capacity
+  // Check capacity - enforce 2 concurrent limit
   const activeCount = state.activeSessions.size;
-  if (activeCount >= MAX_CONCURRENT) return;
+  if (activeCount >= MAX_CONCURRENT) {
+    // Log queued state for visibility
+    const pending = fetchPendingTasks();
+    if (pending.length > 0) {
+      console.error(`[daemon] Max concurrent reached (${MAX_CONCURRENT}) — ${pending.length} task(s) queued`);
+      daemonAudit("queue", { activeCount, queuedCount: pending.length, maxConcurrent: MAX_CONCURRENT });
+    }
+    return;
+  }
 
   // Fetch pending tasks
   const pending = fetchPendingTasks();

@@ -33,11 +33,11 @@ export const NavRow: React.FC<NavRowProps> = ({
       {iconElement ? (
         <span className="tarx-nav-row-icon tarx-custom-icon">{iconElement}</span>
       ) : (
-        <span className={`tarx-nav-row-icon codicon codicon-${icon}`} />
+        <i className={`tarx-nav-row-icon codicon codicon-${icon}`} />
       )}
       <span className="tarx-nav-row-label">{label}</span>
       {onActionClick && actionIcon && (
-        <span
+        <i
           className={`tarx-action-btn codicon codicon-${actionIcon}`}
           title={actionTitle}
           onClick={handleActionClick}

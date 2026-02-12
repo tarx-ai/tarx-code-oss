@@ -11,6 +11,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { execSync } from 'child_process';
+import { queryAll, queryOne, execute, executeTransaction } from './secureDatabase';
 
 // ============================================================
 // ICONS (Codicons)
@@ -434,6 +435,7 @@ export class UXTreeItem extends vscode.TreeItem {
 
 const DB_PATH = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
 
+// Legacy queryDB function - deprecated, use queryAll/queryOne from secureDatabase instead
 function queryDB<T>(sql: string): T[] {
 	try {
 		const result = execSync(`sqlite3 "${DB_PATH}" -json`, {
@@ -453,32 +455,30 @@ function queryDB<T>(sql: string): T[] {
 export async function openHistoryItem(sessionId: string): Promise<void> {
 	console.log(`[UX] Opening history: ${sessionId}`);
 
-	// Load session data
-	const sessions = queryDB<any>(`
+	// Load session data using parameterized query
+	const session = queryOne<any>(`
 		SELECT id, title, updated_at, space_id, model
-		FROM sessions WHERE id = '${sessionId}' LIMIT 1;
-	`);
+		FROM sessions WHERE id = ? AND deleted_at IS NULL LIMIT 1
+	`, sessionId);
 
-	if (sessions.length === 0) {
+	if (!session) {
 		vscode.window.showErrorMessage('Session not found');
 		return;
 	}
 
-	const session = sessions[0];
-
-	// Load turns from messages table (uses session_id)
-	const turns = queryDB<any>(`
+	// Load turns from messages table (uses session_id) - parameterized query
+	const turns = queryAll<any>(`
 		SELECT id, role, content, created_at as timestamp
 		FROM messages
-		WHERE session_id = '${sessionId}'
-		ORDER BY created_at ASC;
-	`);
+		WHERE session_id = ? AND deleted_at IS NULL
+		ORDER BY created_at ASC
+	`, sessionId);
 
-	// Set as active session
-	execSync(`sqlite3 "${DB_PATH}"`, {
-		input: `UPDATE sessions SET is_active = 0; UPDATE sessions SET is_active = 1 WHERE id = '${sessionId}';`,
-		encoding: 'utf8'
-	});
+	// Set as active session using transaction with parameterized queries
+	executeTransaction([
+		['UPDATE sessions SET is_active = 0'],
+		['UPDATE sessions SET is_active = 1 WHERE id = ?', sessionId]
+	]);
 
 	// Store in workspace state
 	await vscode.commands.executeCommand('tarx.setActiveSession', {
@@ -547,16 +547,12 @@ export async function openFileItem(filePath: string, mode: 'preview' | 'inject' 
  */
 export async function editInstructions(projectId: string): Promise<void> {
 	// Get current instructions
-	const projects = queryDB<any>(`
-		SELECT id, name, instructions FROM projects WHERE id = '${projectId}' LIMIT 1;
-	`);
+	const project = queryOne<any>('SELECT id, name, instructions FROM projects WHERE id = ? LIMIT 1', projectId);
 
-	if (projects.length === 0) {
+	if (!project) {
 		vscode.window.showErrorMessage('Project not found');
 		return;
 	}
-
-	const project = projects[0];
 
 	// Show input box
 	const newInstructions = await vscode.window.showInputBox({
@@ -569,12 +565,9 @@ export async function editInstructions(projectId: string): Promise<void> {
 
 	if (newInstructions === undefined) return; // Cancelled
 
-	// Update DB
-	const escaped = newInstructions.replace(/'/g, "''");
-	execSync(`sqlite3 "${DB_PATH}"`, {
-		input: `UPDATE projects SET instructions = '${escaped}', updated_at = strftime('%s', 'now') WHERE id = '${projectId}';`,
-		encoding: 'utf8'
-	});
+	// Update DB using parameterized query
+	execute('UPDATE projects SET instructions = ?, updated_at = strftime(\'%s\', \'now\') WHERE id = ?',
+		newInstructions, projectId);
 
 	vscode.window.showInformationMessage(`Instructions updated for ${project.name}`);
 	await vscode.commands.executeCommand('tarx.sections.refresh');
@@ -1435,12 +1428,12 @@ export async function buildMemoryItems(projectId: string): Promise<UXTreeItem[]>
 	// Note: rag_entries table may not exist, so just count messages
 	let stat = { rag_count: 0, turn_count: 0 };
 	try {
-		const stats = queryDB<any>(`
+		const result = queryOne<{ turn_count: number }>(`
 			SELECT
 				(SELECT COUNT(*) FROM messages WHERE session_id IN
-					(SELECT id FROM sessions WHERE space_id = '${projectId}')) as turn_count;
-		`);
-		stat = { rag_count: 0, turn_count: stats[0]?.turn_count || 0 };
+					(SELECT id FROM sessions WHERE space_id = ?)) as turn_count
+		`, projectId);
+		stat = { rag_count: 0, turn_count: result?.turn_count || 0 };
 	} catch (e) {
 		console.warn('[TARX] Memory stats query failed:', e);
 	}
@@ -1901,19 +1894,14 @@ export async function copySessionSummary(sessionId: string): Promise<void> {
  * Copy project context to clipboard
  */
 export async function copyProjectContext(projectId: string): Promise<void> {
-	const projects = queryDB<any>(`
-		SELECT id, name, instructions FROM projects WHERE id = '${projectId}' LIMIT 1;
-	`);
+	const project = queryOne<any>('SELECT id, name, instructions FROM projects WHERE id = ? LIMIT 1', projectId);
 
-	if (projects.length === 0) {
+	if (!project) {
 		await showError(UX_ERRORS.projectNotFound(projectId));
 		return;
 	}
 
-	const project = projects[0];
-	const files = queryDB<any>(`
-		SELECT name, path FROM project_files WHERE project_id = '${projectId}';
-	`);
+	const files = queryAll<any>('SELECT name, path FROM project_files WHERE project_id = ?', projectId);
 
 	const context = [
 		`# Project: ${project.name}`,
@@ -1938,22 +1926,15 @@ export type ExportFormat = 'json' | 'markdown' | 'txt';
  * Export session to file
  */
 export async function exportSession(sessionId: string, format: ExportFormat = 'markdown'): Promise<void> {
-	const sessions = queryDB<any>(`
-		SELECT id, title, updated_at, model
-		FROM sessions WHERE id = '${sessionId}' LIMIT 1;
-	`);
+	const session = queryOne<any>('SELECT id, title, updated_at, model FROM sessions WHERE id = ? LIMIT 1', sessionId);
 
-	if (sessions.length === 0) {
+	if (!session) {
 		await showError(UX_ERRORS.sessionNotFound(sessionId));
 		return;
 	}
 
-	const session = sessions[0];
 	// Note: conversation_turns uses conversation_id and created_at
-	const turns = queryDB<any>(`
-		SELECT role, content, created_at as timestamp FROM conversation_turns
-		WHERE conversation_id = '${sessionId}' ORDER BY created_at ASC;
-	`);
+	const turns = queryAll<any>('SELECT role, content, created_at as timestamp FROM conversation_turns WHERE conversation_id = ? ORDER BY created_at ASC', sessionId);
 
 	let content: string;
 	let extension: string;
@@ -1997,18 +1978,17 @@ export async function exportSession(sessionId: string, format: ExportFormat = 'm
  * Export project data
  */
 export async function exportProject(projectId: string): Promise<void> {
-	const projects = queryDB<any>(`
-		SELECT * FROM projects WHERE id = '${projectId}' LIMIT 1;
-	`);
+	const project = queryOne<any>(`
+		SELECT * FROM projects WHERE id = ? AND deleted_at IS NULL LIMIT 1
+	`, projectId);
 
-	if (projects.length === 0) {
+	if (!project) {
 		await showError(UX_ERRORS.projectNotFound(projectId));
 		return;
 	}
 
-	const project = projects[0];
-	const files = queryDB<any>(`SELECT * FROM project_files WHERE project_id = '${projectId}';`);
-	const sessions = queryDB<any>(`SELECT * FROM sessions WHERE space_id = '${projectId}';`);
+	const files = queryAll<any>(`SELECT * FROM project_files WHERE project_id = ?`, projectId);
+	const sessions = queryAll<any>(`SELECT * FROM sessions WHERE space_id = ? AND deleted_at IS NULL`, projectId);
 
 	const exportData = {
 		project,
@@ -2117,25 +2097,29 @@ export async function confirmDelete(itemType: string, itemName: string): Promise
  * Delete project with confirmation
  */
 export async function deleteProject(projectId: string): Promise<void> {
-	const projects = queryDB<any>(`SELECT name FROM projects WHERE id = '${projectId}' LIMIT 1;`);
-	if (projects.length === 0) {
+	const project = queryOne<any>(`SELECT name FROM projects WHERE id = ? AND deleted_at IS NULL LIMIT 1`, projectId);
+	if (!project) {
 		await showError(UX_ERRORS.projectNotFound(projectId));
 		return;
 	}
 
-	const confirmed = await confirmDelete('project', projects[0].name);
+	const confirmed = await confirmDelete('project', project.name);
 	if (!confirmed) return;
 
 	try {
-		execSync(`sqlite3 "${DB_PATH}"`, {
-			input: `DELETE FROM project_files WHERE project_id = '${projectId}';
-				DELETE FROM sessions WHERE space_id = '${projectId}';
-				DELETE FROM projects WHERE id = '${projectId}';`,
-			encoding: 'utf8'
-		});
+		// Use transaction with parameterized queries
+		const success = executeTransaction([
+			['DELETE FROM project_files WHERE project_id = ?', projectId],
+			['DELETE FROM sessions WHERE space_id = ?', projectId],
+			['DELETE FROM projects WHERE id = ?', projectId]
+		]);
 
-		vscode.window.showInformationMessage(`Project "${projects[0].name}" deleted`);
-		await vscode.commands.executeCommand('tarx.sections.refresh');
+		if (success) {
+			vscode.window.showInformationMessage(`Project "${project.name}" deleted`);
+			await vscode.commands.executeCommand('tarx.sections.refresh');
+		} else {
+			await showError({ message: 'Failed to delete project', severity: 'error' });
+		}
 	} catch (e) {
 		await showError({ message: `Failed to delete project: ${e}`, severity: 'error' });
 	}
@@ -2145,25 +2129,28 @@ export async function deleteProject(projectId: string): Promise<void> {
  * Delete session with confirmation
  */
 export async function deleteSession(sessionId: string): Promise<void> {
-	const sessions = queryDB<any>(`SELECT title FROM sessions WHERE id = '${sessionId}' LIMIT 1;`);
-	if (sessions.length === 0) {
+	const session = queryOne<any>(`SELECT title FROM sessions WHERE id = ? AND deleted_at IS NULL LIMIT 1`, sessionId);
+	if (!session) {
 		await showError(UX_ERRORS.sessionNotFound(sessionId));
 		return;
 	}
 
-	const confirmed = await confirmDelete('conversation', sessions[0].title || 'Untitled');
+	const confirmed = await confirmDelete('conversation', session.title || 'Untitled');
 	if (!confirmed) return;
 
 	try {
-		// Delete from messages (session data) - conversation_turns is for old conversations schema
-		execSync(`sqlite3 "${DB_PATH}"`, {
-			input: `DELETE FROM messages WHERE session_id = '${sessionId}';
-				DELETE FROM sessions WHERE id = '${sessionId}';`,
-			encoding: 'utf8'
-		});
+		// Delete from messages (session data) using parameterized queries
+		const success = executeTransaction([
+			['DELETE FROM messages WHERE session_id = ?', sessionId],
+			['DELETE FROM sessions WHERE id = ?', sessionId]
+		]);
 
-		vscode.window.showInformationMessage('Conversation deleted');
-		await vscode.commands.executeCommand('tarx.sections.refresh');
+		if (success) {
+			vscode.window.showInformationMessage('Conversation deleted');
+			await vscode.commands.executeCommand('tarx.sections.refresh');
+		} else {
+			await showError({ message: 'Failed to delete conversation', severity: 'error' });
+		}
 	} catch (e) {
 		await showError({ message: `Failed to delete conversation: ${e}`, severity: 'error' });
 	}
@@ -2183,11 +2170,7 @@ export async function removeFile(projectId: string, filePath: string): Promise<v
 	if (!confirmed) return;
 
 	try {
-		const escaped = filePath.replace(/'/g, "''");
-		execSync(`sqlite3 "${DB_PATH}"`, {
-			input: `DELETE FROM project_files WHERE project_id = '${projectId}' AND path = '${escaped}';`,
-			encoding: 'utf8'
-		});
+		execute('DELETE FROM project_files WHERE project_id = ? AND path = ?', projectId, filePath);
 
 		vscode.window.showInformationMessage(`Removed ${fileName} from project`);
 		await vscode.commands.executeCommand('tarx.sections.refresh');
@@ -2253,14 +2236,10 @@ export async function inlineRename(
 	if (!newName || newName === currentName) return;
 
 	try {
-		const escaped = newName.replace(/'/g, "''");
 		const table = itemType === 'project' ? 'projects' : 'sessions';
 		const field = itemType === 'project' ? 'name' : 'title';
 
-		execSync(`sqlite3 "${DB_PATH}"`, {
-			input: `UPDATE ${table} SET ${field} = '${escaped}', updated_at = strftime('%s', 'now') WHERE id = '${itemId}';`,
-			encoding: 'utf8'
-		});
+		execute(`UPDATE ${table} SET ${field} = ?, updated_at = strftime('%s', 'now') WHERE id = ?`, newName, itemId);
 
 		vscode.window.showInformationMessage(`Renamed to "${newName}"`);
 		await vscode.commands.executeCommand('tarx.sections.refresh');
@@ -2613,11 +2592,9 @@ export class ProjectSectionsProvider extends TarxTreeProvider<UXTreeItem> {
 	}
 
 	private async getInstructionsItems(): Promise<UXTreeItem[]> {
-		const projects = queryDB<any>(`
-			SELECT instructions FROM projects WHERE id = '${this.activeProjectId}' LIMIT 1;
-		`);
+		const project = queryOne<any>('SELECT instructions FROM projects WHERE id = ? LIMIT 1', this.activeProjectId);
 
-		const instructions = projects[0]?.instructions || '';
+		const instructions = project?.instructions || '';
 		if (!instructions) {
 			return [new UXTreeItem('Click to add instructions', 'action', vscode.TreeItemCollapsibleState.None, {
 				icon: 'add',

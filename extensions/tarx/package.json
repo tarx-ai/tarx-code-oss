@@ -37,6 +37,7 @@
   "enabledApiProposals": [
     "defaultChatParticipant",
     "chatParticipantAdditions",
+    "chatParticipantPrivate",
     "chatProvider"
   ],
   "contributes": {
@@ -86,6 +87,11 @@
         "command": "tarx.openChat",
         "title": "TARX: Open Chat",
         "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "tarx.openDashboard",
+        "title": "TARX: Open Dashboard",
+        "icon": "$(dashboard)"
       },
       {
         "command": "tarx.explainSelection",
@@ -282,12 +288,12 @@
       },
       {
         "command": "tarx.refreshMcpSettings",
-        "title": "TARX: Refresh MCP Servers",
+        "title": "TARX: Refresh Agents",
         "icon": "$(refresh)"
       },
       {
         "command": "tarx.openMcpConfig",
-        "title": "TARX: Open MCP Config",
+        "title": "TARX: Open Agent Config",
         "icon": "$(gear)"
       },
       {
@@ -576,8 +582,8 @@
         {
           "id": "tarx-sidebar",
           "title": "TARX",
-          "icon": "$(comment-discussion)",
-          "order": 10
+          "icon": "$(symbol-misc)",
+          "order": 0
         }
       ]
     },
@@ -593,7 +599,7 @@
           "id": "tarx.projects",
           "name": "Projects",
           "type": "tree",
-          "visibility": "collapsed"
+          "visibility": "visible"
         },
         {
           "id": "tarx.projectSections",
@@ -605,25 +611,25 @@
           "id": "tarx.sidebar",
           "name": "Conversations",
           "type": "tree",
-          "visibility": "collapsed"
+          "visibility": "visible"
         },
         {
           "id": "tarx.claudeSessions",
           "name": "Claude.ai Sessions",
           "type": "tree",
-          "visibility": "collapsed"
+          "visibility": "visible"
         },
         {
           "id": "tarx.contextFiles",
           "name": "Context Files",
           "type": "tree",
-          "visibility": "collapsed"
+          "visibility": "visible"
         },
         {
           "id": "tarx.mcpSettings",
-          "name": "MCP Servers",
+          "name": "Agents",
           "type": "tree",
-          "visibility": "collapsed"
+          "visibility": "visible"
         }
       ]
     },
@@ -642,7 +648,7 @@
       },
       {
         "view": "tarx.mcpSettings",
-        "contents": "No MCP servers configured.\n\n[Open MCP Config](command:tarx.openMcpConfig)\n\nConfigure MCP servers to extend Claude.ai with local tools.",
+        "contents": "No agents configured.\n\n[Open Agent Config](command:tarx.openMcpConfig)\n\nConfigure agents to extend your workflow with local tools.",
         "when": "tarx.noMcpServers"
       },
       {
@@ -677,8 +683,9 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./ && npm run compile:webview",
+    "compile": "tsc -p ./ && npm run compile:webview && npm run inline:webview",
     "compile:webview": "node esbuild.webview.js --production",
+    "inline:webview": "node ../../build/lib/tarx-webview-inline.js",
     "watch": "tsc -watch -p ./",
     "watch:webview": "node esbuild.webview.js --watch",
     "lint": "eslint src --ext ts"

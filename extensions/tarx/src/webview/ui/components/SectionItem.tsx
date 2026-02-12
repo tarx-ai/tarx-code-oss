@@ -26,7 +26,7 @@ export const SectionItem: React.FC<SectionItemProps> = ({
 			title={title || label}
 			onClick={onClick}
 		>
-			<span className={`tarx-section-item-icon codicon codicon-${icon}`} />
+			<i className={`tarx-section-item-icon codicon codicon-${icon}`} />
 			<span className="tarx-section-item-label">{label}</span>
 		</div>
 	);

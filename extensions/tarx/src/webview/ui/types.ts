@@ -164,4 +164,20 @@ export type ExtensionMessage =
 	| { command: 'billingStatusLoaded'; billing: BillingStatus }
 	| { command: 'billingCheckoutUrl'; url: string }
 	| { command: 'billingPortalUrl'; url: string }
-	| { command: 'billingError'; error: string };
+	| { command: 'billingError'; error: string }
+	// HierarchyNav messages
+	| { command: 'setCollapsed'; collapsed: boolean }
+	| { command: 'claudeSessionsLoaded'; sessions: Array<{ id: string; title: string; spaceName?: string }> }
+	| { command: 'contextFilesLoaded'; files: Array<{ id: string; filename: string; path: string }> }
+	| { command: 'agentsLoaded'; agents: Array<{ id: string; name: string; description?: string; enabled?: boolean; toolCount?: number }> }
+	| { command: 'ragSearchResults'; results: Array<{ id: string; filename: string; path: string; snippet: string; score: number }> }
+	// PIN Overlay messages
+	| { command: 'showPINOverlay'; mode: 'create' | 'verify' }
+	| { command: 'hidePINOverlay' }
+	| { command: 'pinCheckComplete' }
+	| { command: 'pinError'; error: string }
+	// Event confirmation messages (for VS Code native event firing)
+	| { command: 'eventFired'; event: string; data?: Record<string, unknown> }
+	| { command: 'eventError'; event: string; error: string }
+	| { command: 'conversationOpened'; conversationId: string }
+	| { command: 'sessionOpened'; sessionId: string };
