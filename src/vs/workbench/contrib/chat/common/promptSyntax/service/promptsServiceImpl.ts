@@ -833,7 +833,7 @@ export class PromptsService extends Disposable implements IPromptsService {
 				totalSkillsFound: number;
 				claudePersonal: number;
 				claudeWorkspace: number;
-				copilotPersonal: number;
+				tarxPersonal: number;
 				githubWorkspace: number;
 				configPersonal: number;
 				configWorkspace: number;
@@ -850,7 +850,7 @@ export class PromptsService extends Disposable implements IPromptsService {
 				totalSkillsFound: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; isMeasurement: true; comment: 'Total number of agent skills found.' };
 				claudePersonal: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; isMeasurement: true; comment: 'Number of Claude personal skills.' };
 				claudeWorkspace: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; isMeasurement: true; comment: 'Number of Claude workspace skills.' };
-				copilotPersonal: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; isMeasurement: true; comment: 'Number of Copilot personal skills.' };
+				tarxPersonal: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; isMeasurement: true; comment: 'Number of TARX personal skills.' };
 				githubWorkspace: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; isMeasurement: true; comment: 'Number of GitHub workspace skills.' };
 				configPersonal: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; isMeasurement: true; comment: 'Number of custom configured personal skills.' };
 				configWorkspace: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; isMeasurement: true; comment: 'Number of custom configured workspace skills.' };
@@ -869,7 +869,7 @@ export class PromptsService extends Disposable implements IPromptsService {
 				totalSkillsFound: result.length,
 				claudePersonal: skillTypes.get(PromptFileSource.ClaudePersonal) ?? 0,
 				claudeWorkspace: skillTypes.get(PromptFileSource.ClaudeWorkspace) ?? 0,
-				copilotPersonal: skillTypes.get(PromptFileSource.CopilotPersonal) ?? 0,
+				tarxPersonal: skillTypes.get(PromptFileSource.TarxPersonal) ?? 0,
 				githubWorkspace: skillTypes.get(PromptFileSource.GitHubWorkspace) ?? 0,
 				configWorkspace: skillTypes.get(PromptFileSource.ConfigWorkspace) ?? 0,
 				configPersonal: skillTypes.get(PromptFileSource.ConfigPersonal) ?? 0,
