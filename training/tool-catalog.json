@@ -1,0 +1,723 @@
+{
+  "version": "1.0.0",
+  "generated": "2026-02-12",
+  "tarx-core": {
+    "tool_count": 21,
+    "categories": {
+      "core": 3,
+      "spaces": 3,
+      "sessions": 4,
+      "memory": 6,
+      "files": 3,
+      "smart": 2
+    },
+    "tools": [
+      {
+        "name": "tarx_health",
+        "description": "Check health status of all TARX services (inference, embeddings, mesh)",
+        "params": [],
+        "returns": "JSON with port status: inference (11435), embeddings (11437), mesh (11436)",
+        "example_use": "User asks 'is the system working?' or 'check health' -> call tarx_health"
+      },
+      {
+        "name": "tarx_chat",
+        "description": "Send a prompt to TARX - routes to Local (Qwen) or Network (Claude) based on intent",
+        "params": [
+          {"name": "prompt", "type": "string", "required": true, "description": "The prompt to send"},
+          {"name": "maxTokens", "type": "number", "required": false, "description": "Maximum tokens in response (default: 300)"},
+          {"name": "stream", "type": "boolean", "required": false, "description": "Whether to stream response (default: false)"},
+          {"name": "forceRoute", "type": "enum", "required": false, "values": ["local", "network"], "description": "Force a specific route"},
+          {"name": "spaceId", "type": "string", "required": false, "description": "Space ID for RAG context lookup"},
+          {"name": "useRAG", "type": "boolean", "required": false, "description": "Enable/disable RAG injection (default: true)"}
+        ],
+        "returns": "JSON with response, latency, route decision, model used, RAG chunks used",
+        "example_use": "Send a chat message with context -> call tarx_chat"
+      },
+      {
+        "name": "tarx_stress_test",
+        "description": "Run multiple chat requests to test TARX stability and performance",
+        "params": [
+          {"name": "count", "type": "number", "required": true, "description": "Number of requests (1-50)"},
+          {"name": "prompt", "type": "string", "required": false, "description": "Prompt to use (default: 'Hello, respond briefly')"},
+          {"name": "maxTokens", "type": "number", "required": false, "description": "Max tokens per request (default: 50)"}
+        ],
+        "returns": "Summary stats: success rate, avg/min/max latency",
+        "example_use": "User asks 'test performance' or 'stress test' -> call tarx_stress_test"
+      },
+      {
+        "name": "tarx_list_spaces",
+        "description": "List all spaces in TARX app",
+        "params": [],
+        "returns": "Array of spaces with id, name, description, emoji",
+        "example_use": "User asks 'what projects do I have?' or 'list spaces' -> call tarx_list_spaces"
+      },
+      {
+        "name": "tarx_create_space",
+        "description": "Create a new space in TARX app",
+        "params": [
+          {"name": "name", "type": "string", "required": true, "description": "Name of the space"},
+          {"name": "description", "type": "string", "required": false, "description": "Description of the space"},
+          {"name": "emoji", "type": "string", "required": false, "description": "Emoji icon for the space"}
+        ],
+        "returns": "Created space object with id",
+        "example_use": "User asks 'create a new project for X' -> call tarx_create_space"
+      },
+      {
+        "name": "tarx_get_space",
+        "description": "Get details of a specific space",
+        "params": [
+          {"name": "spaceId", "type": "string", "required": true, "description": "ID of the space to get"}
+        ],
+        "returns": "Space object with full details",
+        "example_use": "User asks 'tell me about project X' -> call tarx_get_space"
+      },
+      {
+        "name": "tarx_list_sessions",
+        "description": "List all sessions/chats in a space",
+        "params": [
+          {"name": "spaceId", "type": "string", "required": true, "description": "ID of the space"}
+        ],
+        "returns": "Array of sessions with id, title, message_count, updated_at",
+        "example_use": "User asks 'what conversations are in this project?' -> call tarx_list_sessions"
+      },
+      {
+        "name": "tarx_create_session",
+        "description": "Create a new session/chat in a space",
+        "params": [
+          {"name": "spaceId", "type": "string", "required": true, "description": "ID of the space"},
+          {"name": "title", "type": "string", "required": false, "description": "Title for the session"}
+        ],
+        "returns": "Created session ID",
+        "example_use": "User asks 'start a new conversation in this project' -> call tarx_create_session"
+      },
+      {
+        "name": "tarx_get_chat_history",
+        "description": "Get full conversation history for a session",
+        "params": [
+          {"name": "sessionId", "type": "string", "required": true, "description": "ID of the session"},
+          {"name": "limit", "type": "number", "required": false, "description": "Max number of messages to return"}
+        ],
+        "returns": "Array of messages with role, content, created_at",
+        "example_use": "User asks 'what did we discuss?' -> call tarx_get_chat_history"
+      },
+      {
+        "name": "tarx_send_message",
+        "description": "Send message to a specific session, get AI response, and store both in database",
+        "params": [
+          {"name": "sessionId", "type": "string", "required": true, "description": "ID of the session"},
+          {"name": "message", "type": "string", "required": true, "description": "The message to send"},
+          {"name": "maxTokens", "type": "number", "required": false, "description": "Maximum tokens (default: 300)"}
+        ],
+        "returns": "AI response, message IDs, latency, tokens used",
+        "example_use": "Continue conversation in a specific session -> call tarx_send_message"
+      },
+      {
+        "name": "tarx_memory_store",
+        "description": "Store information in TARX memory for future recall. Use this to save important context, decisions, preferences, or facts you want to remember.",
+        "params": [
+          {"name": "content", "type": "string", "required": true, "description": "The information to remember"},
+          {"name": "importance", "type": "number", "required": false, "description": "Importance score 0-1 (default: 0.5)"}
+        ],
+        "returns": "Memory ID and confirmation",
+        "example_use": "User says 'remember this' or 'save for later' -> call tarx_memory_store"
+      },
+      {
+        "name": "tarx_memory_search",
+        "description": "Search TARX memory for relevant information. Returns memories that match your query.",
+        "params": [
+          {"name": "query", "type": "string", "required": true, "description": "What to search for"},
+          {"name": "limit", "type": "number", "required": false, "description": "Maximum results (default: 10)"}
+        ],
+        "returns": "Array of matching memories with id, content, importance, accessCount",
+        "example_use": "User asks 'what do you know about X?' -> call tarx_memory_search"
+      },
+      {
+        "name": "tarx_memory_recall",
+        "description": "Recall relevant context from TARX memory based on the current topic. Use this at the start of conversations to load relevant history.",
+        "params": [
+          {"name": "topic", "type": "string", "required": true, "description": "The current topic to recall memories for"},
+          {"name": "limit", "type": "number", "required": false, "description": "Maximum memories to recall (default: 5)"}
+        ],
+        "returns": "Formatted context with relevant memories and recent conversation",
+        "example_use": "Starting work on a topic -> call tarx_memory_recall to load context"
+      },
+      {
+        "name": "tarx_memory_list",
+        "description": "List all stored memories in TARX, optionally filtered by recency",
+        "params": [
+          {"name": "limit", "type": "number", "required": false, "description": "Maximum memories to list (default: 20)"}
+        ],
+        "returns": "Array of all memories",
+        "example_use": "User asks 'what have you remembered?' -> call tarx_memory_list"
+      },
+      {
+        "name": "tarx_memory_delete",
+        "description": "Remove a specific memory from TARX storage",
+        "params": [
+          {"name": "memoryId", "type": "string", "required": true, "description": "The ID of the memory to forget"}
+        ],
+        "returns": "Success/failure confirmation",
+        "example_use": "User asks 'forget that' or 'delete memory X' -> call tarx_memory_delete"
+      },
+      {
+        "name": "tarx_memory_thread_to_session",
+        "description": "Thread a message to a specific TARX session. Use this to add messages to an existing conversation that will be persisted.",
+        "params": [
+          {"name": "session_id", "type": "string", "required": true, "description": "Session ID to thread to"},
+          {"name": "role", "type": "enum", "required": true, "values": ["user", "assistant"], "description": "Who sent the message"},
+          {"name": "content", "type": "string", "required": true, "description": "Message content"},
+          {"name": "metadata", "type": "object", "required": false, "description": "Additional metadata"}
+        ],
+        "returns": "Message ID and threading confirmation",
+        "example_use": "Sync external conversation to TARX session -> call tarx_memory_thread_to_session"
+      },
+      {
+        "name": "tarx_list_files",
+        "description": "List files, optionally filtered by space",
+        "params": [
+          {"name": "spaceId", "type": "string", "required": false, "description": "Optional space ID to filter files"}
+        ],
+        "returns": "Array of files with id, filename, size_bytes",
+        "example_use": "User asks 'what files are in this project?' -> call tarx_list_files"
+      },
+      {
+        "name": "tarx_upload_file",
+        "description": "Upload a file to a space and automatically generate RAG embeddings",
+        "params": [
+          {"name": "spaceId", "type": "string", "required": true, "description": "ID of the space to upload to"},
+          {"name": "filename", "type": "string", "required": true, "description": "Name of the file"},
+          {"name": "content", "type": "string", "required": true, "description": "Content of the file"},
+          {"name": "mimeType", "type": "string", "required": false, "description": "MIME type (default: text/plain)"},
+          {"name": "generateEmbeddings", "type": "boolean", "required": false, "description": "Auto-generate RAG embeddings (default: true)"}
+        ],
+        "returns": "File ID and embedding generation status",
+        "example_use": "User says 'add this document' -> call tarx_upload_file"
+      },
+      {
+        "name": "tarx_get_file",
+        "description": "Get the content of a file by ID",
+        "params": [
+          {"name": "fileId", "type": "string", "required": true, "description": "ID of the file to retrieve"}
+        ],
+        "returns": "File content and metadata",
+        "example_use": "User asks 'show me file X' -> call tarx_get_file"
+      },
+      {
+        "name": "tarx_system_brief",
+        "description": "Get a comprehensive system status brief in a single call: inference, embeddings, mesh, database stats, memory stats, and any active errors",
+        "params": [],
+        "returns": "Complete system status with all services, stats, and errors",
+        "example_use": "User asks 'give me a full status' or 'system overview' -> call tarx_system_brief"
+      },
+      {
+        "name": "tarx_project_context",
+        "description": "Get full project context for a space in a single call: space details, sessions, recent messages, files, and knowledge stats",
+        "params": [
+          {"name": "spaceId", "type": "string", "required": true, "description": "ID of the space to get context for"}
+        ],
+        "returns": "Complete project context including sessions, files, recent messages, embedding count",
+        "example_use": "User asks 'what's in this project?' -> call tarx_project_context"
+      }
+    ]
+  },
+  "tarx-ops": {
+    "tool_count": 50,
+    "categories": {
+      "sentry": 7,
+      "admin_status": 2,
+      "file_locks": 3,
+      "claude_code": 6,
+      "tether": 3,
+      "console": 2,
+      "orch_session": 6,
+      "orch_files": 2,
+      "orch_docs": 3,
+      "orch_tasks": 3,
+      "orch_milestones": 3,
+      "orch_context": 4,
+      "orch_feedback": 2,
+      "orch_status": 1,
+      "daemon": 3
+    },
+    "tools": [
+      {
+        "name": "tarx_admin_sentry_projects",
+        "description": "List all Sentry projects in the organization",
+        "params": [],
+        "returns": "Array of projects with slug, name, platform",
+        "example_use": "User asks 'what Sentry projects do we have?' -> call tarx_admin_sentry_projects"
+      },
+      {
+        "name": "tarx_admin_sentry_events",
+        "description": "Get recent Sentry events. Use project='node' for extension errors, 'all' for all projects.",
+        "params": [
+          {"name": "project", "type": "string", "required": false, "description": "Project: 'node', 'workbench', 'mesh', or 'all' (default: node)"},
+          {"name": "minutes", "type": "number", "required": false, "description": "Look back N minutes (default: 60)"}
+        ],
+        "returns": "Array of recent events with titles, levels, timestamps",
+        "example_use": "User asks 'any recent errors?' -> call tarx_admin_sentry_events"
+      },
+      {
+        "name": "tarx_admin_sentry_issues",
+        "description": "Get current Sentry issues. Use project='all' for all projects.",
+        "params": [
+          {"name": "project", "type": "string", "required": false, "description": "Project slug or 'all' (default: all)"},
+          {"name": "status", "type": "enum", "required": false, "values": ["unresolved", "resolved", "ignored"], "description": "Issue status filter (default: unresolved)"}
+        ],
+        "returns": "Array of issues with count, severity, first/last seen",
+        "example_use": "User asks 'what bugs are open?' -> call tarx_admin_sentry_issues"
+      },
+      {
+        "name": "tarx_admin_sentry_search",
+        "description": "Search Sentry events with query",
+        "params": [
+          {"name": "project", "type": "string", "required": true, "description": "Project slug"},
+          {"name": "query", "type": "string", "required": true, "description": "Search query"}
+        ],
+        "returns": "Matching events",
+        "example_use": "User asks 'find errors about X' -> call tarx_admin_sentry_search"
+      },
+      {
+        "name": "tarx_admin_sentry_event_details",
+        "description": "Get full event details including breadcrumbs",
+        "params": [
+          {"name": "project", "type": "string", "required": true, "description": "Project slug"},
+          {"name": "eventId", "type": "string", "required": true, "description": "Event ID"}
+        ],
+        "returns": "Full event with breadcrumbs, user actions, stack trace",
+        "example_use": "User asks 'show me details of event X' -> call tarx_admin_sentry_event_details"
+      },
+      {
+        "name": "tarx_admin_sentry_issue_events",
+        "description": "Get events for a specific issue",
+        "params": [
+          {"name": "issueId", "type": "string", "required": true, "description": "Issue ID"}
+        ],
+        "returns": "Array of events for that issue",
+        "example_use": "User asks 'show me occurrences of issue X' -> call tarx_admin_sentry_issue_events"
+      },
+      {
+        "name": "tarx_admin_sentry_trace",
+        "description": "Reconstruct user session trace leading to an event",
+        "params": [
+          {"name": "project", "type": "string", "required": true, "description": "Project slug"},
+          {"name": "eventId", "type": "string", "required": true, "description": "Event ID"}
+        ],
+        "returns": "Session trace with user actions, breadcrumbs, timeline",
+        "example_use": "User asks 'what led to this crash?' -> call tarx_admin_sentry_trace"
+      },
+      {
+        "name": "tarx_admin_status",
+        "description": "Get admin MCP server status and configuration",
+        "params": [],
+        "returns": "Server status, config, database stats",
+        "example_use": "User asks 'is the admin server running?' -> call tarx_admin_status"
+      },
+      {
+        "name": "tarx_admin_performance_metrics",
+        "description": "Get performance metrics for session orchestration",
+        "params": [],
+        "returns": "Metrics: task completion times, session counts, error rates",
+        "example_use": "User asks 'how is orchestration performing?' -> call tarx_admin_performance_metrics"
+      },
+      {
+        "name": "tarx_admin_file_lock",
+        "description": "Acquire a lock on a file to prevent conflicts between sessions",
+        "params": [
+          {"name": "sessionId", "type": "string", "required": true, "description": "Session acquiring the lock"},
+          {"name": "filePath", "type": "string", "required": true, "description": "Path to lock"},
+          {"name": "lockType", "type": "enum", "required": false, "values": ["read", "write"], "description": "Lock type (default: write)"}
+        ],
+        "returns": "Lock acquired or conflict info",
+        "example_use": "Before editing a file that another session might touch -> call tarx_admin_file_lock"
+      },
+      {
+        "name": "tarx_admin_file_unlock",
+        "description": "Release a lock on a file",
+        "params": [
+          {"name": "sessionId", "type": "string", "required": true, "description": "Session releasing the lock"},
+          {"name": "filePath", "type": "string", "required": true, "description": "Path to unlock"}
+        ],
+        "returns": "Confirmation",
+        "example_use": "Done editing a locked file -> call tarx_admin_file_unlock"
+      },
+      {
+        "name": "tarx_admin_file_conflicts",
+        "description": "Get all current file locks and identify potential conflicts",
+        "params": [],
+        "returns": "All active locks and potential conflicts",
+        "example_use": "User asks 'are there any file conflicts?' -> call tarx_admin_file_conflicts"
+      },
+      {
+        "name": "tarx_admin_start_code_session",
+        "description": "Start a Claude Code CLI session with a prompt. The session runs in the background.",
+        "params": [
+          {"name": "prompt", "type": "string", "required": true, "description": "The prompt for Claude Code"},
+          {"name": "workspace", "type": "string", "required": false, "description": "Working directory"},
+          {"name": "model", "type": "string", "required": false, "description": "Model (default: claude-sonnet-4-20250514)"},
+          {"name": "allowedTools", "type": "array", "required": false, "description": "Allowed tools"},
+          {"name": "dangerouslySkipPermissions", "type": "boolean", "required": false, "description": "Skip permission checks"}
+        ],
+        "returns": "Session ID and status",
+        "example_use": "User wants to run Claude Code on a task -> call tarx_admin_start_code_session"
+      },
+      {
+        "name": "tarx_admin_list_code_sessions",
+        "description": "List all Claude Code sessions (running and completed)",
+        "params": [],
+        "returns": "Array of sessions with id, status, prompt, timestamps",
+        "example_use": "User asks 'what Claude Code sessions are running?' -> call tarx_admin_list_code_sessions"
+      },
+      {
+        "name": "tarx_admin_get_session_output",
+        "description": "Get the output from a Claude Code session",
+        "params": [
+          {"name": "sessionId", "type": "string", "required": true, "description": "Session ID"},
+          {"name": "tail", "type": "number", "required": false, "description": "Last N lines only"}
+        ],
+        "returns": "Session output lines",
+        "example_use": "User asks 'what did Claude Code output?' -> call tarx_admin_get_session_output"
+      },
+      {
+        "name": "tarx_admin_send_to_session",
+        "description": "Send a followup message to a running Claude Code session via stdin",
+        "params": [
+          {"name": "sessionId", "type": "string", "required": true, "description": "Session ID"},
+          {"name": "message", "type": "string", "required": true, "description": "Message to send"}
+        ],
+        "returns": "Confirmation",
+        "example_use": "Send follow-up to running Claude Code -> call tarx_admin_send_to_session"
+      },
+      {
+        "name": "tarx_admin_stop_code_session",
+        "description": "Stop a running Claude Code session",
+        "params": [
+          {"name": "sessionId", "type": "string", "required": true, "description": "Session ID"}
+        ],
+        "returns": "Confirmation",
+        "example_use": "User asks 'stop that Claude Code session' -> call tarx_admin_stop_code_session"
+      },
+      {
+        "name": "tarx_admin_clear_code_sessions",
+        "description": "Clear completed/errored sessions from memory",
+        "params": [],
+        "returns": "Count of cleared sessions",
+        "example_use": "User asks 'clean up old sessions' -> call tarx_admin_clear_code_sessions"
+      },
+      {
+        "name": "tarx_dispatch_work",
+        "description": "Start a Claude Code session with TARX tethering. Creates a TARX session, orchestration entry, and auto-syncs output on completion.",
+        "params": [
+          {"name": "prompt", "type": "string", "required": true, "description": "The work prompt"},
+          {"name": "workspace", "type": "string", "required": false, "description": "Working directory"},
+          {"name": "model", "type": "string", "required": false, "description": "Model to use"},
+          {"name": "spaceId", "type": "string", "required": false, "description": "Space ID for syncing"},
+          {"name": "sessionTitle", "type": "string", "required": false, "description": "Title for TARX session"},
+          {"name": "dangerouslySkipPermissions", "type": "boolean", "required": false, "description": "Skip permissions"}
+        ],
+        "returns": "CC session ID, TARX session ID, status",
+        "example_use": "User wants tracked work that persists -> call tarx_dispatch_work"
+      },
+      {
+        "name": "tarx_check_work",
+        "description": "Check status of tethered Claude Code work. If ccSessionId provided, returns detailed status.",
+        "params": [
+          {"name": "ccSessionId", "type": "string", "required": false, "description": "CC Session ID"}
+        ],
+        "returns": "Status and output if completed",
+        "example_use": "User asks 'how is that work going?' -> call tarx_check_work"
+      },
+      {
+        "name": "tarx_work_history",
+        "description": "Get persistent history of tethered Claude Code sessions. Survives restarts.",
+        "params": [
+          {"name": "limit", "type": "number", "required": false, "description": "Max results (default: 20)"}
+        ],
+        "returns": "Array of work history entries",
+        "example_use": "User asks 'what work have I dispatched?' -> call tarx_work_history"
+      },
+      {
+        "name": "tarx_admin_read_console",
+        "description": "Read Workbench extension console logs. Returns recent [TARX] prefixed log lines.",
+        "params": [
+          {"name": "lines", "type": "number", "required": false, "description": "Number of lines (default: 100)"},
+          {"name": "filter", "type": "string", "required": false, "description": "Filter pattern"}
+        ],
+        "returns": "Array of log lines",
+        "example_use": "User asks 'show me recent logs' -> call tarx_admin_read_console"
+      },
+      {
+        "name": "tarx_admin_tail_console",
+        "description": "Get TARX console logs from the last N seconds. Useful for 'what just happened' debugging.",
+        "params": [
+          {"name": "seconds", "type": "number", "required": false, "description": "Seconds to look back (default: 60)"}
+        ],
+        "returns": "Recent log lines",
+        "example_use": "User asks 'what just happened?' -> call tarx_admin_tail_console"
+      },
+      {
+        "name": "tarx_orchestrate_register_session",
+        "description": "Register a Claude Code session for orchestration",
+        "params": [
+          {"name": "sessionId", "type": "string", "required": true, "description": "Unique session ID"},
+          {"name": "workspacePath", "type": "string", "required": true, "description": "Workspace path"},
+          {"name": "model", "type": "string", "required": false, "description": "Model in use"},
+          {"name": "capabilities", "type": "array", "required": false, "description": "Session capabilities"}
+        ],
+        "returns": "Registration confirmation",
+        "example_use": "Claude Code session starting up -> call tarx_orchestrate_register_session"
+      },
+      {
+        "name": "tarx_orchestrate_session_state",
+        "description": "Get current state of a session including current file, task, and thinking notes",
+        "params": [
+          {"name": "sessionId", "type": "string", "required": true, "description": "Session ID"}
+        ],
+        "returns": "Session state with current file, task, notes",
+        "example_use": "Check what a session is working on -> call tarx_orchestrate_session_state"
+      },
+      {
+        "name": "tarx_orchestrate_report_activity",
+        "description": "Report session activity (called by VS Code extension)",
+        "params": [
+          {"name": "sessionId", "type": "string", "required": true, "description": "Session ID"},
+          {"name": "activityType", "type": "string", "required": true, "description": "Activity type"},
+          {"name": "details", "type": "object", "required": false, "description": "Activity details"}
+        ],
+        "returns": "Confirmation",
+        "example_use": "Report that session did something -> call tarx_orchestrate_report_activity"
+      },
+      {
+        "name": "tarx_orchestrate_session_activity",
+        "description": "Get recent activity log for a session",
+        "params": [
+          {"name": "sessionId", "type": "string", "required": true, "description": "Session ID"},
+          {"name": "limit", "type": "number", "required": false, "description": "Max entries (default: 50)"}
+        ],
+        "returns": "Activity log entries",
+        "example_use": "User asks 'what has this session been doing?' -> call tarx_orchestrate_session_activity"
+      },
+      {
+        "name": "tarx_orchestrate_list_sessions",
+        "description": "List all orchestrated sessions",
+        "params": [],
+        "returns": "Array of orchestrated sessions",
+        "example_use": "User asks 'what sessions are being orchestrated?' -> call tarx_orchestrate_list_sessions"
+      },
+      {
+        "name": "tarx_orchestrate_session_pause",
+        "description": "Pause or resume a session",
+        "params": [
+          {"name": "sessionId", "type": "string", "required": true, "description": "Session ID"},
+          {"name": "paused", "type": "boolean", "required": true, "description": "True to pause, false to resume"}
+        ],
+        "returns": "New pause state",
+        "example_use": "User asks 'pause that session' -> call tarx_orchestrate_session_pause"
+      },
+      {
+        "name": "tarx_orchestrate_read_file",
+        "description": "Read a file from session workspace",
+        "params": [
+          {"name": "sessionId", "type": "string", "required": true, "description": "Session ID"},
+          {"name": "filePath", "type": "string", "required": true, "description": "File path (relative or absolute)"}
+        ],
+        "returns": "File content",
+        "example_use": "Read file in session context -> call tarx_orchestrate_read_file"
+      },
+      {
+        "name": "tarx_orchestrate_update_file",
+        "description": "Update a file in session workspace",
+        "params": [
+          {"name": "sessionId", "type": "string", "required": true, "description": "Session ID"},
+          {"name": "filePath", "type": "string", "required": true, "description": "File path"},
+          {"name": "content", "type": "string", "required": true, "description": "New content"},
+          {"name": "createBackup", "type": "boolean", "required": false, "description": "Create backup (default: true)"}
+        ],
+        "returns": "Update confirmation",
+        "example_use": "Update file in session context -> call tarx_orchestrate_update_file"
+      },
+      {
+        "name": "tarx_orchestrate_create_doc",
+        "description": "Create a documentation file",
+        "params": [
+          {"name": "sessionId", "type": "string", "required": true, "description": "Session ID"},
+          {"name": "docType", "type": "string", "required": true, "description": "Document type"},
+          {"name": "title", "type": "string", "required": true, "description": "Document title"},
+          {"name": "content", "type": "string", "required": true, "description": "Document content"}
+        ],
+        "returns": "Doc ID and path",
+        "example_use": "Create documentation -> call tarx_orchestrate_create_doc"
+      },
+      {
+        "name": "tarx_orchestrate_list_docs",
+        "description": "List all managed documentation files",
+        "params": [
+          {"name": "sessionId", "type": "string", "required": false, "description": "Filter by session"}
+        ],
+        "returns": "Array of docs",
+        "example_use": "User asks 'what docs exist?' -> call tarx_orchestrate_list_docs"
+      },
+      {
+        "name": "tarx_orchestrate_doc_history",
+        "description": "Get update history for a documentation file",
+        "params": [
+          {"name": "docId", "type": "string", "required": true, "description": "Document ID"}
+        ],
+        "returns": "Version history",
+        "example_use": "User asks 'what changes were made to this doc?' -> call tarx_orchestrate_doc_history"
+      },
+      {
+        "name": "tarx_orchestrate_assign_task",
+        "description": "Assign a task to a session",
+        "params": [
+          {"name": "sessionId", "type": "string", "required": true, "description": "Session to assign to"},
+          {"name": "title", "type": "string", "required": true, "description": "Task title"},
+          {"name": "description", "type": "string", "required": true, "description": "Task description"},
+          {"name": "priority", "type": "enum", "required": false, "values": ["critical", "high", "medium", "low"], "description": "Priority"},
+          {"name": "milestoneId", "type": "string", "required": false, "description": "Link to milestone"}
+        ],
+        "returns": "Task ID",
+        "example_use": "Assign work to a session -> call tarx_orchestrate_assign_task"
+      },
+      {
+        "name": "tarx_orchestrate_task_update",
+        "description": "Update task status",
+        "params": [
+          {"name": "taskId", "type": "string", "required": true, "description": "Task ID"},
+          {"name": "status", "type": "enum", "required": false, "values": ["pending", "in_progress", "completed", "blocked", "cancelled"], "description": "New status"},
+          {"name": "progress", "type": "number", "required": false, "description": "Progress 0-100"},
+          {"name": "notes", "type": "string", "required": false, "description": "Update notes"}
+        ],
+        "returns": "Updated task",
+        "example_use": "Mark task complete -> call tarx_orchestrate_task_update"
+      },
+      {
+        "name": "tarx_orchestrate_task_list",
+        "description": "List tasks with optional filters",
+        "params": [
+          {"name": "sessionId", "type": "string", "required": false, "description": "Filter by session"},
+          {"name": "status", "type": "string", "required": false, "description": "Filter by status"},
+          {"name": "milestoneId", "type": "string", "required": false, "description": "Filter by milestone"}
+        ],
+        "returns": "Array of tasks",
+        "example_use": "User asks 'what tasks are pending?' -> call tarx_orchestrate_task_list"
+      },
+      {
+        "name": "tarx_orchestrate_milestone_create",
+        "description": "Create a milestone for tracking progress",
+        "params": [
+          {"name": "title", "type": "string", "required": true, "description": "Milestone title"},
+          {"name": "description", "type": "string", "required": false, "description": "Description"},
+          {"name": "dueDate", "type": "string", "required": false, "description": "Due date (ISO 8601)"}
+        ],
+        "returns": "Milestone ID",
+        "example_use": "Create a milestone for a release -> call tarx_orchestrate_milestone_create"
+      },
+      {
+        "name": "tarx_orchestrate_milestone_update",
+        "description": "Update milestone progress",
+        "params": [
+          {"name": "milestoneId", "type": "string", "required": true, "description": "Milestone ID"},
+          {"name": "status", "type": "string", "required": false, "description": "New status"},
+          {"name": "progress", "type": "number", "required": false, "description": "Progress 0-100"}
+        ],
+        "returns": "Updated milestone",
+        "example_use": "Update milestone progress -> call tarx_orchestrate_milestone_update"
+      },
+      {
+        "name": "tarx_orchestrate_milestone_list",
+        "description": "List all milestones",
+        "params": [],
+        "returns": "Array of milestones",
+        "example_use": "User asks 'what milestones exist?' -> call tarx_orchestrate_milestone_list"
+      },
+      {
+        "name": "tarx_orchestrate_push_context",
+        "description": "Push context update to a session",
+        "params": [
+          {"name": "sessionId", "type": "string", "required": true, "description": "Target session"},
+          {"name": "contextType", "type": "string", "required": true, "description": "Type of context"},
+          {"name": "content", "type": "string", "required": true, "description": "Context content"}
+        ],
+        "returns": "Update ID",
+        "example_use": "Push info to another session -> call tarx_orchestrate_push_context"
+      },
+      {
+        "name": "tarx_orchestrate_broadcast",
+        "description": "Broadcast message to all active sessions",
+        "params": [
+          {"name": "messageType", "type": "string", "required": true, "description": "Type of message"},
+          {"name": "content", "type": "string", "required": true, "description": "Message content"}
+        ],
+        "returns": "Broadcast confirmation",
+        "example_use": "Announce something to all sessions -> call tarx_orchestrate_broadcast"
+      },
+      {
+        "name": "tarx_orchestrate_get_updates",
+        "description": "Get pending context updates for a session",
+        "params": [
+          {"name": "sessionId", "type": "string", "required": true, "description": "Session ID"}
+        ],
+        "returns": "Array of pending updates",
+        "example_use": "Check for updates from other sessions -> call tarx_orchestrate_get_updates"
+      },
+      {
+        "name": "tarx_orchestrate_mark_delivered",
+        "description": "Mark a context update as delivered",
+        "params": [
+          {"name": "updateId", "type": "string", "required": true, "description": "Update ID"}
+        ],
+        "returns": "Confirmation",
+        "example_use": "Acknowledge receiving an update -> call tarx_orchestrate_mark_delivered"
+      },
+      {
+        "name": "tarx_orchestrate_request_feedback",
+        "description": "Request user feedback on a topic",
+        "params": [
+          {"name": "sessionId", "type": "string", "required": true, "description": "Requesting session"},
+          {"name": "topic", "type": "string", "required": true, "description": "Feedback topic"},
+          {"name": "question", "type": "string", "required": true, "description": "Question to ask"}
+        ],
+        "returns": "Feedback request ID",
+        "example_use": "Ask user for input on a decision -> call tarx_orchestrate_request_feedback"
+      },
+      {
+        "name": "tarx_orchestrate_list_feedback_requests",
+        "description": "List all feedback requests",
+        "params": [
+          {"name": "status", "type": "string", "required": false, "description": "Filter by status"}
+        ],
+        "returns": "Array of feedback requests",
+        "example_use": "Check what feedback is pending -> call tarx_orchestrate_list_feedback_requests"
+      },
+      {
+        "name": "tarx_orchestrate_status_report",
+        "description": "Generate comprehensive orchestration status report",
+        "params": [],
+        "returns": "Full status: sessions, tasks, milestones, activity",
+        "example_use": "User asks 'give me an orchestration overview' -> call tarx_orchestrate_status_report"
+      },
+      {
+        "name": "tarx_daemon_start",
+        "description": "Start the autonomous daemon. Watches orch_tasks for pending items, spawns Claude Code sessions, updates status. Safety: max 2 concurrent, 5min timeout, 3 retries.",
+        "params": [],
+        "returns": "Daemon start confirmation",
+        "example_use": "User asks 'start the daemon' -> call tarx_daemon_start"
+      },
+      {
+        "name": "tarx_daemon_stop",
+        "description": "Stop the autonomous daemon. Active sessions are terminated.",
+        "params": [],
+        "returns": "Daemon stop confirmation",
+        "example_use": "User asks 'stop the daemon' -> call tarx_daemon_stop"
+      },
+      {
+        "name": "tarx_daemon_status",
+        "description": "Get daemon status: running state, task stats, active sessions, safety counters.",
+        "params": [],
+        "returns": "Daemon status with all stats",
+        "example_use": "User asks 'is the daemon running?' -> call tarx_daemon_status"
+      }
+    ]
+  }
+}
