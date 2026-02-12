@@ -8,13 +8,16 @@ import { statusIcon, Symbols, TarxIcons } from './icons';
 
 let llamaServer: ChildProcess | undefined;
 let embeddingServer: ChildProcess | undefined;
+let embeddingHealthMonitor: NodeJS.Timeout | undefined;
 let outputChannel: vscode.OutputChannel;
 let statusBarItem: vscode.StatusBarItem;
 let embeddingStatusItem: vscode.StatusBarItem;
 let meshStatusItem: vscode.StatusBarItem;
 let isMeshEnabled = false;
+let extensionContext: vscode.ExtensionContext | undefined;
 
 export async function activate(context: vscode.ExtensionContext) {
+  extensionContext = context;
   outputChannel = vscode.window.createOutputChannel('TARX LOCAL');
   outputChannel.appendLine('TARX LOCAL: Activating...');
 
@@ -155,6 +158,8 @@ export async function activate(context: vscode.ExtensionContext) {
       // Brief delay to let inference server finish GPU initialization
       await new Promise(r => setTimeout(r, 2000));
       await startEmbeddingServer(context, embeddingConfig.get('port', 11437));
+      // Start health monitoring for auto-restart on crash
+      startEmbeddingHealthMonitor(embeddingConfig.get('port', 11437));
     } else {
       embeddingStatusItem.text = `${statusIcon('warning')} RAG: Disabled`;
       embeddingStatusItem.tooltip = 'TARX Embedding Server - Disabled by config';
@@ -204,6 +209,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // 9. Cleanup on deactivate
     context.subscriptions.push({
       dispose: () => {
+        stopEmbeddingHealthMonitor();
         if (llamaServer) {
           llamaServer.kill('SIGTERM');
           llamaServer = undefined;
@@ -226,6 +232,7 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
+  stopEmbeddingHealthMonitor();
   if (llamaServer) {
     llamaServer.kill('SIGTERM');
     llamaServer = undefined;
@@ -614,6 +621,56 @@ async function restartEmbeddingServer(context: vscode.ExtensionContext) {
 
   const port = vscode.workspace.getConfiguration('tarx.local.embeddingServer').get('port', 11437);
   await startEmbeddingServer(context, port);
+}
+
+// ============================================================================
+// EMBEDDING SERVER HEALTH MONITOR (auto-restart on crash)
+// ============================================================================
+
+function startEmbeddingHealthMonitor(port: number) {
+  // Clear any existing monitor
+  if (embeddingHealthMonitor) {
+    clearInterval(embeddingHealthMonitor);
+  }
+
+  outputChannel.appendLine('TARX EMBEDDING: Starting health monitor (30s interval)');
+
+  embeddingHealthMonitor = setInterval(async () => {
+    try {
+      const res = await fetch(`http://localhost:${port}/health`, { signal: AbortSignal.timeout(5000) });
+      if (!res.ok) {
+        throw new Error(`Health check returned ${res.status}`);
+      }
+    } catch (err: any) {
+      outputChannel.appendLine(`TARX EMBEDDING: Health check failed: ${err.message}`);
+      outputChannel.appendLine('TARX EMBEDDING: Auto-restarting...');
+      updateEmbeddingStatusBar('starting');
+
+      // Kill zombie process if exists
+      if (embeddingServer) {
+        try {
+          embeddingServer.kill('SIGKILL');
+        } catch { /* ignore */ }
+        embeddingServer = undefined;
+      }
+
+      // Wait before restart
+      await new Promise(r => setTimeout(r, 2000));
+
+      // Restart if we have context
+      if (extensionContext) {
+        await startEmbeddingServer(extensionContext, port);
+      }
+    }
+  }, 30000); // Check every 30 seconds
+}
+
+function stopEmbeddingHealthMonitor() {
+  if (embeddingHealthMonitor) {
+    clearInterval(embeddingHealthMonitor);
+    embeddingHealthMonitor = undefined;
+    outputChannel.appendLine('TARX EMBEDDING: Health monitor stopped');
+  }
 }
 
 async function showEmbeddingStatus(port: number) {
