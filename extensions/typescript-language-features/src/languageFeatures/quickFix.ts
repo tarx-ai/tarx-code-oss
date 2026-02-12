@@ -17,7 +17,7 @@ import { equals } from '../utils/objects';
 import { DiagnosticsManager } from './diagnostics';
 import FileConfigurationManager from './fileConfigurationManager';
 import { applyCodeActionCommands, getEditForCodeAction } from './util/codeAction';
-import { CompositeCommand, EditorChatFollowUp, EditorChatFollowUp_Args, Expand } from './util/copilot';
+import { CompositeCommand, EditorChatFollowUp, EditorChatFollowUp_Args, Expand } from './util/aiActions';
 import { conditionalRegistration, requireSomeCapability } from './util/dependentRegistration';
 
 type ApplyCodeActionCommand_args = {
@@ -360,8 +360,9 @@ class TypeScriptQuickFixProvider implements vscode.CodeActionProvider<VsCodeCode
 		};
 		actions.push(codeAction);
 
-		const copilot = vscode.extensions.getExtension('github.copilot-chat');
-		if (copilot?.isActive) {
+		// Check for AI assistant extension (TARX or similar chat provider)
+		const aiAssistant = vscode.extensions.getExtension('tarx-ai.tarx-code');
+		if (aiAssistant?.isActive) {
 			let message: string | undefined;
 			let expand: Expand | undefined;
 			let title = action.description;

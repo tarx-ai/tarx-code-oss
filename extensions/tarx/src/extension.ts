@@ -381,7 +381,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	// fired for every error. Now we remove all existing handlers, install our filter as the
 	// sole gatekeeper, and forward non-noise errors to the original handlers.
 	const noisePatterns = [
-		'HostProvider not setup',                              // NODE-A: 2,792 events - Copilot auth we don't use
+		'HostProvider not setup',                              // NODE-A: 2,792 events - External auth remnant
 		'Channel has been closed',                             // NODE-1,3,7,1B: 166 events - IPC race
 		'Canceled: Canceled',                                  // NODE-2,4,5,6,19,1A: 863 events - User cancellations
 		'Canceled',                                            // Catch-all for cancellations

@@ -300,7 +300,7 @@ const sendReadTests: TestCase[] = [
 		valueV('msgs', 'truthy', true)),
 
 	tc('F-066', 'Send to specific participant', 'P1', ['send', 'participant'],
-		[step(OPEN), step(SEND, { message: 'test', participant: 'copilot' }, { capture: 'r', wait: 300 })],
+		[step(OPEN), step(SEND, { message: 'test', participant: 'tarx' }, { capture: 'r', wait: 300 })],
 		valueV('r', 'truthy', true)),
 
 	tc('F-067', 'Send with attachment', 'P2', ['send', 'attachment'],
@@ -381,7 +381,7 @@ const newClearTests: TestCase[] = [
 		valueV('r', 'truthy', true)),
 
 	tc('F-111', 'New chat preserves participant selection', 'P2', ['new', 'participant'],
-		[step(OPEN), step(SEL_PART, { participant: 'copilot' }),
+		[step(OPEN), step(SEL_PART, { participant: 'tarx' }),
 		 step(NEW), step(GET_STATE, {}, { capture: 'st' })],
 		valueV('st', 'truthy', true)),
 
@@ -432,11 +432,11 @@ const participantTests: TestCase[] = [
 		valueV('p2', 'truthy', true)),
 
 	tc('F-134', 'Select participant', 'P0', ['participants', 'select'],
-		[step(OPEN), step(SEL_PART, { participant: 'copilot' }, { capture: 'r' })],
+		[step(OPEN), step(SEL_PART, { participant: 'tarx' }, { capture: 'r' })],
 		valueV('r', 'truthy', true)),
 
 	tc('F-135', 'Select participant updates state', 'P0', ['participants', 'select', 'state'],
-		[step(OPEN), step(SEL_PART, { participant: 'copilot' }),
+		[step(OPEN), step(SEL_PART, { participant: 'tarx' }),
 		 step(GET_STATE, {}, { capture: 'st' })],
 		valueV('st', 'truthy', true)),
 
@@ -445,12 +445,12 @@ const participantTests: TestCase[] = [
 		valueV('r', 'truthy', true)),
 
 	tc('F-137', 'Select participant twice is idempotent', 'P1', ['participants', 'select', 'idempotent'],
-		[step(OPEN), step(SEL_PART, { participant: 'copilot' }),
-		 step(SEL_PART, { participant: 'copilot' }, { capture: 'r' })],
+		[step(OPEN), step(SEL_PART, { participant: 'tarx' }),
+		 step(SEL_PART, { participant: 'tarx' }, { capture: 'r' })],
 		valueV('r', 'truthy', true)),
 
 	tc('F-138', 'Switch between participants', 'P0', ['participants', 'switch'],
-		[step(OPEN), step(SEL_PART, { participant: 'copilot' }),
+		[step(OPEN), step(SEL_PART, { participant: 'tarx' }),
 		 step(SEL_PART, { participant: 'workspace' }, { capture: 'r' })],
 		valueV('r', 'truthy', true)),
 
@@ -467,7 +467,7 @@ const participantTests: TestCase[] = [
 		valueV('p', 'truthy', true)),
 
 	tc('F-142', 'Send message to selected participant', 'P0', ['participants', 'send'],
-		[step(OPEN), step(SEL_PART, { participant: 'copilot' }),
+		[step(OPEN), step(SEL_PART, { participant: 'tarx' }),
 		 step(SEND, { message: 'test to participant' }, { capture: 'r', wait: 300 })],
 		valueV('r', 'truthy', true)),
 
@@ -489,7 +489,7 @@ const participantTests: TestCase[] = [
 		valueV('p', 'truthy', true)),
 
 	tc('F-147', 'Select participant then close and reopen', 'P1', ['participants', 'persist'],
-		[step(OPEN), step(SEL_PART, { participant: 'copilot' }),
+		[step(OPEN), step(SEL_PART, { participant: 'tarx' }),
 		 step(CLOSE), step(OPEN), step(GET_STATE, {}, { capture: 'st' })],
 		valueV('st', 'truthy', true)),
 
@@ -502,9 +502,9 @@ const participantTests: TestCase[] = [
 		valueV('r', 'truthy', true)),
 
 	tc('F-150', 'Rapid participant switching', 'P2', ['participants', 'rapid'],
-		[step(OPEN), step(SEL_PART, { participant: 'copilot' }),
+		[step(OPEN), step(SEL_PART, { participant: 'tarx' }),
 		 step(SEL_PART, { participant: 'workspace' }),
-		 step(SEL_PART, { participant: 'copilot' }),
+		 step(SEL_PART, { participant: 'tarx' }),
 		 step(SEL_PART, { participant: 'workspace' }, { capture: 'r' })],
 		valueV('r', 'truthy', true)),
 
@@ -720,7 +720,7 @@ const edgeCaseTests: TestCase[] = [
 		valueV('msgs', 'truthy', true)),
 
 	tc('F-254', 'Full workflow: new → select participant → send → read', 'P0', ['workflow', 'with-participant'],
-		[step(OPEN), step(NEW), step(SEL_PART, { participant: 'copilot' }),
+		[step(OPEN), step(NEW), step(SEL_PART, { participant: 'tarx' }),
 		 step(SEND, { message: 'test with participant' }, { wait: 500 }),
 		 step(READ, {}, { capture: 'msgs' })],
 		valueV('msgs', 'truthy', true)),
@@ -793,7 +793,7 @@ const edgeCaseTests: TestCase[] = [
 		valueV('msgs', 'truthy', true)),
 
 	tc('F-268', 'Chat all operations in sequence', 'P0', ['workflow', 'all-ops'],
-		[step(OPEN), step(NEW), step(SEL_PART, { participant: 'copilot' }),
+		[step(OPEN), step(NEW), step(SEL_PART, { participant: 'tarx' }),
 		 step(ATTACH_FILE, { filePath: '/tmp/test.txt' }),
 		 step(SEND, { message: 'review' }, { wait: 500 }),
 		 step(READ, {}, { capture: 'msgs' }),

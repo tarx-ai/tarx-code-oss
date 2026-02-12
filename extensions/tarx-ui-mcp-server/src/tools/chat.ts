@@ -57,7 +57,7 @@ export const apply: ToolRegistrar = (server: McpServer, harnessRequest: HarnessR
 	});
 
 	server.tool("tarx_ui_chat_select_participant", "Select a chat participant", {
-		participant: z.string().describe("Participant ID (e.g., 'tarx', 'workspace', 'copilot')"),
+		participant: z.string().describe("Participant ID (e.g., 'tarx', 'workspace')"),
 	}, async ({ participant }) => {
 		const result = await harnessRequest<{ success: boolean }>("/ui/chat/select-participant", "POST", { participant });
 		if (!result.success) return { content: [{ type: "text", text: JSON.stringify({ success: false, error: result.error }, null, 2) }] };

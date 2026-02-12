@@ -218,7 +218,7 @@ suite('chat', () => {
 	});
 
 	test('can access node-pty module', async function () {
-		// Required for copilot cli in chat extension.
+		// Required for terminal-based chat features.
 		if (env.uiKind === UIKind.Web) {
 			this.skip();
 		}

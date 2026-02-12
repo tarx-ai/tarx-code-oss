@@ -31,8 +31,7 @@
           "instructions"
         ],
         "extensions": [
-          ".instructions.md",
-          "copilot-instructions.md"
+          ".instructions.md"
         ],
         "configuration": "./language-configuration.json"
       },
