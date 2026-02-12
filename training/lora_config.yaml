@@ -1,0 +1,15 @@
+# TARX Fine-Tune LoRA Configuration
+# Target: Override Qwen3-8B identity → TARX identity
+# Hardware: Apple M4, unified memory
+
+# LoRA rank 32 — strong enough to imprint identity,
+# light enough to preserve general intelligence
+lora_parameters:
+  rank: 32
+  alpha: 64
+  dropout: 0.05
+  scale: 2.0
+
+# Target all attention layers for maximum identity penetration
+# This ensures TARX identity propagates through the entire attention mechanism
+lora_layers: 32
