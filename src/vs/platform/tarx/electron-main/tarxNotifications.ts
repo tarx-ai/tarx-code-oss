@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { Notification, shell } from 'electron';
+import * as fs from 'fs';
 import { join } from '../../../base/common/path.js';
 import { Disposable } from '../../../base/common/lifecycle.js';
 import { Emitter, Event } from '../../../base/common/event.js';
@@ -299,10 +300,10 @@ export class TarxNotificationService extends Disposable implements ITarxNotifica
 
 		const iconPath = join(appRoot, 'resources', 'icons', iconNames[category]);
 
-		// Fallback to default TARX icon
+		// Fallback to default TARX icon if specific icon doesn't exist
 		const fallbackPath = join(appRoot, 'resources', 'icons', 'tarx-icon.png');
 
-		return iconPath; // In production, would check existence
+		return fs.existsSync(iconPath) ? iconPath : fallbackPath;
 	}
 
 	private shouldBeSilent(category: TarxNotificationCategory): boolean {

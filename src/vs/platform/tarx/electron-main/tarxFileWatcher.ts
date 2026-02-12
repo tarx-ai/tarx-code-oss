@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as fs from 'fs';
-import { join, extname, basename, dirname } from '../../../base/common/path.js';
+import { join, extname, basename as pathBasename, dirname } from '../../../base/common/path.js';
 import { Disposable } from '../../../base/common/lifecycle.js';
 import { Emitter, Event } from '../../../base/common/event.js';
 import { ILogService } from '../../log/common/log.js';
@@ -262,10 +262,10 @@ export class TarxFileWatcherService extends Disposable implements ITarxFileWatch
 	private handleFileEvent(eventType: string, directory: string, filename: string): void {
 		const fullPath = join(directory, filename);
 		const extension = extname(filename).toLowerCase();
-		const basename = basename(filename);
+		const fileBasename = pathBasename(filename);
 
 		// Check if should ignore
-		if (this.shouldIgnore(fullPath, basename)) {
+		if (this.shouldIgnore(fullPath, fileBasename)) {
 			return;
 		}
 
@@ -280,7 +280,7 @@ export class TarxFileWatcherService extends Disposable implements ITarxFileWatch
 		const change: TarxFileChange = {
 			type,
 			path: fullPath,
-			filename: basename,
+			filename: fileBasename,
 			extension,
 			timestamp: new Date()
 		};
@@ -379,7 +379,6 @@ export class TarxFileWatcherService extends Disposable implements ITarxFileWatch
 
 	private checkGitignoreForEnv(change: TarxFileChange): void {
 		const directory = dirname(change.path);
-		const gitignorePath = join(directory, '.gitignore');
 
 		// Look for .gitignore in current dir or parent dirs
 		let searchDir = directory;

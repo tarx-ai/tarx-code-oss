@@ -138,7 +138,7 @@ export class TarxPermissionService extends Disposable implements ITarxPermission
 
 	constructor(
 		@ILogService private readonly logService: ILogService,
-		@IEnvironmentMainService private readonly environmentMainService: IEnvironmentMainService
+		@IEnvironmentMainService environmentMainService: IEnvironmentMainService
 	) {
 		super();
 

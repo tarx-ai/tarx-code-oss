@@ -5,6 +5,7 @@
 
 import { Tray, Menu, nativeImage, BrowserWindow, MenuItemConstructorOptions } from 'electron';
 import * as http from 'http';
+import * as fs from 'fs';
 import { join } from '../../../base/common/path.js';
 import { Disposable } from '../../../base/common/lifecycle.js';
 import { Emitter, Event } from '../../../base/common/event.js';
@@ -241,9 +242,10 @@ export class TarxTrayService extends Disposable implements ITarxTrayService {
 		];
 
 		// Find existing icon or use default
-		for (const p of possiblePaths) {
-			// In production, these would exist
-			// For now, return the path that should be used
+		for (const iconPath of possiblePaths) {
+			if (fs.existsSync(iconPath)) {
+				return iconPath;
+			}
 		}
 
 		// Fallback to default icon path
