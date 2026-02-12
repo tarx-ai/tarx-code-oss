@@ -12,9 +12,9 @@ This is a VS Code (code-oss) fork. The product IS the IDE.
 Key directories:
 - extensions/tarx/src/           → Main TARX extension (sidebar, chat, commands, status bar)
 - extensions/tarx/src/services/  → Core services (health, database, inference, RAG)
-- extensions/tarx-core/          → MCP server: memory, spaces, sessions, files, RAG, chat (41 tools)
+- extensions/tarx-core/          → MCP server: memory, spaces, sessions, files, RAG, chat (46 tools)
 - extensions/tarx-ops/           → MCP server: Sentry, CC orchestration, file locks, daemon (47 tools)
-- extensions/tarx-ui-mcp-server/ → MCP server: UI control, screenshots, chat automation (9 tools)
+- extensions/tarx-ui-mcp-server/ → MCP server: UI control, screenshots, testing (167 tools)
 - extensions/tarx-theme/         → TARX purple theme
 - extensions/tarx-shared/        → Shared utilities across extensions
 - src/vs/workbench/contrib/tarx/ → Core workbench integration (sidebar, panels)
@@ -66,7 +66,7 @@ cd ~/Desktop/tarx-code-oss && yarn compile 2>&1 | tail -30
 
 Always verify with `yarn compile` — 0 errors required.
 
-## MCP TOOLS — YOUR SUPERPOWERS (100 tools across 3 servers)
+## MCP TOOLS — YOUR SUPERPOWERS (260 tools across 3 servers)
 
 Memory: memory_search_index (lightweight scan FIRST), memory_search (full), memory_store_observation (store learnings), memory_recall, tarx_search_knowledge
 Health: tarx_system_brief (everything in one call), tarx_health, tarx_project_context
@@ -87,6 +87,6 @@ Orchestration: tarx_admin_file_lock/unlock, tarx_orchestrate_assign_task/task_up
 
 ## ARCHITECTURE
 
-13 extensions (9 active, 4 retired), 3 MCP servers (100 tools), llama-server on 11435, nomic-embed on 11437, libp2p mesh on 11436, Sentry at tarx-fo.sentry.io, SQLite database
+7 extension dirs (all active), 3 MCP servers (260 tools: core 46 + ops 47 + ui 167), llama-server on 11435, nomic-embed on 11437, libp2p mesh on 11436, Sentry at tarx-fo.sentry.io, SQLite database. Model: tarx-qwen2.5-7b-deep-Q4_K_M.gguf (4.68GB)
 
 Now — call tarx_session_context, then ask me what to work on.
