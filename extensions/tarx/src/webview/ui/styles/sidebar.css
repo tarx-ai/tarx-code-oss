@@ -851,6 +851,40 @@ body {
 	display: none;
 }
 
+/* Health indicator dot in footer compute row */
+.tarx-health-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	flex-shrink: 0;
+	margin-right: 6px;
+	transition: all 0.2s ease;
+}
+
+.tarx-health-dot.online {
+	background: var(--vscode-testing-iconPassed, #73c991);
+	box-shadow: 0 0 4px var(--vscode-testing-iconPassed, #73c991);
+}
+
+.tarx-health-dot.offline {
+	background: var(--vscode-errorForeground, #f44336);
+	box-shadow: 0 0 4px var(--vscode-errorForeground, #f44336);
+}
+
+.tarx-health-dot.connecting {
+	background: var(--vscode-charts-yellow, #cca700);
+	animation: tarx-pulse 1s infinite;
+}
+
+.tarx-compute-row:hover .tarx-health-dot.online {
+	box-shadow: 0 0 8px var(--vscode-testing-iconPassed, #73c991);
+}
+
+/* Hide health dot in collapsed sidebar */
+.tarx-sidebar-container.collapsed .tarx-health-dot {
+	display: none;
+}
+
 .tarx-compute-row.open {
 	background: var(--vscode-list-activeSelectionBackground, rgba(255,255,255,0.1));
 	border-color: rgba(64, 182, 251, 0.2);

@@ -1727,10 +1727,13 @@ export async function activate(context: vscode.ExtensionContext) {
 
 		// Collect full response for artifact parsing
 		let fullResponse = '';
+		let fullThinking = '';
 
 		try {
 			console.log(`[TARX PERF] Inference start: +${Date.now() - chatT0}ms`);
 			let chatFirstToken = true;
+			// Unique ID for this thinking sequence (used by VS Code's thinking renderer)
+			const thinkingId = `tarx-thinking-${Date.now()}`;
 
 			// Stream response from llama-server
 			for await (const chunk of tarxClient.chatCompletionStream(messages, {
@@ -1744,8 +1747,20 @@ export async function activate(context: vscode.ExtensionContext) {
 					console.log(`[TARX PERF] First token (TTFT): +${Date.now() - chatT0}ms`);
 					chatFirstToken = false;
 				}
-				fullResponse += chunk;
-				response.markdown(chunk);
+
+				// TARX V1: Handle structured chunks for thinking token UX
+				if (chunk.type === 'thinking') {
+					// Accumulate thinking for potential storage/display
+					fullThinking += chunk.content;
+					// Stream thinking to VS Code's collapsible thinking UI
+					// Cast to access proposed API method (chatParticipantAdditions)
+					(response as any).thinkingProgress({ text: chunk.content, id: thinkingId });
+				} else if (chunk.type === 'content') {
+					// Accumulate content for artifact parsing
+					fullResponse += chunk.content;
+					// Stream content to markdown renderer
+					response.markdown(chunk.content);
+				}
 			}
 			console.log(`[TARX PERF] Inference complete: +${Date.now() - chatT0}ms (${fullResponse.length} chars)`);
 
@@ -2925,11 +2940,15 @@ export async function activate(context: vscode.ExtensionContext) {
 					console.log(`[TARX PERF] First token (TTFT): +${Date.now() - t0}ms`);
 					firstToken = false;
 				}
-				assistantContent += chunk;
-				// Stream token to webview for real-time display
-				if (activePanel) {
-					activePanel.postStreamToken(chunk);
+				// Only stream content to session panel, skip thinking tokens
+				if (chunk.type === 'content') {
+					assistantContent += chunk.content;
+					// Stream token to webview for real-time display
+					if (activePanel) {
+						activePanel.postStreamToken(chunk.content);
+					}
 				}
+				// Note: thinking tokens are not displayed in session panel view
 			}
 
 			if (!assistantContent) {

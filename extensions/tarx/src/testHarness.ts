@@ -806,7 +806,10 @@ export class TestHarnessService implements vscode.Disposable {
 					messagesForLLM,
 					{ maxTokens: 500 }
 				)) {
-					chunks.push(chunk);
+					// Extract content from structured chunks (skip thinking tokens)
+					if (chunk.type === 'content') {
+						chunks.push(chunk.content);
+					}
 				}
 				const responseText = chunks.join('');
 

@@ -23,6 +23,15 @@ export interface CompletionResponse {
 	}[];
 }
 
+/**
+ * Structured stream chunk for chat completions.
+ * Separates thinking tokens from content for proper UI rendering.
+ */
+export interface StreamChunk {
+	type: 'thinking' | 'content';
+	content: string;
+}
+
 export interface HealthResponse {
 	status: string;
 	model?: string;
@@ -144,7 +153,8 @@ export class TarxClient {
 	}
 
 	/**
-	 * Send a chat completion request with streaming
+	 * Send a chat completion request with streaming.
+	 * Yields structured chunks that separate thinking from content.
 	 */
 	async *chatCompletionStream(
 		messages: ChatMessage[],
@@ -153,7 +163,7 @@ export class TarxClient {
 			temperature?: number;
 			maxTokens?: number;
 		} = {}
-	): AsyncGenerator<string, void, unknown> {
+	): AsyncGenerator<StreamChunk, void, unknown> {
 		let response: Response;
 		try {
 			response = await fetch(`${this.serverUrl}/v1/chat/completions`, {
@@ -207,10 +217,13 @@ export class TarxClient {
 					try {
 						const parsed = JSON.parse(data);
 						const delta = parsed.choices?.[0]?.delta;
-						// Handle both standard content and reasoning_content (for QwQ/reasoning models)
-						const content = delta?.content || delta?.reasoning_content;
-						if (content) {
-							yield content;
+						// Handle both standard content and reasoning_content (for QwQ/Qwen reasoning models)
+						// TARX: Yield structured chunks to enable thinking token UI
+						if (delta?.reasoning_content) {
+							yield { type: 'thinking' as const, content: delta.reasoning_content };
+						}
+						if (delta?.content) {
+							yield { type: 'content' as const, content: delta.content };
 						}
 					} catch {
 						// Ignore parse errors

@@ -82,7 +82,7 @@ export const Footer: React.FC<FooterProps> = ({ connectionStatus, version, onOpe
 				</div>
 			)}
 
-			{/* Compute Row — no status dot */}
+			{/* Compute Row — with health indicator dot */}
 			<div
 				className={`tarx-footer-row tarx-compute-row ${dropdownOpen ? 'open' : ''}`}
 				title={`Compute: ${getStatusLabel(connectionStatus)}${supercomputerEnabled ? ' + Supercomputer' : ''}`}
@@ -91,6 +91,8 @@ export const Footer: React.FC<FooterProps> = ({ connectionStatus, version, onOpe
 					toggleDropdown();
 				}}
 			>
+				{/* Health indicator dot: green = online, red = offline, yellow = connecting */}
+				<span className={`tarx-health-dot ${connectionStatus === 'online' ? 'online' : connectionStatus === 'offline' ? 'offline' : 'connecting'}`} />
 				<span className="tarx-compute-chip-icon">
 					<ChipIcon />
 				</span>
