@@ -19,6 +19,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { execSync } from 'child_process';
+import { TARX_SYSTEM_PROMPT_V2 } from './systemPrompt';
 
 interface ProjectData {
 	id: string;
@@ -872,11 +873,12 @@ export class ProjectContextPanel {
 
 		// System prompt with project context
 		const instructions = this._projectData?.instructions || '';
+		// Use canonical TARX system prompt with project context
 		messages.push({
 			role: 'system',
-			content: `You are TARX, a local AI assistant. You are chatting in the context of the project "${this._projectData?.name || 'Unknown'}".`
+			content: TARX_SYSTEM_PROMPT_V2
+				+ `\n\n## PROJECT CONTEXT\nProject: "${this._projectData?.name || 'Unknown'}"`
 				+ (instructions ? `\n\nProject instructions:\n${instructions}` : '')
-				+ `\n\nBe concise. Answer in context of this project.`
 		});
 
 		// Recent chat history (last 10 turns)
