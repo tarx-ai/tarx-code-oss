@@ -121,7 +121,7 @@ export class TarxAutonomicDaemon {
 
     await this.wakefulness.keepAwake();
     await this.session.initialize(this.AUTONOMIC_SPACE_ID);
-    await this.adminApi.start(11439); // Admin API port
+    await this.adminApi.start(11440); // Admin API port (11439 reserved for test harness)
 
     // Announce startup
     await this.session.log('system',

@@ -2412,12 +2412,21 @@ export class ProjectContextPanel {
 				list.innerHTML = '';
 				return;
 			}
-			list.innerHTML = pendingFiles.map((f, i) => \`
-				<div style="display: flex; align-items: center; padding: 8px; background: var(--vscode-input-background); border-radius: 4px; margin-top: 8px;">
-					<span style="flex: 1; font-size: 12px; opacity: 0.8;">\${f.split('/').pop()}</span>
-					<button onclick="removePendingFile(\${i})" style="background: none; border: none; color: var(--vscode-errorForeground); cursor: pointer;">x</button>
-				</div>
-			\`).join('');
+			list.innerHTML = '';
+			pendingFiles.forEach((f, i) => {
+				const row = document.createElement('div');
+				row.style.cssText = 'display: flex; align-items: center; padding: 8px; background: var(--vscode-input-background); border-radius: 4px; margin-top: 8px;';
+				const label = document.createElement('span');
+				label.style.cssText = 'flex: 1; font-size: 12px; opacity: 0.8;';
+				label.textContent = f.split('/').pop();
+				const btn = document.createElement('button');
+				btn.style.cssText = 'background: none; border: none; color: var(--vscode-errorForeground); cursor: pointer;';
+				btn.textContent = 'x';
+				btn.addEventListener('click', () => removePendingFile(i));
+				row.appendChild(label);
+				row.appendChild(btn);
+				list.appendChild(row);
+			});
 		}
 
 		function removePendingFile(index) {

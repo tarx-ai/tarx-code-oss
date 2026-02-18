@@ -677,9 +677,12 @@ export class VoiceTranscriptPanel {
 			} else if (artifact.type === 'mermaid') {
 				artifactEl.innerHTML = '<pre class="mermaid">' + escapeHtml(artifact.content) + '</pre>';
 			} else if (artifact.type === 'image') {
-				artifactEl.innerHTML = '<img src="' + artifact.content + '" style="max-width:100%">';
+				const img = document.createElement('img');
+				try { new URL(artifact.content); img.src = artifact.content; } catch { img.alt = 'Invalid image URL'; }
+				img.style.maxWidth = '100%';
+				artifactEl.appendChild(img);
 			} else {
-				artifactEl.innerHTML = artifact.content;
+				artifactEl.textContent = artifact.content;
 			}
 
 			el.appendChild(artifactEl);

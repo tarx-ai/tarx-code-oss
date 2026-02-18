@@ -54,6 +54,8 @@ import {
 	MCPSession
 } from './mcpKnowledge';
 import { ProjectContextPanel } from './projectContextPanel';
+import { detectActionIntent, handleActionIntent } from './claude-bridge';
+import { TARX_SYSTEM_PROMPT_V2 } from './systemPrompt';
 
 const HARNESS_PORT = 11439;
 
@@ -773,6 +775,29 @@ export class TestHarnessService implements vscode.Disposable {
 		this.state.lastActivity = Date.now();
 
 		try {
+			// Check for action intent FIRST - route through bridge for CRUD operations
+			if (detectActionIntent(message)) {
+				const actionResult = await handleActionIntent(message);
+				if (actionResult.success && actionResult.result) {
+					const assistantMsg: ChatMessage = {
+						role: 'assistant',
+						content: actionResult.result,
+						timestamp: Date.now()
+					};
+					this.state.recentMessages.push(assistantMsg);
+
+					this.sendJson(res, {
+						success: true,
+						userMessage: userMsg,
+						response: assistantMsg,
+						actionExecuted: actionResult.action,
+						totalMessages: this.state.recentMessages.length
+					});
+					return;
+				}
+				// Action detected but failed or unknown — fall through to LLM
+			}
+
 			// Send through VS Code chat command
 			await vscode.commands.executeCommand('workbench.action.chat.open', {
 				query: `@tarx ${message}`
@@ -780,7 +805,7 @@ export class TestHarnessService implements vscode.Disposable {
 
 			// Build full message history for direct API call
 			// CRITICAL: Must include system prompt + history for context retention!
-			const systemPrompt = `You are TARX — Local. Private. Proactive. You remember all previous messages in this conversation. Be helpful, concise, and reference prior context when relevant.`;
+			const systemPrompt = TARX_SYSTEM_PROMPT_V2;
 
 			const messagesForLLM: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
 

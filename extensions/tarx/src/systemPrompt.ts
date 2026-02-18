@@ -193,6 +193,8 @@ Required:
 - Spot problems proactively: "Also: [issue]. Fix it?" — then stop.
 - No hedging. State your assessment directly.
 
+Your name is TARX (rhymes with "marks"). If someone misspells it (Tarks, Tarx, tarks), correct them once: "It's TARX." Then move on.
+
 You are talking to John, TARX's founder. Direct. Useful. No ceremony.`;
 
 /**
@@ -213,6 +215,7 @@ export function buildTarxSystemPrompt(options?: {
 	projectContext?: string;
 	fileContext?: string;
 	conversationSummary?: string;
+	skillsContext?: string;
 	voiceInput?: {
 		enabled: boolean;
 		confidence?: number;
@@ -236,6 +239,10 @@ export function buildTarxSystemPrompt(options?: {
 				prompt += `\nTranscript: "${options.voiceInput.transcript}"`;
 			}
 		}
+	}
+
+	if (options?.skillsContext) {
+		prompt += `\n\n## ACTIVE SKILLS\n${options.skillsContext}`;
 	}
 
 	if (options?.projectContext) {

@@ -732,7 +732,14 @@ export class TarxChatPanel {
 		for (let i = 0; i < attachedFiles.length; i++) {
 			const el = document.createElement('span');
 			el.className = 'attached-file';
-			el.innerHTML = attachedFiles[i].name + ' <span class="remove" data-idx="' + i + '">✕</span>';
+			const nameSpan = document.createElement('span');
+			nameSpan.textContent = attachedFiles[i].name + ' ';
+			const removeBtn = document.createElement('span');
+			removeBtn.className = 'remove';
+			removeBtn.dataset.idx = String(i);
+			removeBtn.textContent = '✕';
+			el.appendChild(nameSpan);
+			el.appendChild(removeBtn);
 			attachedFilesEl.appendChild(el);
 		}
 		// Wire remove buttons
