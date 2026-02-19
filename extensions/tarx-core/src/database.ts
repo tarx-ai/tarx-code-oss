@@ -195,6 +195,80 @@ function initializeSchema(database: Database.Database): void {
     );
   `);
 
+  // GTM tables — invite codes, user profiles, skills
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS invite_codes (
+      code TEXT PRIMARY KEY,
+      created_at INTEGER NOT NULL,
+      redeemed_at INTEGER,
+      redeemed_by TEXT,
+      max_uses INTEGER DEFAULT 1,
+      use_count INTEGER DEFAULT 0,
+      tier TEXT DEFAULT 'beta' CHECK(tier IN ('beta', 'pro', 'enterprise', 'internal')),
+      metadata TEXT
+    );
+  `);
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS user_profiles (
+      id TEXT PRIMARY KEY DEFAULT 'default',
+      display_name TEXT,
+      email TEXT,
+      avatar_url TEXT,
+      tier TEXT DEFAULT 'beta',
+      invite_code TEXT,
+      onboarded_at INTEGER,
+      preferences TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `);
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS skills (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT NOT NULL,
+      category TEXT NOT NULL,
+      system_prompt TEXT NOT NULL,
+      context_docs TEXT,
+      tools TEXT,
+      tier TEXT DEFAULT 'free' CHECK(tier IN ('free', 'pro', 'enterprise')),
+      version INTEGER DEFAULT 1,
+      enabled INTEGER DEFAULT 1,
+      install_count INTEGER DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_skills_category ON skills(category);
+    CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name);
+  `);
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS user_skills (
+      user_id TEXT DEFAULT 'default',
+      skill_id TEXT NOT NULL,
+      enabled INTEGER DEFAULT 1,
+      installed_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, skill_id),
+      FOREIGN KEY (skill_id) REFERENCES skills(id)
+    );
+  `);
+
+  // Onboarding state tracking
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS onboarding_state (
+      user_id TEXT PRIMARY KEY DEFAULT 'default',
+      invite_code TEXT,
+      step TEXT DEFAULT 'welcome' CHECK(step IN ('welcome', 'profile_confirm', 'first_prompt', 'complete')),
+      profile_confirmed INTEGER DEFAULT 0,
+      first_inference_at INTEGER,
+      import_source TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `);
+
   const alterStatements = [
     // Add total_tokens to sessions if missing
     `ALTER TABLE sessions ADD COLUMN total_tokens INTEGER DEFAULT 0`,
@@ -1462,6 +1536,351 @@ export function getFileContentById(fileId: string): string | null {
   }
 }
 
+// ============================================================================
+// INVITE CODE MANAGEMENT
+// ============================================================================
+
+const INVITE_WORDS = [
+  'SPARK', 'PULSE', 'NEXUS', 'FORGE', 'PRISM', 'ORBIT', 'CREST', 'FLUX',
+  'LUNAR', 'SOLAR', 'NEON', 'BLAZE', 'VIPER', 'TITAN', 'DRIFT', 'WAVE',
+  'ECHO', 'PIXEL', 'SIGMA', 'ALPHA', 'OMEGA', 'DELTA', 'CIPHER', 'GHOST',
+  'HYPER', 'STEEL', 'RAPID', 'TURBO', 'PRIME', 'ZENITH', 'APEX', 'NOVA'
+];
+
+export function generateInviteCodes(count: number, tier: string = 'beta', prefixWord?: string): string[] {
+  const database = getDatabase();
+  const now = Date.now();
+  const codes: string[] = [];
+
+  const insert = database.prepare(`
+    INSERT INTO invite_codes (code, created_at, tier, max_uses)
+    VALUES (?, ?, ?, 1)
+  `);
+
+  for (let i = 0; i < count; i++) {
+    const word = prefixWord || INVITE_WORDS[Math.floor(Math.random() * INVITE_WORDS.length)];
+    const digits = String(Math.floor(1000 + Math.random() * 9000));
+    const code = `TARX-${word}-${digits}`;
+
+    try {
+      insert.run(code, now, tier);
+      codes.push(code);
+    } catch {
+      // Duplicate — retry with different digits
+      i--;
+    }
+  }
+
+  return codes;
+}
+
+export function validateInviteCode(code: string): { valid: boolean; tier: string } {
+  const database = getDatabase();
+  const row = database.prepare(
+    'SELECT code, tier, max_uses, use_count FROM invite_codes WHERE code = ?'
+  ).get(code) as { code: string; tier: string; max_uses: number; use_count: number } | undefined;
+
+  if (!row) {
+    return { valid: false, tier: '' };
+  }
+
+  if (row.use_count >= row.max_uses) {
+    return { valid: false, tier: row.tier };
+  }
+
+  return { valid: true, tier: row.tier };
+}
+
+export function redeemInviteCode(code: string, userId: string = 'default'): boolean {
+  const database = getDatabase();
+  const now = Date.now();
+
+  const result = database.prepare(`
+    UPDATE invite_codes
+    SET use_count = use_count + 1, redeemed_at = ?, redeemed_by = ?
+    WHERE code = ? AND use_count < max_uses
+  `).run(now, userId, code);
+
+  return result.changes > 0;
+}
+
+export function listInviteCodes(tier?: string, unusedOnly?: boolean): Array<{
+  code: string; tier: string; use_count: number; max_uses: number;
+  created_at: number; redeemed_at: number | null;
+}> {
+  const database = getDatabase();
+  let query = 'SELECT code, tier, use_count, max_uses, created_at, redeemed_at FROM invite_codes WHERE 1=1';
+  const params: unknown[] = [];
+
+  if (tier) {
+    query += ' AND tier = ?';
+    params.push(tier);
+  }
+  if (unusedOnly) {
+    query += ' AND use_count < max_uses';
+  }
+
+  query += ' ORDER BY created_at DESC';
+  return database.prepare(query).all(...params) as Array<{
+    code: string; tier: string; use_count: number; max_uses: number;
+    created_at: number; redeemed_at: number | null;
+  }>;
+}
+
+// ============================================================================
+// USER PROFILE MANAGEMENT
+// ============================================================================
+
+export interface UserProfile {
+  id: string;
+  display_name: string | null;
+  email: string | null;
+  avatar_url: string | null;
+  tier: string;
+  invite_code: string | null;
+  onboarded_at: number | null;
+  preferences: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export function getProfile(userId: string = 'default'): UserProfile | null {
+  const database = getDatabase();
+  return database.prepare('SELECT * FROM user_profiles WHERE id = ?').get(userId) as UserProfile | null;
+}
+
+export function upsertProfile(profile: {
+  id?: string;
+  display_name?: string;
+  email?: string;
+  avatar_url?: string;
+  tier?: string;
+  invite_code?: string;
+  preferences?: string;
+}): UserProfile {
+  const database = getDatabase();
+  const now = Date.now();
+  const id = profile.id || 'default';
+
+  const existing = getProfile(id);
+
+  if (existing) {
+    database.prepare(`
+      UPDATE user_profiles SET
+        display_name = COALESCE(?, display_name),
+        email = COALESCE(?, email),
+        avatar_url = COALESCE(?, avatar_url),
+        tier = COALESCE(?, tier),
+        invite_code = COALESCE(?, invite_code),
+        preferences = COALESCE(?, preferences),
+        updated_at = ?
+      WHERE id = ?
+    `).run(
+      profile.display_name || null,
+      profile.email || null,
+      profile.avatar_url || null,
+      profile.tier || null,
+      profile.invite_code || null,
+      profile.preferences || null,
+      now, id
+    );
+  } else {
+    database.prepare(`
+      INSERT INTO user_profiles (id, display_name, email, avatar_url, tier, invite_code, preferences, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      profile.display_name || null,
+      profile.email || null,
+      profile.avatar_url || null,
+      profile.tier || 'beta',
+      profile.invite_code || null,
+      profile.preferences || null,
+      now, now
+    );
+  }
+
+  return getProfile(id)!;
+}
+
+export function markOnboarded(userId: string = 'default'): void {
+  const database = getDatabase();
+  database.prepare('UPDATE user_profiles SET onboarded_at = ?, updated_at = ? WHERE id = ?')
+    .run(Date.now(), Date.now(), userId);
+}
+
+// ============================================================================
+// SKILLS MANAGEMENT
+// ============================================================================
+
+export interface Skill {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  system_prompt: string;
+  context_docs: string | null;
+  tools: string | null;
+  tier: string;
+  version: number;
+  enabled: number;
+  install_count: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export function listSkills(category?: string, searchQuery?: string): Skill[] {
+  const database = getDatabase();
+  let query = 'SELECT * FROM skills WHERE enabled = 1';
+  const params: unknown[] = [];
+
+  if (category) {
+    query += ' AND category = ?';
+    params.push(category);
+  }
+  if (searchQuery) {
+    query += ' AND (name LIKE ? OR description LIKE ?)';
+    params.push(`%${searchQuery}%`, `%${searchQuery}%`);
+  }
+
+  query += ' ORDER BY install_count DESC, name ASC';
+  return database.prepare(query).all(...params) as Skill[];
+}
+
+export function getSkill(skillId: string): Skill | null {
+  const database = getDatabase();
+  return database.prepare('SELECT * FROM skills WHERE id = ?').get(skillId) as Skill | null;
+}
+
+export function insertSkill(skill: Omit<Skill, 'created_at' | 'updated_at' | 'install_count' | 'enabled' | 'version'>): void {
+  const database = getDatabase();
+  const now = Date.now();
+
+  database.prepare(`
+    INSERT OR IGNORE INTO skills (id, name, description, category, system_prompt, context_docs, tools, tier, version, enabled, install_count, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 0, ?, ?)
+  `).run(skill.id, skill.name, skill.description, skill.category, skill.system_prompt, skill.context_docs || null, skill.tools || null, skill.tier, now, now);
+}
+
+export function installSkill(skillId: string, userId: string = 'default'): boolean {
+  const database = getDatabase();
+  const now = Date.now();
+
+  try {
+    database.prepare(`
+      INSERT OR REPLACE INTO user_skills (user_id, skill_id, enabled, installed_at)
+      VALUES (?, ?, 1, ?)
+    `).run(userId, skillId, now);
+
+    database.prepare('UPDATE skills SET install_count = install_count + 1 WHERE id = ?').run(skillId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function uninstallSkill(skillId: string, userId: string = 'default'): boolean {
+  const database = getDatabase();
+
+  const result = database.prepare('DELETE FROM user_skills WHERE user_id = ? AND skill_id = ?')
+    .run(userId, skillId);
+
+  if (result.changes > 0) {
+    database.prepare('UPDATE skills SET install_count = MAX(0, install_count - 1) WHERE id = ?').run(skillId);
+    return true;
+  }
+  return false;
+}
+
+export function getActiveSkills(userId: string = 'default'): Skill[] {
+  const database = getDatabase();
+  return database.prepare(`
+    SELECT s.* FROM skills s
+    JOIN user_skills us ON s.id = us.skill_id
+    WHERE us.user_id = ? AND us.enabled = 1 AND s.enabled = 1
+    ORDER BY s.name ASC
+  `).all(userId) as Skill[];
+}
+
+export function getSkillsCount(): number {
+  const database = getDatabase();
+  return database.prepare('SELECT COUNT(*) FROM skills WHERE enabled = 1').pluck().get() as number;
+}
+
+// ============================================================================
+// WEEKLY METRICS
+// ============================================================================
+
+export interface WeeklyMetrics {
+  messages_sent: number;
+  sessions_active: number;
+  tokens_used: number;
+  thumbs_up: number;
+  thumbs_down: number;
+  knowledge_items: number;
+  files_uploaded: number;
+  skills_installed: number;
+  top_skills: Array<{ name: string; uses: number }>;
+  period_start: number;
+  period_end: number;
+}
+
+export function getWeeklyMetrics(startDate: number, endDate: number): WeeklyMetrics {
+  const database = getDatabase();
+
+  const msgStats = database.prepare(`
+    SELECT COUNT(*) as count, COALESCE(SUM(tokens), 0) as tokens
+    FROM messages WHERE created_at >= ? AND created_at <= ? AND deleted_at IS NULL
+  `).get(startDate, endDate) as { count: number; tokens: number };
+
+  const sessions = database.prepare(`
+    SELECT COUNT(DISTINCT session_id) as count
+    FROM messages WHERE created_at >= ? AND created_at <= ? AND deleted_at IS NULL
+  `).get(startDate, endDate) as { count: number };
+
+  const training = database.prepare(`
+    SELECT
+      SUM(CASE WHEN quality_signal = 'thumbs_up' THEN 1 ELSE 0 END) as up,
+      SUM(CASE WHEN quality_signal = 'thumbs_down' THEN 1 ELSE 0 END) as down
+    FROM training_data WHERE created_at >= ? AND created_at <= ?
+  `).get(startDate, endDate) as { up: number; down: number };
+
+  let knowledge = 0;
+  try {
+    knowledge = database.prepare(
+      'SELECT COUNT(*) FROM knowledge_embeddings WHERE created_at >= ? AND created_at <= ?'
+    ).pluck().get(startDate, endDate) as number;
+  } catch {}
+
+  let files = 0;
+  try {
+    files = database.prepare(
+      'SELECT COUNT(*) FROM files WHERE created_at >= ? AND created_at <= ? AND deleted_at IS NULL'
+    ).pluck().get(startDate, endDate) as number;
+  } catch {}
+
+  let skillsInstalled = 0;
+  try {
+    skillsInstalled = database.prepare(
+      'SELECT COUNT(*) FROM user_skills WHERE installed_at >= ? AND installed_at <= ?'
+    ).pluck().get(startDate, endDate) as number;
+  } catch {}
+
+  return {
+    messages_sent: msgStats.count || 0,
+    sessions_active: sessions.count || 0,
+    tokens_used: msgStats.tokens || 0,
+    thumbs_up: training?.up || 0,
+    thumbs_down: training?.down || 0,
+    knowledge_items: knowledge || 0,
+    files_uploaded: files || 0,
+    skills_installed: skillsInstalled,
+    top_skills: [],
+    period_start: startDate,
+    period_end: endDate
+  };
+}
+
 export function closeDatabase(): void {
   if (db) {
     db.close();
@@ -1504,5 +1923,24 @@ export default {
   listWatches,
   rescan,
   getFilesGrouped,
-  getFileContentById
+  getFileContentById,
+  // GTM: Invite codes
+  generateInviteCodes,
+  validateInviteCode,
+  redeemInviteCode,
+  listInviteCodes,
+  // GTM: User profiles
+  getProfile,
+  upsertProfile,
+  markOnboarded,
+  // GTM: Skills
+  listSkills,
+  getSkill,
+  insertSkill,
+  installSkill,
+  uninstallSkill,
+  getActiveSkills,
+  getSkillsCount,
+  // GTM: Weekly metrics
+  getWeeklyMetrics
 };

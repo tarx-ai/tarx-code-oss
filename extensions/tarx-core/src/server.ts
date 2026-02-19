@@ -54,7 +54,24 @@ import {
   listWatches,
   rescan,
   getFilesGrouped,
-  getFileContentById
+  getFileContentById,
+  // GTM: Invite codes
+  validateInviteCode,
+  redeemInviteCode,
+  // GTM: User profiles
+  getProfile,
+  upsertProfile,
+  markOnboarded,
+  // GTM: Skills
+  listSkills,
+  getSkill,
+  insertSkill,
+  installSkill,
+  uninstallSkill,
+  getActiveSkills,
+  getSkillsCount,
+  // GTM: Weekly metrics
+  getWeeklyMetrics
 } from "./database.js";
 
 // TARX Model Router - Feb 2026
@@ -164,10 +181,25 @@ server.tool(
   "Check health status of all TARX services (inference, embeddings, mesh)",
   {},
   async () => {
+    // Fetch mesh status with peer count if available
+    let meshStatus: { healthy: boolean; peers?: number; mode?: string } = { healthy: false };
+    try {
+      const meshHealthy = await checkPort(MESH_PORT);
+      meshStatus.healthy = meshHealthy;
+      if (meshHealthy) {
+        const res = await fetch(`http://localhost:${MESH_PORT}/mesh/status`, { signal: AbortSignal.timeout(3000) });
+        if (res.ok) {
+          const data = await res.json() as any;
+          meshStatus.peers = data.peer_count ?? data.peers?.length ?? 0;
+          meshStatus.mode = data.mode;
+        }
+      }
+    } catch { /* ignore */ }
+
     const checks = {
       inference: { port: INFERENCE_PORT, healthy: await checkPort(INFERENCE_PORT) },
       embeddings: { port: EMBED_PORT, healthy: await checkPort(EMBED_PORT) },
-      mesh: { port: MESH_PORT, healthy: await checkPort(MESH_PORT) },
+      mesh: { port: MESH_PORT, ...meshStatus },
       timestamp: new Date().toISOString()
     };
     return {
@@ -354,7 +386,7 @@ server.tool(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "ollama-7b",
+          model: "local",
           messages: [
             { role: "system", content: TARX_LOCAL_REASONING_PROMPT },
             { role: "user", content: enhancedPrompt }
@@ -468,7 +500,7 @@ server.tool(
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            model: "ollama-7b",
+            model: "local",
             messages: [
               { role: "system", content: TARX_LOCAL_REASONING_PROMPT },
               { role: "user", content: `${prompt} (test ${i + 1})` }
@@ -780,7 +812,7 @@ server.tool(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "ollama-7b",
+          model: "local",
           messages: messagesWithSystem,
           max_tokens: maxTokens,
           stream: false
@@ -1290,11 +1322,25 @@ server.tool(
   {},
   async () => {
     try {
-      const [inference, embeddings, mesh] = await Promise.all([
+      const [inference, embeddings, meshHealthy] = await Promise.all([
         checkPort(INFERENCE_PORT),
         checkPort(EMBED_PORT),
         checkPort(MESH_PORT)
       ]);
+
+      // Fetch mesh peer count if running
+      let meshPeers = 0;
+      let meshMode: string | undefined;
+      if (meshHealthy) {
+        try {
+          const res = await fetch(`http://localhost:${MESH_PORT}/mesh/status`, { signal: AbortSignal.timeout(3000) });
+          if (res.ok) {
+            const data = await res.json() as any;
+            meshPeers = data.peer_count ?? data.peers?.length ?? 0;
+            meshMode = data.mode;
+          }
+        } catch { /* ignore */ }
+      }
 
       let dbStats = null;
       try {
@@ -1309,7 +1355,7 @@ server.tool(
       const activeErrors: string[] = [];
       if (!inference) activeErrors.push(`Inference server offline (port ${INFERENCE_PORT})`);
       if (!embeddings) activeErrors.push(`Embedding server offline (port ${EMBED_PORT})`);
-      if (!mesh) activeErrors.push(`Mesh network offline (port ${MESH_PORT})`);
+      if (!meshHealthy) activeErrors.push(`Mesh network offline (port ${MESH_PORT})`);
 
       return {
         content: [{
@@ -1317,7 +1363,7 @@ server.tool(
           text: JSON.stringify({
             inference: { port: INFERENCE_PORT, healthy: inference },
             embeddings: { port: EMBED_PORT, healthy: embeddings },
-            mesh: { port: MESH_PORT, healthy: mesh },
+            mesh: { port: MESH_PORT, healthy: meshHealthy, peers: meshPeers, mode: meshMode },
             db_stats: dbStats,
             memory_stats: memStats,
             active_errors: activeErrors,
@@ -1435,15 +1481,242 @@ server.tool(
 
 
 // ============================================================================
+// GTM TOOLS — Invite Codes, Profiles, Skills, Weekly Report
+// ============================================================================
+
+// Tool: Validate an invite code
+server.tool(
+  "tarx_validate_invite",
+  "Validate a TARX invite code and return tier info",
+  {
+    code: z.string().describe("Invite code to validate (format: TARX-WORD-DIGITS)")
+  },
+  async ({ code }) => {
+    try {
+      const result = validateInviteCode(code.toUpperCase().trim());
+      return {
+        content: [{ type: "text", text: JSON.stringify(result) }]
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: JSON.stringify({ error: error instanceof Error ? error.message : "Validation failed" }) }],
+        isError: true
+      };
+    }
+  }
+);
+
+// Tool: Redeem an invite code
+server.tool(
+  "tarx_redeem_invite",
+  "Redeem a validated invite code",
+  {
+    code: z.string().describe("Invite code to redeem"),
+    userId: z.string().optional().describe("User ID (default: 'default')")
+  },
+  async ({ code, userId }) => {
+    try {
+      const success = redeemInviteCode(code.toUpperCase().trim(), userId || 'default');
+      return {
+        content: [{ type: "text", text: JSON.stringify({ success }) }]
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: JSON.stringify({ error: error instanceof Error ? error.message : "Redeem failed" }) }],
+        isError: true
+      };
+    }
+  }
+);
+
+// Tool: Get user profile
+server.tool(
+  "tarx_get_profile",
+  "Get user profile (name, email, tier, preferences)",
+  {
+    userId: z.string().optional().describe("User ID (default: 'default')")
+  },
+  async ({ userId }) => {
+    try {
+      const profile = getProfile(userId || 'default');
+      return {
+        content: [{ type: "text", text: JSON.stringify(profile || { id: 'default', display_name: null, tier: 'beta' }) }]
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: JSON.stringify({ error: error instanceof Error ? error.message : "Profile fetch failed" }) }],
+        isError: true
+      };
+    }
+  }
+);
+
+// Tool: Update user profile
+server.tool(
+  "tarx_update_profile",
+  "Create or update user profile",
+  {
+    display_name: z.string().optional().describe("Display name"),
+    email: z.string().optional().describe("Email address"),
+    tier: z.string().optional().describe("User tier (beta/pro/enterprise)"),
+    invite_code: z.string().optional().describe("Invite code used"),
+    preferences: z.string().optional().describe("JSON preferences string")
+  },
+  async (params) => {
+    try {
+      const profile = upsertProfile(params);
+      return {
+        content: [{ type: "text", text: JSON.stringify(profile) }]
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: JSON.stringify({ error: error instanceof Error ? error.message : "Profile update failed" }) }],
+        isError: true
+      };
+    }
+  }
+);
+
+// Tool: List skills
+server.tool(
+  "tarx_list_skills",
+  "List available skills, optionally filtered by category or search query",
+  {
+    category: z.string().optional().describe("Filter by category (Code, Data, DevOps, Writing, Research, Productivity)"),
+    search: z.string().optional().describe("Search query for skill name/description")
+  },
+  async ({ category, search }) => {
+    try {
+      const skills = listSkills(category, search);
+      return {
+        content: [{ type: "text", text: JSON.stringify({ count: skills.length, skills: skills.map(s => ({ id: s.id, name: s.name, description: s.description, category: s.category, tier: s.tier, install_count: s.install_count })) }, null, 2) }]
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: JSON.stringify({ error: error instanceof Error ? error.message : "List failed" }) }],
+        isError: true
+      };
+    }
+  }
+);
+
+// Tool: Install a skill
+server.tool(
+  "tarx_install_skill",
+  "Install a skill for the user (adds to active skills for system prompt injection)",
+  {
+    skillId: z.string().describe("Skill ID to install")
+  },
+  async ({ skillId }) => {
+    try {
+      const success = installSkill(skillId);
+      return {
+        content: [{ type: "text", text: JSON.stringify({ success, skillId }) }]
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: JSON.stringify({ error: error instanceof Error ? error.message : "Install failed" }) }],
+        isError: true
+      };
+    }
+  }
+);
+
+// Tool: Uninstall a skill
+server.tool(
+  "tarx_uninstall_skill",
+  "Remove a skill from user's active skills",
+  {
+    skillId: z.string().describe("Skill ID to uninstall")
+  },
+  async ({ skillId }) => {
+    try {
+      const success = uninstallSkill(skillId);
+      return {
+        content: [{ type: "text", text: JSON.stringify({ success, skillId }) }]
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: JSON.stringify({ error: error instanceof Error ? error.message : "Uninstall failed" }) }],
+        isError: true
+      };
+    }
+  }
+);
+
+// Tool: Get active skills with full context
+server.tool(
+  "tarx_get_active_skills",
+  "Get user's active skills with full system prompt context",
+  {
+    userId: z.string().optional().describe("User ID (default: 'default')")
+  },
+  async ({ userId }) => {
+    try {
+      const skills = getActiveSkills(userId || 'default');
+      const context = skills.map(s =>
+        `### ${s.name} (${s.category})\n${s.system_prompt}`
+      ).join('\n\n');
+
+      return {
+        content: [{ type: "text", text: JSON.stringify({ count: skills.length, skills: skills.map(s => ({ id: s.id, name: s.name, category: s.category })), context }, null, 2) }]
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: JSON.stringify({ error: error instanceof Error ? error.message : "Failed to get active skills" }) }],
+        isError: true
+      };
+    }
+  }
+);
+
+// Tool: Weekly report
+server.tool(
+  "tarx_weekly_report",
+  "Generate weekly usage metrics report",
+  {
+    week_offset: z.number().optional().describe("0 = current week, -1 = last week, etc.")
+  },
+  async ({ week_offset }) => {
+    try {
+      const offset = week_offset || 0;
+      const now = Date.now();
+      const weekMs = 7 * 24 * 60 * 60 * 1000;
+      const endDate = now + (offset * weekMs);
+      const startDate = endDate - weekMs;
+
+      const metrics = getWeeklyMetrics(startDate, endDate);
+      const estTimeSaved = Math.round(metrics.messages_sent * 0.5); // ~30 sec per message
+
+      return {
+        content: [{ type: "text", text: JSON.stringify({
+          ...metrics,
+          estimated_minutes_saved: estTimeSaved,
+          period: {
+            start: new Date(startDate).toISOString().split('T')[0],
+            end: new Date(endDate).toISOString().split('T')[0]
+          }
+        }, null, 2) }]
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: JSON.stringify({ error: error instanceof Error ? error.message : "Report generation failed" }) }],
+        isError: true
+      };
+    }
+  }
+);
+
+// ============================================================================
 // STARTUP
 // ============================================================================
 
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("TARX Core MCP Server v1.1.0 started");
+  console.error("TARX Core MCP Server v1.2.0 started");
   console.error("  Merged: tarx-local + tarx-claude-memory + claude-mem patterns");
-  console.error("  Tools: 21 (core:3, spaces:3, sessions:4, memory:6, files:3, smart:2)");
+  console.error("  Tools: 30 (core:3, spaces:3, sessions:4, memory:6, files:3, smart:2, gtm:9)");
 }
 
 main().catch(console.error);

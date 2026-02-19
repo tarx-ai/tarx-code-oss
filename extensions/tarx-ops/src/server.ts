@@ -38,6 +38,7 @@ import { db, DB_PATH } from "./database.js";
 import { generateId, now } from "./crypto.js";
 import * as Daemon from "./daemon.js";
 import * as Tether from "./tether.js";
+import * as Datadog from "./datadog.js";
 import { spawn, ChildProcess } from "child_process";
 import * as path from "path";
 import * as os from "os";
@@ -106,6 +107,7 @@ function auditLog(toolName: string, params: unknown, result: { isError?: boolean
       creator_authenticated: !!CREATOR_KEY,
     };
     fs.appendFileSync(AUDIT_LOG_PATH, JSON.stringify(entry) + "\n");
+    Datadog.recordToolCall({ server: "tarx-ops", tool: toolName, success: entry.success });
   } catch {
     // Audit logging should never crash the server
   }
@@ -3084,15 +3086,186 @@ server.tool(
 );
 
 // =============================================================================
+// GTM: INVITE CODE MANAGEMENT
+// =============================================================================
+
+const INVITE_WORDS = [
+  'SPARK', 'PULSE', 'NEXUS', 'FORGE', 'PRISM', 'ORBIT', 'CREST', 'FLUX',
+  'LUNAR', 'SOLAR', 'NEON', 'BLAZE', 'VIPER', 'TITAN', 'DRIFT', 'WAVE',
+  'ECHO', 'PIXEL', 'SIGMA', 'ALPHA', 'OMEGA', 'DELTA', 'CIPHER', 'GHOST',
+  'HYPER', 'STEEL', 'RAPID', 'TURBO', 'PRIME', 'ZENITH', 'APEX', 'NOVA'
+];
+
+// 48. tarx_admin_generate_invite
+server.tool(
+  "tarx_admin_generate_invite",
+  "Generate TARX invite codes (format: TARX-WORD-DIGITS). Creator-only.",
+  {
+    count: z.number().min(1).max(100).describe("Number of codes to generate"),
+    tier: z.enum(["beta", "pro", "enterprise", "internal"]).optional().describe("Tier for the codes (default: beta)"),
+    prefix_word: z.string().optional().describe("Custom word for the code (default: random)")
+  },
+  async ({ count, tier, prefix_word }) => {
+    const codeTier = tier || 'beta';
+    const codes: string[] = [];
+    const insertTime = now();
+
+    // Ensure invite_codes table exists
+    try {
+      db.exec(`CREATE TABLE IF NOT EXISTS invite_codes (
+        code TEXT PRIMARY KEY, created_at INTEGER NOT NULL, redeemed_at INTEGER,
+        redeemed_by TEXT, max_uses INTEGER DEFAULT 1, use_count INTEGER DEFAULT 0,
+        tier TEXT DEFAULT 'beta', metadata TEXT
+      )`);
+    } catch {}
+
+    const insert = db.prepare(
+      'INSERT INTO invite_codes (code, created_at, tier, max_uses) VALUES (?, ?, ?, 1)'
+    );
+
+    for (let i = 0; i < count; i++) {
+      const word = prefix_word?.toUpperCase() || INVITE_WORDS[Math.floor(Math.random() * INVITE_WORDS.length)];
+      const digits = String(Math.floor(1000 + Math.random() * 9000));
+      const code = `TARX-${word}-${digits}`;
+
+      try {
+        insert.run(code, insertTime, codeTier);
+        codes.push(code);
+      } catch {
+        i--; // Retry on duplicate
+      }
+    }
+
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({ generated: codes.length, tier: codeTier, codes }, null, 2)
+      }]
+    };
+  }
+);
+
+// 49. tarx_admin_list_invites
+server.tool(
+  "tarx_admin_list_invites",
+  "List invite codes with redemption status. Creator-only.",
+  {
+    tier: z.string().optional().describe("Filter by tier"),
+    unused_only: z.boolean().optional().describe("Show only unused codes")
+  },
+  async ({ tier, unused_only }) => {
+    try {
+      let query = 'SELECT code, tier, use_count, max_uses, created_at, redeemed_at, redeemed_by FROM invite_codes WHERE 1=1';
+      const params: unknown[] = [];
+
+      if (tier) {
+        query += ' AND tier = ?';
+        params.push(tier);
+      }
+      if (unused_only) {
+        query += ' AND use_count < max_uses';
+      }
+
+      query += ' ORDER BY created_at DESC LIMIT 100';
+
+      const codes = db.prepare(query).all(...params);
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({ count: (codes as unknown[]).length, codes }, null, 2)
+        }]
+      };
+    } catch (error) {
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({ error: error instanceof Error ? error.message : "Failed to list invites" })
+        }],
+        isError: true
+      };
+    }
+  }
+);
+
+// =============================================================================
+// DATADOG TOOLS
+// =============================================================================
+
+// 50. tarx_admin_datadog_status
+server.tool(
+  "tarx_admin_datadog_status",
+  "Get Datadog metrics integration status, buffered metric count, and config",
+  {},
+  async () => {
+    const status = Datadog.getStatus();
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify(status, null, 2),
+      }],
+    };
+  }
+);
+
+// 51. tarx_admin_datadog_flush
+server.tool(
+  "tarx_admin_datadog_flush",
+  "Force an immediate flush of buffered metrics to Datadog",
+  {},
+  async () => {
+    const result = await Datadog.forceFlush();
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify(result, null, 2),
+      }],
+    };
+  }
+);
+
+// 52. tarx_admin_datadog_record_inference
+server.tool(
+  "tarx_admin_datadog_record_inference",
+  "Record an inference call's latency and token metrics to Datadog",
+  {
+    latency_ms: z.number().describe("Inference latency in milliseconds"),
+    route: z.string().describe("Routing decision: 'local' or 'network'"),
+    model: z.string().describe("Model used (e.g. 'qwen-8b', 'claude-sonnet')"),
+    prompt_tokens: z.number().optional().describe("Number of prompt tokens"),
+    completion_tokens: z.number().optional().describe("Number of completion tokens"),
+  },
+  async (params) => {
+    Datadog.recordInference({
+      latencyMs: params.latency_ms,
+      route: params.route,
+      model: params.model,
+      promptTokens: params.prompt_tokens,
+      completionTokens: params.completion_tokens,
+    });
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({ recorded: true, metric: "tarx.inference.*", tags: { route: params.route, model: params.model } }),
+      }],
+    };
+  }
+);
+
+// =============================================================================
 // SERVER STARTUP
 // =============================================================================
 
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("TARX Ops MCP Server v1.1.0 started");
-  console.error(`  - 47 tools available (44 ops + 3 daemon)`);
+
+  // Start Datadog metrics flush timer
+  Datadog.start();
+
+  console.error("TARX Ops MCP Server v1.2.0 started");
+  console.error(`  - 52 tools available (44 ops + 3 daemon + 2 gtm + 3 datadog)`);
   console.error(`  - Sentry: ${SENTRY_TOKEN ? `${SENTRY_ORG} (${ALL_PROJECTS.join(", ")})` : "NOT CONFIGURED"}`);
+  console.error(`  - Datadog: ${process.env.DD_API_KEY ? `${process.env.DD_SITE || "datadoghq.com"}` : "NOT CONFIGURED (set DD_API_KEY)"}`);
   console.error(`  - Database: ${DB_PATH}`);
   console.error(`  - Creator auth: ${CREATOR_KEY ? "ENABLED" : "DISABLED (set TARX_CREATOR_KEY)"}`);
   console.error(`  - Audit log: ${AUDIT_LOG_PATH}`);
