@@ -183,15 +183,15 @@ function logBridge(message: string): void {
 /**
  * Action keywords that indicate the user wants to DO something (not just think/analyze)
  */
+// Narrowed to match only clear CRUD/action verbs that parseActionIntent can handle.
+// Previously included broad words (show, list, get, fix, make, add, set, open, run, build)
+// that matched nearly every user message, causing false positives that routed through
+// the slow bridge path and blocked the chat on follow-up queries (#3).
 const ACTION_KEYWORDS = [
-	'create', 'delete', 'remove', 'modify', 'update', 'change', 'edit',
-	'send', 'build', 'run', 'execute', 'install', 'deploy', 'push', 'commit',
-	'save', 'write', 'insert', 'upload', 'download', 'move', 'copy', 'rename',
-	'add', 'set', 'configure', 'enable', 'disable', 'start', 'stop', 'restart',
-	'make', 'generate', 'initialize', 'init', 'setup', 'fix', 'patch', 'implement',
-	'list', 'show', 'get', 'fetch', 'open',  // Read/query operations
-	// Skill/agent creation keywords (Feb 2026 - Skills Bridge)
-	'skill', 'agent', 'automation', 'automate', 'tool', 'workflow'
+	'create', 'delete', 'remove',  // CRUD operations parseActionIntent handles
+	'list',                         // list_spaces, list_sessions
+	'upload', 'download',           // File operations
+	'rename',                       // Explicit rename intent
 ];
 
 /**

@@ -8,13 +8,18 @@ import { statusIcon, Symbols, TarxIcons } from './icons';
 
 let llamaServer: ChildProcess | undefined;
 let embeddingServer: ChildProcess | undefined;
+let meshServer: ChildProcess | undefined;
 let embeddingHealthMonitor: NodeJS.Timeout | undefined;
+let meshHealthMonitor: NodeJS.Timeout | undefined;
 let outputChannel: vscode.OutputChannel;
 let statusBarItem: vscode.StatusBarItem;
 let embeddingStatusItem: vscode.StatusBarItem;
 let meshStatusItem: vscode.StatusBarItem;
 let isMeshEnabled = false;
+let meshPeerCount = 0;
 let extensionContext: vscode.ExtensionContext | undefined;
+
+const MESH_PORT = 11436;
 
 export async function activate(context: vscode.ExtensionContext) {
   extensionContext = context;
@@ -46,16 +51,16 @@ export async function activate(context: vscode.ExtensionContext) {
   embeddingStatusItem.command = 'tarx.local.embeddingStatus';
   context.subscriptions.push(embeddingStatusItem);
 
-  // Create mesh toggle status bar item
+  // Create mesh status bar item
   meshStatusItem = vscode.window.createStatusBarItem(
     'tarx-mesh-status',
     vscode.StatusBarAlignment.Right,
     99
   );
   meshStatusItem.name = 'TARX Mesh Status';
-  meshStatusItem.text = `${Symbols.meshOff} Mesh: Standby`;
-  meshStatusItem.tooltip = 'TARX Mesh Network — Standby. Click to enable.';
-  meshStatusItem.command = 'tarx.toggleMesh';
+  meshStatusItem.text = `${Symbols.meshOff} Mesh: Starting...`;
+  meshStatusItem.tooltip = 'TARX Mesh Network - Starting...';
+  meshStatusItem.command = 'tarx.local.meshStatus';
   meshStatusItem.show();
   context.subscriptions.push(meshStatusItem);
 
@@ -81,7 +86,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const modelPath = await findModel();
     if (!modelPath) {
       outputChannel.appendLine('TARX LOCAL: No model found, running in API-only mode');
-      vscode.window.showWarningMessage('TARX LOCAL: No model found. Install Ollama models or download a GGUF file.');
+      vscode.window.showWarningMessage('TARX LOCAL: No model found. Download a GGUF model file to ~/Library/Application Support/tarx/models/.');
     }
 
     // 3. Get port from config
@@ -165,6 +170,10 @@ export async function activate(context: vscode.ExtensionContext) {
       embeddingStatusItem.tooltip = 'TARX Embedding Server - Disabled by config';
     }
 
+    // 7b. Start mesh server (auto-start, no GPU needed)
+    await startMeshServer(context, MESH_PORT);
+    startMeshHealthMonitor(MESH_PORT);
+
     // 8. Register commands
     context.subscriptions.push(
       vscode.commands.registerCommand('tarx.local.restart', async () => {
@@ -178,14 +187,35 @@ export async function activate(context: vscode.ExtensionContext) {
       })
     );
 
-    // Mesh toggle command
+    // Mesh toggle command — now starts/stops the real server
     context.subscriptions.push(
-      vscode.commands.registerCommand('tarx.toggleMesh', () => {
-        isMeshEnabled = !isMeshEnabled;
-        updateMeshStatus();
-        vscode.window.showInformationMessage(
-          `TARX Mesh: ${isMeshEnabled ? 'Enabled' : 'Disabled'}`
-        );
+      vscode.commands.registerCommand('tarx.toggleMesh', async () => {
+        if (meshServer) {
+          // Running → stop it
+          await stopMeshServer();
+          isMeshEnabled = false;
+          vscode.window.showInformationMessage('TARX Mesh: Stopped');
+        } else {
+          // Not running → start it
+          isMeshEnabled = true;
+          await startMeshServer(context, MESH_PORT);
+          startMeshHealthMonitor(MESH_PORT);
+          vscode.window.showInformationMessage('TARX Mesh: Starting...');
+        }
+      })
+    );
+
+    // Mesh status command
+    context.subscriptions.push(
+      vscode.commands.registerCommand('tarx.local.meshStatus', async () => {
+        await showMeshStatus(MESH_PORT);
+      })
+    );
+
+    // Mesh restart command
+    context.subscriptions.push(
+      vscode.commands.registerCommand('tarx.local.restartMesh', async () => {
+        await restartMeshServer(context);
       })
     );
 
@@ -210,6 +240,7 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push({
       dispose: () => {
         stopEmbeddingHealthMonitor();
+        stopMeshHealthMonitor();
         if (llamaServer) {
           llamaServer.kill('SIGTERM');
           llamaServer = undefined;
@@ -217,6 +248,10 @@ export async function activate(context: vscode.ExtensionContext) {
         if (embeddingServer) {
           embeddingServer.kill('SIGTERM');
           embeddingServer = undefined;
+        }
+        if (meshServer) {
+          meshServer.kill('SIGTERM');
+          meshServer = undefined;
         }
       }
     });
@@ -233,6 +268,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 export function deactivate() {
   stopEmbeddingHealthMonitor();
+  stopMeshHealthMonitor();
   if (llamaServer) {
     llamaServer.kill('SIGTERM');
     llamaServer = undefined;
@@ -240,6 +276,10 @@ export function deactivate() {
   if (embeddingServer) {
     embeddingServer.kill('SIGTERM');
     embeddingServer = undefined;
+  }
+  if (meshServer) {
+    meshServer.kill('SIGTERM');
+    meshServer = undefined;
   }
 }
 
@@ -279,17 +319,36 @@ function updateStatusBar(state: 'starting' | 'connected' | 'error' | 'offline', 
   }
 }
 
-function updateMeshStatus() {
+function updateMeshStatusBar(state: 'starting' | 'connected' | 'error' | 'offline', peers?: number) {
   // Guard: meshStatusItem may be null during dispose
   if (!meshStatusItem) return;
 
   try {
-    if (isMeshEnabled) {
-      meshStatusItem.text = `${Symbols.meshOn} Mesh: ON`;
-      meshStatusItem.tooltip = 'TARX Mesh Network - Connected. Click to disable.';
-    } else {
-      meshStatusItem.text = `${Symbols.meshOff} Mesh: Standby`;
-      meshStatusItem.tooltip = 'TARX Mesh Network — Standby. Click to enable.';
+    switch (state) {
+      case 'starting':
+        meshStatusItem.text = `${Symbols.meshOff} Mesh: Starting...`;
+        meshStatusItem.tooltip = 'TARX Mesh Network - Starting...';
+        meshStatusItem.backgroundColor = undefined;
+        break;
+      case 'connected':
+        meshPeerCount = peers ?? 0;
+        meshStatusItem.text = `${Symbols.meshOn} Mesh (${meshPeerCount})`;
+        meshStatusItem.tooltip = `TARX Mesh Network - Running on port ${MESH_PORT} (${meshPeerCount} peers)`;
+        meshStatusItem.backgroundColor = undefined;
+        isMeshEnabled = true;
+        break;
+      case 'error':
+        meshStatusItem.text = `${Symbols.meshOff} Mesh: Error`;
+        meshStatusItem.tooltip = 'TARX Mesh Network - Error. Click for details.';
+        meshStatusItem.backgroundColor = themeColor(ThemeColors.statusBarError);
+        isMeshEnabled = false;
+        break;
+      case 'offline':
+        meshStatusItem.text = `${Symbols.meshOff} Mesh: Off`;
+        meshStatusItem.tooltip = 'TARX Mesh Network - Not running. Click to start.';
+        meshStatusItem.backgroundColor = undefined;
+        isMeshEnabled = false;
+        break;
     }
   } catch {
     // Silently ignore errors during status bar updates
@@ -687,5 +746,219 @@ async function showEmbeddingStatus(port: number) {
     outputChannel.appendLine(msg);
   } catch (err: any) {
     vscode.window.showErrorMessage(`Cannot get embedding status: ${err.message}`);
+  }
+}
+
+// ============================================================================
+// MESH SERVER (tarx-mesh binary on port 11436)
+// ============================================================================
+
+async function startMeshServer(context: vscode.ExtensionContext, port: number, attempt: number = 1) {
+  const maxAttempts = 3;
+  try {
+    // Singleton guard — skip spawn if already running
+    try {
+      const res = await fetch(`http://localhost:${port}/health`);
+      if (res.ok) {
+        outputChannel.appendLine(`TARX MESH: Server already running on port ${port}`);
+        // Fetch initial peer count
+        await fetchMeshPeerCount(port);
+        updateMeshStatusBar('connected', meshPeerCount);
+        return;
+      }
+    } catch { /* not running, proceed to start */ }
+
+    const binaryPath = path.join(
+      context.extensionPath,
+      'binaries',
+      'tarx-mesh'
+    );
+
+    if (!fs.existsSync(binaryPath)) {
+      outputChannel.appendLine(`TARX MESH: Binary not found at ${binaryPath}`);
+      updateMeshStatusBar('offline');
+      return;
+    }
+
+    outputChannel.appendLine(`TARX MESH: Starting on port ${port} (attempt ${attempt}/${maxAttempts})`);
+    updateMeshStatusBar('starting');
+
+    const home = os.homedir();
+    const dataDir = path.join(home, 'Library/Application Support/tarx/mesh');
+
+    // Ensure data directory exists
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+
+    const args = [
+      '--bind-addr', `127.0.0.1:${port}`,
+      '--inference-url', 'http://127.0.0.1:11435',
+      '--data-dir', dataDir,
+      '--log-level', 'info',
+      '--mode', 'embedded',
+      '--enable-mdns'
+    ];
+
+    meshServer = spawn(binaryPath, args, {
+      env: { ...process.env }
+    });
+
+    meshServer.stdout?.on('data', (data) => {
+      outputChannel.appendLine(`[tarx-mesh] ${data.toString().trim()}`);
+    });
+
+    meshServer.stderr?.on('data', (data) => {
+      outputChannel.appendLine(`[tarx-mesh] ${data.toString().trim()}`);
+    });
+
+    meshServer.on('exit', (code, signal) => {
+      outputChannel.appendLine(`TARX MESH: Server exited (code: ${code}, signal: ${signal})`);
+      if (code !== 0 && code !== null) {
+        updateMeshStatusBar('error');
+      } else {
+        updateMeshStatusBar('offline');
+      }
+      meshServer = undefined;
+    });
+
+    meshServer.on('error', (err) => {
+      outputChannel.appendLine(`TARX MESH: Spawn error: ${err.message}`);
+      updateMeshStatusBar('error');
+    });
+
+    // Wait for mesh server health (faster startup than LLM servers)
+    await waitForHealth(`http://localhost:${port}/health`, 10000);
+
+    // Fetch initial peer count
+    await fetchMeshPeerCount(port);
+    updateMeshStatusBar('connected', meshPeerCount);
+
+    outputChannel.appendLine('TARX MESH: Ready!');
+
+  } catch (err: any) {
+    outputChannel.appendLine(`TARX MESH: Error (attempt ${attempt}): ${err.message}`);
+
+    // Kill failed process before retry
+    if (meshServer) {
+      meshServer.kill('SIGTERM');
+      meshServer = undefined;
+    }
+
+    if (attempt < maxAttempts) {
+      outputChannel.appendLine(`TARX MESH: Retrying in 3s...`);
+      updateMeshStatusBar('starting');
+      await new Promise(r => setTimeout(r, 3000));
+      return startMeshServer(context, port, attempt + 1);
+    }
+
+    updateMeshStatusBar('error');
+  }
+}
+
+async function stopMeshServer() {
+  stopMeshHealthMonitor();
+  if (meshServer) {
+    outputChannel.appendLine('TARX MESH: Stopping...');
+    meshServer.kill('SIGTERM');
+    meshServer = undefined;
+    await new Promise(r => setTimeout(r, 500));
+  }
+  updateMeshStatusBar('offline');
+}
+
+async function restartMeshServer(context: vscode.ExtensionContext) {
+  outputChannel.appendLine('TARX MESH: Restarting...');
+  await stopMeshServer();
+  await new Promise(r => setTimeout(r, 1000));
+  await startMeshServer(context, MESH_PORT);
+  startMeshHealthMonitor(MESH_PORT);
+}
+
+async function fetchMeshPeerCount(port: number): Promise<void> {
+  try {
+    const res = await fetch(`http://localhost:${port}/mesh/status`, { signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      const data = await res.json() as any;
+      meshPeerCount = data.peer_count ?? data.peers?.length ?? 0;
+    }
+  } catch {
+    // Non-fatal — peer count stays at last known value
+  }
+}
+
+async function showMeshStatus(port: number) {
+  try {
+    const healthRes = await fetch(`http://localhost:${port}/health`);
+    const health = await healthRes.json();
+
+    let statusExtra = '';
+    try {
+      const meshRes = await fetch(`http://localhost:${port}/mesh/status`);
+      const meshData = await meshRes.json() as any;
+      statusExtra = `\n- Peers: ${meshData.peer_count ?? 0}\n- Mode: ${meshData.mode ?? 'unknown'}`;
+    } catch { /* ignore */ }
+
+    const msg = `TARX Mesh Status:
+- Running: ${meshServer ? 'Yes' : 'No'}
+- Port: ${port}
+- Health: ${JSON.stringify(health)}${statusExtra}`;
+
+    vscode.window.showInformationMessage(msg);
+    outputChannel.appendLine(msg);
+  } catch (err: any) {
+    vscode.window.showErrorMessage(`Cannot get mesh status: ${err.message}`);
+  }
+}
+
+// ============================================================================
+// MESH SERVER HEALTH MONITOR (auto-restart on crash)
+// ============================================================================
+
+function startMeshHealthMonitor(port: number) {
+  if (meshHealthMonitor) {
+    clearInterval(meshHealthMonitor);
+  }
+
+  outputChannel.appendLine('TARX MESH: Starting health monitor (30s interval)');
+
+  meshHealthMonitor = setInterval(async () => {
+    try {
+      const res = await fetch(`http://localhost:${port}/health`, { signal: AbortSignal.timeout(5000) });
+      if (!res.ok) {
+        throw new Error(`Health check returned ${res.status}`);
+      }
+      // Update peer count on each successful health check
+      await fetchMeshPeerCount(port);
+      updateMeshStatusBar('connected', meshPeerCount);
+    } catch (err: any) {
+      outputChannel.appendLine(`TARX MESH: Health check failed: ${err.message}`);
+      outputChannel.appendLine('TARX MESH: Auto-restarting...');
+      updateMeshStatusBar('starting');
+
+      // Kill zombie process if exists
+      if (meshServer) {
+        try {
+          meshServer.kill('SIGKILL');
+        } catch { /* ignore */ }
+        meshServer = undefined;
+      }
+
+      // Wait before restart
+      await new Promise(r => setTimeout(r, 2000));
+
+      // Restart if we have context
+      if (extensionContext) {
+        await startMeshServer(extensionContext, port);
+      }
+    }
+  }, 30000); // Check every 30 seconds
+}
+
+function stopMeshHealthMonitor() {
+  if (meshHealthMonitor) {
+    clearInterval(meshHealthMonitor);
+    meshHealthMonitor = undefined;
+    outputChannel.appendLine('TARX MESH: Health monitor stopped');
   }
 }

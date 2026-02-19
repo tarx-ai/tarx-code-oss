@@ -93,9 +93,46 @@ export class TarxDashboardPanel {
 					await vscode.commands.executeCommand(msg.viewId);
 				}
 				break;
+			case 'getServiceHealth':
+				this._fetchServiceHealth();
+				break;
 			default:
 				console.log('[TARX Dashboard] Unhandled message:', msg.command);
 		}
+	}
+
+	private async _fetchServiceHealth(): Promise<void> {
+		const health: Record<string, unknown> = {
+			command: 'serviceHealth',
+			inference: false,
+			embeddings: false,
+			mesh: false,
+			meshPeers: 0,
+			meshPeerId: null,
+		};
+		const fetchWithTimeout = (url: string, ms: number): Promise<Response> => {
+			const controller = new AbortController();
+			const timeout = setTimeout(() => controller.abort(), ms);
+			return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timeout));
+		};
+		try {
+			const res = await fetchWithTimeout('http://localhost:11435/health', 2000);
+			health.inference = res.ok;
+		} catch { /* offline */ }
+		try {
+			const res = await fetchWithTimeout('http://localhost:11437/health', 2000);
+			health.embeddings = res.ok;
+		} catch { /* offline */ }
+		try {
+			const res = await fetchWithTimeout('http://localhost:11436/mesh/status', 2000);
+			if (res.ok) {
+				const data = await res.json() as { peer_count?: number; connected_peers?: number; local_peer_id?: string };
+				health.mesh = true;
+				health.meshPeers = data.connected_peers ?? data.peer_count ?? 0;
+				health.meshPeerId = data.local_peer_id ?? null;
+			}
+		} catch { /* offline */ }
+		this._panel.webview.postMessage(health);
 	}
 
 	private _dispose(): void {

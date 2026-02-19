@@ -69,7 +69,7 @@ const getGreeting = (name: string): string => {
   return options[Math.floor(Math.random() * options.length)];
 };
 
-// Simulated metrics
+// Live metrics — polls real service health from extension host
 interface Metrics {
   tokPerSec: number;
   ttft: number;
@@ -91,9 +91,36 @@ const useLiveMetrics = (): Metrics => {
   const [m, setM] = useState<Metrics>({
     tokPerSec: 17.4, ttft: 156, vram: 6.4, vramTotal: 16,
     model: "Qwen 2.5 8.2B", quant: "Q4_K_M", gpu: "Metal M4",
-    inference: true, embeddings: true, mesh: true, meshPeers: 0,
+    inference: false, embeddings: false, mesh: false, meshPeers: 0,
     memories: 153, sessions: 250, chunks: 558,
   });
+
+  // Poll real service health from extension host
+  useEffect(() => {
+    const requestHealth = () => postMessage({ command: 'getServiceHealth' });
+    requestHealth(); // immediate first fetch
+
+    const handler = (event: MessageEvent) => {
+      const msg = event.data;
+      if (msg?.command === 'serviceHealth') {
+        setM(prev => ({
+          ...prev,
+          inference: !!msg.inference,
+          embeddings: !!msg.embeddings,
+          mesh: !!msg.mesh,
+          meshPeers: typeof msg.meshPeers === 'number' ? msg.meshPeers : 0,
+        }));
+      }
+    };
+    window.addEventListener('message', handler);
+    const interval = setInterval(requestHealth, 10000); // re-poll every 10s
+    return () => {
+      window.removeEventListener('message', handler);
+      clearInterval(interval);
+    };
+  }, []);
+
+  // Simulated perf jitter for tok/s, ttft, vram (until real inference metrics API exists)
   useEffect(() => {
     const i = setInterval(() => setM(p => ({
       ...p,
@@ -103,6 +130,7 @@ const useLiveMetrics = (): Metrics => {
     })), 3000);
     return () => clearInterval(i);
   }, []);
+
   return m;
 };
 
@@ -410,7 +438,31 @@ interface DashboardProps {
 
 export default function TARXDashboard({ onOpenChat }: DashboardProps) {
   const metrics = useLiveMetrics();
-  const [greeting] = useState(() => getGreeting("John"));
+  const [userName, setUserName] = useState("there");
+  const [greeting] = useState(() => getGreeting(userName));
+
+  // Fetch profile name on mount
+  useEffect(() => {
+    try {
+      // @ts-ignore — vscode API available in webview context
+      const vscodeApi = typeof acquireVsCodeApi !== 'undefined' ? (window as any).__vscode : null;
+      if (vscodeApi) {
+        vscodeApi.postMessage({ command: 'getProfile' });
+      }
+    } catch {}
+  }, []);
+
+  // Listen for profile response
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      const msg = event.data;
+      if (msg?.command === 'profileData' && msg.display_name) {
+        setUserName(msg.display_name);
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
   const [installedSkills, setInstalledSkills] = useState(new Set(["Code Explainer", "Git Diff Review"]));
   const [installedAgents, setInstalledAgents] = useState(new Set(["System Architect"]));
 

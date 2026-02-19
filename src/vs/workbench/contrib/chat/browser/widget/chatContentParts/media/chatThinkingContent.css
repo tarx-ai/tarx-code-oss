@@ -230,7 +230,8 @@
 /* TARX-specific thinking block styles */
 .interactive-session .interactive-response .value .tarx-thinking-block {
 	background: var(--vscode-editor-background);
-	border-left: 3px solid var(--vscode-charts-purple);
+	border-left: 3px solid transparent;
+	border-image: linear-gradient(180deg, #40B6FB, #FF326D) 1;
 	padding: 8px 12px;
 	margin: 4px 0;
 	font-style: italic;
@@ -255,7 +256,7 @@
 	width: 6px;
 	height: 6px;
 	border-radius: 50%;
-	background: var(--vscode-charts-purple);
+	background: #40B6FB;
 	flex-shrink: 0;
 }
 
@@ -286,14 +287,23 @@
 	opacity: 1;
 }
 
-/* Enhanced border style for thinking collapsibles */
+/* Enhanced border style for thinking collapsibles — TARX gradient */
 .interactive-session .interactive-response .value .chat-thinking-box .chat-used-context-list.chat-thinking-collapsible {
-	border-left: 3px solid var(--vscode-charts-purple);
+	border-left: 3px solid transparent;
+	border-image: linear-gradient(180deg, #40B6FB, #FF326D) 1;
 	transition: border-color 0.2s ease;
+}
+
+/* Thinking content: muted text, monospace font */
+.interactive-session .interactive-response .value .chat-thinking-box .chat-thinking-item {
+	opacity: 0.75;
+	font-family: var(--monaco-monospace-font), monospace;
+	font-size: 0.9em;
+	line-height: 1.5;
 }
 
 /* Streaming state glow */
 .interactive-session .interactive-response .value .chat-thinking-box .chat-used-context-list.chat-thinking-collapsible.chat-thinking-streaming {
-	border-left-color: var(--vscode-charts-purple);
-	box-shadow: -2px 0 8px -4px var(--vscode-charts-purple);
+	border-image: linear-gradient(180deg, #40B6FB, #FF326D) 1;
+	box-shadow: -2px 0 8px -4px #40B6FB;
 }

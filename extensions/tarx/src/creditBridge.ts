@@ -9,7 +9,7 @@
 import * as vscode from 'vscode';
 import { reportMeshUsage, hasStripeKey, getCurrentSubscription } from './stripeService';
 
-const MESH_STATS_URL = 'http://localhost:11436/mesh/stats';
+const MESH_STATS_URL = 'http://localhost:11436/mesh/status';
 const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const FETCH_TIMEOUT_MS = 5000;
 const LAST_CONSUMED_KEY = 'tarx.creditBridge.lastKnownConsumed';

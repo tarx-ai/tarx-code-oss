@@ -15,9 +15,9 @@
 	--tarx-sidebar-collapsed-width: 48px;
 
 	/* Row heights - CRITICAL for vertical alignment */
-	--tarx-row-height: 32px;           /* Standard row height (expanded) */
+	--tarx-row-height: 32px;           /* Standard row height */
 	--tarx-row-height-collapsed: 40px; /* Collapsed row height (icon only) */
-	--tarx-header-height: 40px;        /* Header row height */
+	--tarx-header-height: 35px;        /* TARX header row height (only row at 35px) */
 
 	/* Spacing - Tight but readable */
 	--tarx-spacing-xs: 4px;
@@ -108,7 +108,7 @@ body {
    ============================================================================ */
 .tarx-header {
 	box-sizing: border-box;
-	padding: 0 var(--tarx-spacing-md);
+	padding: 0 16px;
 	border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.08));
 	position: relative;
 	height: var(--tarx-header-height);
@@ -122,13 +122,13 @@ body {
 	display: flex;
 	align-items: center;
 	justify-content: flex-start;
-	gap: var(--tarx-icon-gap);
+	gap: 8px;
 	height: 100%;
 }
 
 .tarx-logo-icon {
-	width: 18px;
-	height: 18px;
+	width: 16px;
+	height: 16px;
 	object-fit: contain;
 	flex-shrink: 0;
 	border-radius: var(--tarx-radius-sm);
@@ -160,57 +160,41 @@ body {
    Enhanced with heightened animations and hover effects
    ============================================================================ */
 .tarx-nav-rows {
-	padding: var(--tarx-spacing-xs) 0;
+	padding: 0;
 	flex-shrink: 0;
 }
 
 .tarx-nav-row {
 	display: flex;
 	align-items: center;
-	height: var(--tarx-row-height);
-	min-height: var(--tarx-row-height);
-	padding: 0 var(--tarx-spacing-md);
-	margin: var(--tarx-row-gap) var(--tarx-spacing-sm);
-	border-radius: var(--tarx-radius-md);
+	gap: 8px;
+	height: 32px;
+	padding: 0 12px;
+	margin: 1px 4px;
+	border-radius: 4px;
 	cursor: pointer;
-	transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-	position: relative;
-	border: 1px solid transparent;
+	color: var(--vscode-sideBar-foreground);
+	transition: background 0.1s ease;
 }
 
 .tarx-nav-row:hover {
-	background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.06));
-	border-color: rgba(255,255,255,0.08);
-	transform: translateX(2px);
-}
-
-.tarx-nav-row:active {
-	transform: translateX(0) scale(0.98);
-	transition: transform 0.1s ease;
+	background: var(--vscode-list-hoverBackground);
 }
 
 .tarx-nav-row-icon {
-	width: var(--tarx-icon-size);
-	height: var(--tarx-icon-size);
+	width: 16px;
+	height: 16px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	flex-shrink: 0;
-	opacity: 0.85;
-	transition: opacity 0.15s ease, transform 0.15s ease;
-}
-
-.tarx-nav-row:hover .tarx-nav-row-icon {
-	opacity: 1;
-	transform: scale(1.1);
+	color: var(--vscode-icon-foreground);
 }
 
 .tarx-nav-row-label {
 	flex: 1;
-	font-size: var(--tarx-font-lg);
-	font-weight: 500;
-	margin-left: var(--tarx-icon-gap);
-	letter-spacing: 0.01em;
+	font-size: 13px;
+	font-weight: 400;
 }
 
 .tarx-action-btn {
@@ -280,53 +264,37 @@ body {
 .tarx-section-header {
 	display: flex;
 	align-items: center;
-	height: var(--tarx-row-height);
-	min-height: var(--tarx-row-height);
-	padding: 0 var(--tarx-spacing-md);
-	margin: var(--tarx-row-gap) var(--tarx-spacing-sm);
-	border-radius: var(--tarx-radius-md);
+	height: 32px;
+	padding: 0 12px;
+	margin: 1px 4px;
+	border-radius: 4px;
 	cursor: pointer;
 	user-select: none;
-	transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+	transition: background 0.1s ease;
 	position: relative;
-	border: 1px solid transparent;
 }
 
 .tarx-section-header:hover {
-	background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.05));
-	border-color: rgba(255,255,255,0.06);
-}
-
-.tarx-section-header:active {
-	transform: scale(0.99);
-	transition: transform 0.1s ease;
+	background: var(--vscode-list-hoverBackground);
 }
 
 .tarx-section-icon {
-	width: var(--tarx-icon-size);
-	height: var(--tarx-icon-size);
+	width: 16px;
+	height: 16px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	opacity: 0.8;
 	flex-shrink: 0;
-	transition: opacity 0.15s ease, transform 0.15s ease;
-}
-
-.tarx-section-header:hover .tarx-section-icon {
-	opacity: 1;
-	transform: scale(1.05);
+	color: var(--vscode-icon-foreground);
 }
 
 .tarx-section-title {
-	font-size: var(--tarx-font-lg);
-	font-weight: 600;
-	margin-left: var(--tarx-icon-gap);
-	flex: 1;
-	letter-spacing: 0.02em;
-	text-transform: uppercase;
 	font-size: 11px;
-	opacity: 0.9;
+	font-weight: 700;
+	margin-left: 8px;
+	flex: 1;
+	text-transform: uppercase;
+	color: var(--vscode-sideBarSectionHeader-foreground);
 }
 
 .tarx-section-add,
@@ -733,7 +701,7 @@ body {
 	position: relative;
 	display: flex;
 	flex-direction: column;
-	padding: var(--tarx-spacing-sm) 0;
+	padding: 4px 0;
 	border-top: 1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.08));
 	margin-top: auto;
 	background: inherit;
@@ -743,35 +711,29 @@ body {
 .tarx-footer-row {
 	display: flex;
 	align-items: center;
-	height: var(--tarx-row-height);
-	min-height: var(--tarx-row-height);
-	padding: 0 var(--tarx-spacing-md);
-	margin: var(--tarx-row-gap) var(--tarx-spacing-sm);
-	border-radius: var(--tarx-radius-md);
+	gap: 8px;
+	height: 32px;
+	padding: 0 12px;
+	margin: 1px 4px;
+	border-radius: 4px;
 	cursor: pointer;
-	transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-	border: 1px solid transparent;
+	color: var(--vscode-sideBar-foreground);
+	transition: background 0.1s ease;
 }
 
 .tarx-footer-row:hover {
-	background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.06));
-	border-color: rgba(255,255,255,0.08);
-	transform: translateX(2px);
+	background: var(--vscode-list-hoverBackground);
 }
 
-.tarx-footer-row:active {
-	transform: translateX(0) scale(0.98);
-}
-
-.tarx-footer-row > span:first-child {
-	width: var(--tarx-icon-size);
-	height: var(--tarx-icon-size);
+.tarx-footer-row > span:first-child,
+.tarx-footer-row > .codicon:first-child {
+	width: 16px;
+	height: 16px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	flex-shrink: 0;
-	opacity: 0.85;
-	transition: opacity 0.15s ease, transform 0.15s ease;
+	color: var(--vscode-icon-foreground);
 }
 
 .tarx-footer-row:hover > span:first-child {
@@ -780,26 +742,22 @@ body {
 }
 
 .tarx-footer-label {
-	font-size: var(--tarx-font-md);
-	font-weight: var(--tarx-weight-medium);
-	margin-left: var(--tarx-icon-gap);
+	font-size: 13px;
+	font-weight: 400;
 	white-space: nowrap;
-	letter-spacing: 0.01em;
 }
 
 .tarx-compute-chip-icon {
-	width: 20px;
-	height: 20px;
+	width: 16px;
+	height: 16px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	transition: transform 0.2s ease, color 0.2s ease;
 	flex-shrink: 0;
 }
 
 .tarx-compute-row:hover .tarx-compute-chip-icon {
-	transform: scale(1.1);
-	color: #40B6FB;
+	color: var(--vscode-icon-foreground);
 }
 
 .tarx-compute-chevron {
@@ -3116,10 +3074,14 @@ body {
 	justify-content: space-between;
 	padding: 6px 12px;
 	font-size: 11px;
-	font-weight: 700;
-	color: var(--vscode-descriptionForeground);
+	font-weight: 600;
+	color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-descriptionForeground));
+	background: var(--vscode-sideBarSectionHeader-background, transparent);
 	text-transform: uppercase;
-	letter-spacing: 0.08em;
+	letter-spacing: 0.5px;
+	border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, transparent);
+	cursor: pointer;
+	user-select: none;
 }
 
 .tarx-hierarchy-section-title {
@@ -3153,30 +3115,45 @@ body {
 .tarx-hierarchy-item {
 	display: flex;
 	align-items: center;
-	gap: 4px;
-	height: 22px;
-	padding-right: 8px;
+	gap: 8px;
+	height: 32px;
+	padding: 0 12px;
+	margin: 1px 4px;
+	border-radius: 4px;
 	cursor: pointer;
 	user-select: none;
+	color: var(--vscode-sideBar-foreground);
+	font-size: 13px;
+	font-weight: 400;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 	transition: background 0.1s ease;
 }
 
+.tarx-hierarchy-item.hover,
 .tarx-hierarchy-item:hover {
 	background: var(--vscode-list-hoverBackground);
 }
 
 .tarx-hierarchy-item.active {
-	background: var(--vscode-list-activeSelectionBackground);
+	background: var(--vscode-list-activeSelectionBackground) !important;
 	color: var(--vscode-list-activeSelectionForeground);
 }
 
-.tarx-hierarchy-item.has-children {
-	font-weight: 500;
+.tarx-hierarchy-item:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
 }
 
-/* Chevron */
+.tarx-hierarchy-item.has-children {
+	font-weight: 400;
+}
+
+/* Chevron - positioned on the RIGHT */
 .tarx-hierarchy-chevron {
 	flex-shrink: 0;
+	margin-left: auto;
 	width: 16px;
 	height: 16px;
 	display: flex;
@@ -3185,28 +3162,28 @@ body {
 	font-size: 12px;
 	color: var(--vscode-icon-foreground);
 	opacity: 0.7;
-	transition: transform 0.15s ease;
+	transition: opacity 0.1s ease;
 }
 
 .tarx-hierarchy-chevron:hover {
 	opacity: 1;
 }
 
-.tarx-hierarchy-spacer {
-	display: inline-block;
-	flex-shrink: 0;
-}
-
-/* Icon */
+/* Icon - vertically centered */
 .tarx-hierarchy-icon {
 	flex-shrink: 0;
 	width: 16px;
 	height: 16px;
-	font-size: 14px;
+	font-size: 16px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	color: var(--vscode-icon-foreground);
+}
+
+.tarx-hierarchy-icon.tarx-custom-icon svg {
+	width: 16px;
+	height: 16px;
 }
 
 /* Label */

@@ -7,6 +7,9 @@
  *  - Voice commands (delegated to TARX extension)
  *--------------------------------------------------------------------------------------------*/
 
+// DISABLED: Lock screen overlay was causing black screen on launch
+// Re-enable after filming: import './tarxLockScreen.js';
+// import './tarxLockScreen.js';
 import { Codicon } from '../../../../base/common/codicons.js';
 import { localize2 } from '../../../../nls.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';

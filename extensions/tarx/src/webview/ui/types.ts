@@ -105,6 +105,8 @@ export interface BillingStatus {
  * Settings for the settings panel
  */
 export interface TarxSettings {
+	// User Profile
+	userName?: string;
 	// Claude API
 	claudeApiKeyConfigured: boolean;
 	claudeModel: string;

@@ -397,7 +397,7 @@ configurationRegistry.registerConfiguration({
 		},
 		[ChatConfiguration.ChatViewSessionsEnabled]: {
 			type: 'boolean',
-			default: true,
+			default: false, // TARX: Disabled sessions panel - conversations handled in sidebar
 			description: nls.localize('chat.viewSessions.enabled', "Show chat agent sessions when chat is empty or to the side when chat view is wide enough."),
 		},
 		[ChatConfiguration.ChatViewSessionsOrientation]: {

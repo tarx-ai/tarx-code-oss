@@ -109,7 +109,7 @@ export class ChatThinkingContentPart extends ChatCollapsibleContentPart implemen
 	private content: IChatThinkingPart;
 	private currentThinkingValue: string;
 	private currentTitle: string;
-	private defaultTitle = localize('chat.thinking.header', 'Working...');
+	private defaultTitle = localize('chat.thinking.header', '\u26A1 TARX is thinking...');
 	private textContainer!: HTMLElement;
 	private markdownResult: IRenderedMarkdown | undefined;
 	private wrapper!: HTMLElement;
@@ -139,13 +139,13 @@ export class ChatThinkingContentPart extends ChatCollapsibleContentPart implemen
 	) {
 		const initialText = extractTextFromPart(content);
 		const extractedTitle = extractTitleFromThinkingContent(initialText)
-			?? 'Working...';
+			?? '\u26A1 TARX is thinking...';
 
 		super(extractedTitle, context, undefined, hoverService);
 
 		this.id = content.id;
 		this.content = content;
-		const configuredMode = this.configurationService.getValue<ThinkingDisplayMode>('chat.agent.thinkingStyle') ?? ThinkingDisplayMode.Collapsed;
+		const configuredMode = this.configurationService.getValue<ThinkingDisplayMode>('chat.agent.thinkingStyle') ?? ThinkingDisplayMode.CollapsedPreview;
 
 		this.fixedScrollingMode = configuredMode === ThinkingDisplayMode.FixedScrolling;
 
@@ -662,8 +662,8 @@ export class ChatThinkingContentPart extends ChatCollapsibleContentPart implemen
 
 	private setFallbackTitle(): void {
 		const finalLabel = this.toolInvocationCount > 0
-			? localize('chat.thinking.finished.withTools', 'Finished working and invoked {0} tool{1}', this.toolInvocationCount, this.toolInvocationCount === 1 ? '' : 's')
-			: localize('chat.thinking.finished', 'Finished Working');
+			? localize('chat.thinking.finished.withTools', '\u26A1 Thought process \u2014 invoked {0} tool{1}', this.toolInvocationCount, this.toolInvocationCount === 1 ? '' : 's')
+			: localize('chat.thinking.finished', '\u26A1 Thought process');
 
 		this.currentTitle = finalLabel;
 		// With lazy rendering, wrapper may not be created yet if content hasn't been expanded

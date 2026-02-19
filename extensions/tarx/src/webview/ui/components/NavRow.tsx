@@ -29,16 +29,16 @@ export const NavRow: React.FC<NavRowProps> = ({
   };
 
   return (
-    <div className="tarx-nav-row" onClick={onClick}>
+    <div className="tarx-hierarchy-item" onClick={onClick}>
       {iconElement ? (
-        <span className="tarx-nav-row-icon tarx-custom-icon">{iconElement}</span>
+        <span className="tarx-hierarchy-icon tarx-custom-icon">{iconElement}</span>
       ) : (
-        <i className={`tarx-nav-row-icon codicon codicon-${icon}`} />
+        <i className={`tarx-hierarchy-icon codicon codicon-${icon}`} />
       )}
-      <span className="tarx-nav-row-label">{label}</span>
+      <span className="tarx-hierarchy-label">{label}</span>
       {onActionClick && actionIcon && (
         <i
-          className={`tarx-action-btn codicon codicon-${actionIcon}`}
+          className={`tarx-hierarchy-add codicon codicon-${actionIcon}`}
           title={actionTitle}
           onClick={handleActionClick}
         />

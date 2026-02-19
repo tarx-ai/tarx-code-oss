@@ -718,7 +718,7 @@ export function registerOvernightTestCommands(context: vscode.ExtensionContext):
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({
-						model: 'ollama-7b',
+						model: 'local',
 						messages: [
 							{ role: 'system', content: TARX_LOCAL_REASONING_PROMPT },
 							{ role: 'user', content: args.message }

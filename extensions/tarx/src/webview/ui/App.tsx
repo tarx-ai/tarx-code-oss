@@ -109,11 +109,9 @@ export const App: React.FC<AppProps> = ({ mode, logoUri, eyesUri }) => {
 	// Dashboard state — only shown by default in dashboard mode
 	const [showDashboard, setShowDashboard] = useState(mode === 'dashboard');
 
-	// First-run detection — check if user has seen welcome screen
-	const [showFirstRun, setShowFirstRun] = useState<boolean>(() => {
-		const saved = getState<{ hasSeenWelcome: boolean }>();
-		return !saved?.hasSeenWelcome;
-	});
+	// First-run detection — disabled by default, nav shows immediately
+	// Set to true and remove hasSeenWelcome check to re-enable welcome screen
+	const [showFirstRun, setShowFirstRun] = useState<boolean>(false);
 
 	// PIN overlay state - locks app until PIN is set/verified
 	// Start with null (unknown) to show loading state until PIN check completes
@@ -257,12 +255,24 @@ export const App: React.FC<AppProps> = ({ mode, logoUri, eyesUri }) => {
 		postMessage({ command: 'clearFileContext' });
 	}, []);
 
+	const handleBrowseFiles = useCallback(() => {
+		postMessage({ command: 'browseFiles' });
+	}, []);
+
 	const handleToggleAgent = useCallback((agentId: string) => {
 		postMessage({ command: 'toggleAgent', agentId });
 	}, []);
 
-	const handleOpenAgentConfig = useCallback(() => {
-		postMessage({ command: 'openMcpConfig' });
+	const handleConfigureAgent = useCallback((agentId: string) => {
+		postMessage({ command: 'configureAgent', agentId });
+	}, []);
+
+	const handleOpenAgentsMarketplace = useCallback(() => {
+		postMessage({ command: 'openAgentsMarketplace' });
+	}, []);
+
+	const handleOpenSkillsMarketplace = useCallback(() => {
+		postMessage({ command: 'openSkillsMarketplace' });
 	}, []);
 
 	// Skills handler
@@ -635,6 +645,7 @@ export const App: React.FC<AppProps> = ({ mode, logoUri, eyesUri }) => {
 				logoUri={logoUri}
 				connectionStatus={connectionStatus}
 				modelName={settings?.localModelName || undefined}
+				userName={settings?.userName}
 				onLogoClick={handleLogoClick}
 				onSettingsClick={handleOpenSettings}
 			/>
@@ -647,26 +658,22 @@ export const App: React.FC<AppProps> = ({ mode, logoUri, eyesUri }) => {
 
 			{!showLoading && (
 				<>
-					{/* Nav Rows - Quick Chat Access */}
-					<div className="tarx-nav-rows">
-						<NavRow
-							icon="comment-discussion"
-							iconElement={<ChatIcon />}
-							label="Chat"
-							onClick={handleOpenChat}
-							onActionClick={handleNewChat}
-							actionIcon="add"
-							actionTitle="New Chat"
-						/>
-					</div>
-
 					{/* ═══════════════════════════════════════════════════════════════
 					    HIERARCHY NAV - Custom React Collapsible Left Nav
-					    Projects/Spaces → Project Explorer → Conversations →
-					    Claude Sessions → Context Files → Agents
+					    Chat → Projects → Conversations → Files → Agents → Skills
 					    ═══════════════════════════════════════════════════════════════ */}
 					{useHierarchyNav ? (
 						<div className="tarx-hierarchy-container">
+							{/* Chat - top-level nav item */}
+							<NavRow
+								icon="comment-discussion"
+								iconElement={<ChatIcon />}
+								label="Chat"
+								onClick={handleOpenChat}
+								onActionClick={handleNewChat}
+								actionIcon="add"
+								actionTitle="New Chat"
+							/>
 							<HierarchyNav
 								projects={projects.map(p => ({
 									id: p.id,
@@ -693,9 +700,12 @@ export const App: React.FC<AppProps> = ({ mode, logoUri, eyesUri }) => {
 								onRefreshClaudeSessions={handleRefreshClaudeSessions}
 								onOpenContextFile={handleOpenContextFile}
 								onClearContext={handleClearContext}
+								onBrowseFiles={handleBrowseFiles}
 								onToggleAgent={handleToggleAgent}
-								onOpenAgentConfig={handleOpenAgentConfig}
+								onConfigureAgent={handleConfigureAgent}
+								onOpenAgentsMarketplace={handleOpenAgentsMarketplace}
 								onInstallSkill={handleInstallSkill}
+								onOpenSkillsMarketplace={handleOpenSkillsMarketplace}
 								skills={skills}
 								onRAGSearch={handleRAGSearch}
 								ragResults={ragResults}

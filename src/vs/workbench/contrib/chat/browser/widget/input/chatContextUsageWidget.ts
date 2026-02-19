@@ -37,7 +37,7 @@ export class ChatContextUsageWidget extends Disposable {
 	private _toolsTokenCount = 0;
 	private _workspaceTokenCount = 0;
 
-	private _maxTokenCount = 4096; // Default fallback
+	private _maxTokenCount = 8192; // Default fallback (matches TARX local model)
 	private _usagePercent = 0;
 
 	private _hoverQuotaBit: HTMLElement | undefined;

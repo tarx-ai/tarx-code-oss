@@ -131,7 +131,7 @@ Respond as TARX (2-4 sentences max, no markdown):`;
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'ollama-7b',
+          model: 'local',
           messages: [{ role: 'user', content: prompt }],
           max_tokens: maxTokens,
           temperature: 0.3 // Lower temperature for deterministic fixes

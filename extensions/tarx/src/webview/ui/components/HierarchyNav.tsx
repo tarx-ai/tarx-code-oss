@@ -69,34 +69,16 @@ export const NavItem: React.FC<NavItemProps> = ({
 	return (
 		<div className="tarx-hierarchy-item-wrapper" data-nav-id={id}>
 			<div
-				className={`tarx-hierarchy-item ${isActive ? 'active' : ''} ${hasChildren ? 'has-children' : ''}`}
+				className={`tarx-hierarchy-item ${isActive ? 'active' : ''} ${hasChildren ? 'has-children' : ''} ${hover && !disabled ? 'hover' : ''}`}
 				style={{
-					paddingLeft: `${8 + indentPx}px`,
-					background: hover && !disabled ? VS.listHover : isActive ? VS.listActive : 'transparent',
+					paddingLeft: `${12 + indentPx}px`,
 					opacity: disabled ? 0.5 : 1,
 					cursor: disabled ? 'not-allowed' : 'pointer',
-					transition: 'background 0.1s ease',
 				}}
 				onClick={handleClick}
 				onMouseEnter={() => setHover(true)}
 				onMouseLeave={() => setHover(false)}
 			>
-				{/* Chevron for expandable items */}
-				{hasChildren ? (
-					<i
-						className={`tarx-hierarchy-chevron codicon codicon-chevron-${isExpanded ? 'down' : 'right'}`}
-						style={{
-							transition: 'transform 0.15s ease',
-						}}
-						onClick={(e) => {
-							e.stopPropagation();
-							if (!disabled) onToggle?.();
-						}}
-					/>
-				) : (
-					<span className="tarx-hierarchy-spacer" style={{ width: 16 }} />
-				)}
-
 				{/* Icon */}
 				<i className={`tarx-hierarchy-icon codicon codicon-${icon}`} />
 
@@ -105,7 +87,7 @@ export const NavItem: React.FC<NavItemProps> = ({
 
 				{/* Badge */}
 				{badge !== undefined && (
-					<Badge variant={badgeVariant} style={{ marginLeft: 'auto', marginRight: 4 }}>
+					<Badge variant={badgeVariant} className="tarx-hierarchy-badge">
 						{badge}
 					</Badge>
 				)}
@@ -116,9 +98,16 @@ export const NavItem: React.FC<NavItemProps> = ({
 						className="tarx-hierarchy-add codicon codicon-add"
 						title={addTooltip || 'Add'}
 						onClick={handleAddClick}
-						style={{
-							opacity: 0.7,
-							transition: 'opacity 0.1s ease',
+					/>
+				)}
+
+				{/* Chevron for expandable items - on the RIGHT */}
+				{hasChildren && (
+					<i
+						className={`tarx-hierarchy-chevron codicon codicon-chevron-${isExpanded ? 'down' : 'right'}`}
+						onClick={(e) => {
+							e.stopPropagation();
+							if (!disabled) onToggle?.();
 						}}
 					/>
 				)}
@@ -236,9 +225,12 @@ interface HierarchyNavProps {
 	onRefreshClaudeSessions: () => void;
 	onOpenContextFile: (fileId: string) => void;
 	onClearContext: () => void;
+	onBrowseFiles: () => void;
 	onToggleAgent: (agentId: string) => void;
-	onOpenAgentConfig: () => void;
+	onConfigureAgent: (agentId: string) => void;
+	onOpenAgentsMarketplace: () => void;
 	onInstallSkill?: (skillId: string) => void;
+	onOpenSkillsMarketplace?: () => void;
 	onRAGSearch?: (query: string) => void;
 	ragResults?: RAGSearchResult[];
 	ragLoading?: boolean;
@@ -264,9 +256,12 @@ export const HierarchyNav: React.FC<HierarchyNavProps> = ({
 	onRefreshClaudeSessions,
 	onOpenContextFile,
 	onClearContext,
+	onBrowseFiles,
 	onToggleAgent,
-	onOpenAgentConfig,
+	onConfigureAgent,
+	onOpenAgentsMarketplace,
 	onInstallSkill,
+	onOpenSkillsMarketplace,
 	onRAGSearch,
 	ragResults = [],
 	ragLoading = false,
@@ -285,6 +280,8 @@ export const HierarchyNav: React.FC<HierarchyNavProps> = ({
 
 	const [ragQuery, setRagQuery] = useState('');
 	const [skillsQuery, setSkillsQuery] = useState('');
+	// Agents search removed - agents list now shows all agents directly
+	const [showAllProjects, setShowAllProjects] = useState(false);
 
 	const toggleSection = useCallback((section: string) => {
 		setExpanded(prev => ({ ...prev, [section]: !prev[section] }));
@@ -332,154 +329,45 @@ export const HierarchyNav: React.FC<HierarchyNavProps> = ({
 						</div>
 					</Card>
 				) : (
-					sortedProjects.map(project => (
-						<NavItem
-							key={project.id}
-							id={`project-${project.id}`}
-							icon={project.isActive ? 'folder-active' : 'folder'}
-							label={project.name}
-							badge={project.taskCount ? `${project.taskCount} tasks` : undefined}
-							badgeVariant={project.status === 'active' ? 'success' : 'default'}
-							depth={1}
-							isActive={project.id === selectedProjectId}
-							onClick={() => onOpenProject(project.id)}
-						/>
-					))
-				)}
-			</NavItem>
-
-			{/* ─── Project Explorer ─── */}
-			<NavItem
-				id="explorer"
-				icon="files"
-				label="Project Explorer"
-				hasChildren={true}
-				isExpanded={expanded.explorer}
-				onToggle={() => toggleSection('explorer')}
-			>
-				<Card variant="outline" style={{ margin: '8px 12px', padding: 12 }}>
-					<span style={{ color: VS.fgMuted, fontSize: 12 }}>Select a project to explore files</span>
-				</Card>
-			</NavItem>
-
-			{/* ─── Conversations ─── */}
-			<NavItem
-				id="conversations"
-				icon="comment-discussion"
-				label="Conversations"
-				badge={conversations.length || undefined}
-				hasChildren={true}
-				isExpanded={expanded.conversations}
-				onToggle={() => toggleSection('conversations')}
-				onAdd={onNewConversation}
-				addTooltip="New Conversation"
-			>
-				{conversations.length === 0 ? (
-					<Card variant="outline" style={{ margin: '8px 12px', padding: 12 }}>
-						<div style={{ textAlign: 'center' }}>
-							<span style={{ color: VS.fgMuted, fontSize: 12, display: 'block', marginBottom: 8 }}>No conversations yet</span>
-							<Button size="sm" onClick={onNewConversation} icon={<i className="codicon codicon-comment-discussion" />}>
-								Start Conversation
-							</Button>
-						</div>
-					</Card>
-				) : (
-					conversations.slice(0, 10).map(conv => (
-						<NavItem
-							key={conv.id}
-							id={`conv-${conv.id}`}
-							icon={conv.source === 'claude' ? 'sparkle' : 'comment'}
-							label={conv.title || 'Untitled'}
-							depth={1}
-							onClick={() => onOpenConversation(conv.id)}
-						/>
-					))
-				)}
-			</NavItem>
-
-			{/* ─── Context Files ─── */}
-			<NavItem
-				id="contextFiles"
-				icon="file-code"
-				label="Context Files"
-				badge={contextFiles.length || undefined}
-				hasChildren={true}
-				isExpanded={expanded.contextFiles}
-				onToggle={() => toggleSection('contextFiles')}
-			>
-				{contextFiles.length > 0 && (
-					<div style={{ padding: '4px 12px' }}>
-						<Button
-							size="sm"
-							variant="ghost"
-							onClick={onClearContext}
-							icon={<i className="codicon codicon-clear-all" />}
-						>
-							Clear All
-						</Button>
-					</div>
-				)}
-				{contextFiles.length === 0 ? (
-					<Card variant="outline" style={{ margin: '8px 12px', padding: 12 }}>
-						<div style={{ textAlign: 'center' }}>
-							<span style={{ color: VS.fgMuted, fontSize: 12, display: 'block' }}>No files in context</span>
-							<span style={{ color: VS.fgMuted, fontSize: 11, opacity: 0.7 }}>Right-click files to add</span>
-						</div>
-					</Card>
-				) : (
-					contextFiles.map(file => (
-						<NavItem
-							key={file.id}
-							id={`context-${file.id}`}
-							icon="file"
-							label={file.filename}
-							depth={1}
-							onClick={() => onOpenContextFile(file.id)}
-						/>
-					))
-				)}
-			</NavItem>
-
-			{/* ─── Files (with RAG Search) ─── */}
-			<NavItem
-				id="files"
-				icon="search"
-				label="Files"
-				hasChildren={true}
-				isExpanded={expanded.files}
-				onToggle={() => toggleSection('files')}
-			>
-				<div style={{ padding: '8px 12px' }}>
-					<SearchInput
-						placeholder="Search knowledge..."
-						value={ragQuery}
-						onChange={(e) => setRagQuery(e.target.value)}
-						onSearch={handleRAGSearch}
-						loading={ragLoading}
-					/>
-				</div>
-				{ragResults.length > 0 && (
-					<div style={{ padding: '0 8px 8px' }}>
-						{ragResults.slice(0, 5).map(result => (
+					<>
+						{(showAllProjects ? sortedProjects : sortedProjects.slice(0, 10)).map(project => (
 							<NavItem
-								key={result.id}
-								id={`rag-${result.id}`}
-								icon="file"
-								label={result.filename}
-								badge={`${Math.round(result.score * 100)}%`}
-								badgeVariant="purple"
+								key={project.id}
+								id={`project-${project.id}`}
+								icon={project.isActive ? 'folder-active' : 'folder'}
+								label={project.name}
+								badge={project.taskCount ? `${project.taskCount} tasks` : undefined}
+								badgeVariant={project.status === 'active' ? 'success' : 'default'}
 								depth={1}
-								onClick={() => onOpenContextFile(result.id)}
+								isActive={project.id === selectedProjectId}
+								onClick={() => onOpenProject(project.id)}
 							/>
 						))}
-					</div>
-				)}
-				{ragQuery && ragResults.length === 0 && !ragLoading && (
-					<div style={{ padding: '8px 12px' }}>
-						<span style={{ color: VS.fgMuted, fontSize: 11 }}>No results found</span>
-					</div>
+						{sortedProjects.length > 10 && (
+							<div
+								style={{
+									padding: '6px 12px 6px 36px',
+									fontSize: 11,
+									color: VS.link,
+									cursor: 'pointer',
+								}}
+								onClick={() => setShowAllProjects(!showAllProjects)}
+							>
+								{showAllProjects ? 'Show less' : `View ${sortedProjects.length - 10} more...`}
+							</div>
+						)}
+					</>
 				)}
 			</NavItem>
+
+			{/* ─── Files (Browse) ─── */}
+			<NavItem
+				id="files"
+				icon="folder-opened"
+				label="Files"
+				hasChildren={false}
+				onClick={onBrowseFiles}
+			/>
 
 			{/* ─── Agents (with Claude Sessions nested) ─── */}
 			<NavItem
@@ -532,41 +420,36 @@ export const HierarchyNav: React.FC<HierarchyNavProps> = ({
 					)}
 				</NavItem>
 
-				{/* Agent Configuration */}
-				<div style={{ padding: '4px 12px 4px 20px' }}>
-					<Button
-						size="sm"
-						variant="ghost"
-						onClick={onOpenAgentConfig}
-						icon={<i className="codicon codicon-gear" />}
-					>
-						Configure
-					</Button>
-				</div>
-
-				{/* Agent List */}
-				{agents.length === 0 ? (
-					<Card variant="outline" style={{ margin: '8px 12px', padding: 12 }}>
-						<div style={{ textAlign: 'center' }}>
-							<span style={{ color: VS.fgMuted, fontSize: 12, display: 'block', marginBottom: 8 }}>No agents configured</span>
-							<Button size="sm" onClick={onOpenAgentConfig} icon={<i className="codicon codicon-robot" />}>
-								Add Agents
-							</Button>
-						</div>
-					</Card>
-				) : (
-					agents.map(agent => (
-						<NavItem
+				{/* Agent List - clicking opens agent config */}
+				{agents.map(agent => (
+						<div
 							key={agent.id}
-							id={`agent-${agent.id}`}
-							icon={agent.enabled ? 'check' : 'circle-outline'}
-							label={agent.name}
-							badge={agent.toolCount ? `${agent.toolCount} tools` : undefined}
-							depth={1}
-							onClick={() => onToggleAgent(agent.id)}
-						/>
-					))
-				)}
+							onClick={() => onConfigureAgent(agent.id)}
+							style={{
+								padding: '8px 12px',
+								borderBottom: `1px solid ${VS.border}`,
+								display: 'flex',
+								alignItems: 'center',
+								gap: 8,
+								cursor: 'pointer',
+							}}
+						>
+							<i className={`codicon codicon-${agent.enabled ? 'check' : 'robot'}`}
+							   style={{ color: agent.enabled ? VS.success : VS.fgMuted, fontSize: 14 }} />
+							<div style={{ flex: 1, minWidth: 0 }}>
+								<div style={{ fontSize: 12, fontWeight: 500, color: VS.fg }}>{agent.name}</div>
+								{agent.description && (
+									<div style={{ fontSize: 11, color: VS.fgMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+										{agent.description}
+									</div>
+								)}
+							</div>
+							{agent.toolCount && (
+								<span style={{ fontSize: 10, color: VS.fgMuted }}>{agent.toolCount} tools</span>
+							)}
+						</div>
+					))}
+
 			</NavItem>
 
 			{/* ─── Skills Marketplace ─── */}
@@ -591,14 +474,7 @@ export const HierarchyNav: React.FC<HierarchyNavProps> = ({
 				</div>
 
 				{/* Skills List */}
-				{skills.length === 0 ? (
-					<Card variant="outline" style={{ margin: '8px 12px', padding: 12 }}>
-						<div style={{ textAlign: 'center' }}>
-							<span style={{ color: VS.fgMuted, fontSize: 12, display: 'block', marginBottom: 4 }}>Skills Marketplace</span>
-							<span style={{ color: VS.fgMuted, fontSize: 11, opacity: 0.7 }}>Extend TARX with commands</span>
-						</div>
-					</Card>
-				) : (
+				{skills.length > 0 && (
 					skills
 						.filter(skill =>
 							!skillsQuery ||
@@ -641,6 +517,55 @@ export const HierarchyNav: React.FC<HierarchyNavProps> = ({
 								</Button>
 							</div>
 						))
+				)}
+
+				{/* Skills Marketplace CTA */}
+				<Card variant="outline" style={{ margin: '8px 12px', padding: 12 }}>
+					<div style={{ textAlign: 'center' }}>
+						<span style={{ color: VS.fgMuted, fontSize: 12, display: 'block', marginBottom: 8 }}>Skills Marketplace</span>
+						<Button
+							size="sm"
+							onClick={onOpenSkillsMarketplace}
+							icon={<i className="codicon codicon-extensions" />}
+						>
+							Browse Skills
+						</Button>
+					</div>
+				</Card>
+			</NavItem>
+
+			{/* ─── Conversations ─── */}
+			<NavItem
+				id="conversations"
+				icon="comment-discussion"
+				label="Conversations"
+				badge={conversations.length || undefined}
+				hasChildren={true}
+				isExpanded={expanded.conversations}
+				onToggle={() => toggleSection('conversations')}
+				onAdd={onNewConversation}
+				addTooltip="New Conversation"
+			>
+				{conversations.length === 0 ? (
+					<Card variant="outline" style={{ margin: '8px 12px', padding: 12 }}>
+						<div style={{ textAlign: 'center' }}>
+							<span style={{ color: VS.fgMuted, fontSize: 12, display: 'block', marginBottom: 8 }}>No conversations yet</span>
+							<Button size="sm" onClick={onNewConversation} icon={<i className="codicon codicon-comment-discussion" />}>
+								Start Conversation
+							</Button>
+						</div>
+					</Card>
+				) : (
+					conversations.slice(0, 10).map(conv => (
+						<NavItem
+							key={conv.id}
+							id={`conv-${conv.id}`}
+							icon={conv.source === 'claude' ? 'sparkle' : 'comment'}
+							label={conv.title || 'Untitled'}
+							depth={1}
+							onClick={() => onOpenConversation(conv.id)}
+						/>
+					))
 				)}
 			</NavItem>
 		</div>

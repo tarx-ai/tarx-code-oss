@@ -12,7 +12,7 @@ import * as vscode from 'vscode';
 export class FirstRunManager {
 	private static readonly FIRST_RUN_KEY = 'tarx.firstRunCompleted';
 	private static readonly ONBOARDING_VERSION_KEY = 'tarx.onboardingVersion';
-	private static readonly CURRENT_ONBOARDING_VERSION = 1;
+	private static readonly CURRENT_ONBOARDING_VERSION = 2; // Bumped for FTUX webview panel
 
 	constructor(private context: vscode.ExtensionContext) {}
 

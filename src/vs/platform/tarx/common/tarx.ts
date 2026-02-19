@@ -218,6 +218,60 @@ export interface ITarxEmbeddingsStatus {
 }
 
 /**
+ * TARX Mesh Sidecar Service - manages tarx-mesh lifecycle
+ */
+export interface ITarxMeshSidecarService {
+	readonly _serviceBrand: undefined;
+
+	/**
+	 * Event fired when mesh server status changes
+	 */
+	readonly onDidChangeStatus: Event<ITarxMeshStatus>;
+
+	/**
+	 * Start the mesh server
+	 */
+	startMesh(): Promise<ITarxSpawnResult>;
+
+	/**
+	 * Stop the mesh server
+	 */
+	stopMesh(): Promise<void>;
+
+	/**
+	 * Check if mesh server is running
+	 */
+	isRunning(): boolean;
+
+	/**
+	 * Check health endpoint
+	 */
+	checkHealth(): Promise<{ healthy: boolean; latencyMs: number }>;
+
+	/**
+	 * Get peer count
+	 */
+	getPeerCount(): Promise<number>;
+
+	/**
+	 * Get the mesh port
+	 */
+	readonly port: number;
+}
+
+export const ITarxMeshSidecarService = createDecorator<ITarxMeshSidecarService>('tarxMeshSidecarService');
+
+/**
+ * Status of the mesh server
+ */
+export interface ITarxMeshStatus {
+	readonly running: boolean;
+	readonly port: number;
+	readonly healthState: TarxHealthState;
+	readonly peerCount: number;
+}
+
+/**
  * TARX paths
  */
 export function getTarxModelsDir(): string {

@@ -16,7 +16,8 @@ import { IEditorResolverService, RegisteredEditorPriority } from '../../../servi
 import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
 import { IEditorService } from '../../../services/editor/common/editorService.js';
 import { IEditorGroupsService } from '../../../services/editor/common/editorGroupsService.js';
-import { CommandsRegistry } from '../../../../platform/commands/common/commands.js';
+import { ICommandService, CommandsRegistry } from '../../../../platform/commands/common/commands.js';
+import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { TarxDashboardInput, tarxDashboardInputTypeId } from './tarxDashboardEditorInput.js';
 import { TarxDashboardEditor, TarxDashboardInputSerializer } from './tarxDashboardEditor.js';
 
@@ -91,16 +92,16 @@ CommandsRegistry.registerCommand('tarx.openDashboard', (accessor) => {
 });
 
 // ============================================================================
-// Startup Runner — opens dashboard when no editor is active
+// Startup Runner — Opens dashboard in center, chat on right, kills sprawl
 // ============================================================================
 
 class TarxDashboardStartupContribution extends Disposable implements IWorkbenchContribution {
 	static readonly ID = 'workbench.contrib.tarxDashboardStartup';
 
 	constructor(
-		@IEditorService private readonly editorService: IEditorService,
 		@IEditorGroupsService private readonly editorGroupsService: IEditorGroupsService,
-		@IInstantiationService private readonly instantiationService: IInstantiationService,
+		@ICommandService private readonly commandService: ICommandService,
+		@IConfigurationService private readonly configurationService: IConfigurationService,
 	) {
 		super();
 		this.run();
@@ -110,14 +111,25 @@ class TarxDashboardStartupContribution extends Disposable implements IWorkbenchC
 		// Wait for editors to restore from previous session
 		await this.editorGroupsService.whenReady;
 
-		// If there's already an editor open (restored from session), don't override
-		if (this.editorService.activeEditor) {
-			return;
+		// Ensure sessions panel is disabled (kills "SESSIONS" on right side)
+		const sessionsEnabled = this.configurationService.getValue<boolean>('chat.viewSessions.enabled');
+		if (sessionsEnabled) {
+			await this.configurationService.updateValue('chat.viewSessions.enabled', false);
 		}
 
-		// Open the TARX dashboard
-		const input = this.instantiationService.createInstance(TarxDashboardInput);
-		await this.editorService.openEditor(input, { pinned: true });
+		// Ensure native activity bar is hidden — TARX sidebar is the only nav
+		const activityBarLocation = this.configurationService.getValue<string>('workbench.activityBar.location');
+		if (activityBarLocation !== 'hidden') {
+			await this.configurationService.updateValue('workbench.activityBar.location', 'hidden');
+		}
+
+		// Open native chat panel in the center editor area
+		// This is the primary UX — TARX chat is the landing experience
+		try {
+			await this.commandService.executeCommand('workbench.action.chat.open');
+		} catch {
+			// Chat panel may not be available yet, ignore
+		}
 	}
 }
 

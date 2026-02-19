@@ -2,7 +2,7 @@
  *  Copyright (c) TARX AI. All rights reserved.
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
-import React from 'react';
+import React, { useMemo } from 'react';
 
 const TarxLogoIcon: React.FC = () => (
   <svg width="16" height="16" viewBox="0 0 94 84" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -13,15 +13,43 @@ const TarxLogoIcon: React.FC = () => (
   </svg>
 );
 
+// Dynamic greeting based on time of day with TARX branding
+const getDynamicGreeting = (userName?: string): string => {
+  const hour = new Date().getHours();
+  const name = userName ? `, ${userName}` : '';
+
+  // Time-based greetings with TARX flavor
+  const greetings: string[] = [];
+
+  if (hour >= 5 && hour < 12) {
+    greetings.push(`Good morning${name}`, `Rise and build${name}`, `Morning${name}`);
+  } else if (hour >= 12 && hour < 17) {
+    greetings.push(`Good afternoon${name}`, `Let's ship${name}`, `Afternoon${name}`);
+  } else if (hour >= 17 && hour < 21) {
+    greetings.push(`Good evening${name}`, `Evening mode${name}`, `Let's build${name}`);
+  } else {
+    greetings.push(`Night owl${name}`, `Late session${name}`, `Building late${name}`);
+  }
+
+  // Add universal greetings
+  greetings.push(`Ready to build${name}`, `TARX ready${name}`, `Let's go${name}`);
+
+  return greetings[Math.floor(Math.random() * greetings.length)];
+};
+
 interface HeaderProps {
   logoUri: string;
   connectionStatus?: string;
   modelName?: string;
+  userName?: string;
   onLogoClick?: () => void;
   onSettingsClick?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onLogoClick }) => {
+export const Header: React.FC<HeaderProps> = ({ onLogoClick, userName }) => {
+  // Dynamic greeting based on time of day
+  const headerText = useMemo(() => getDynamicGreeting(userName), [userName]);
+
   return (
     <div className="tarx-header">
       <div className="tarx-logo-row">
@@ -33,7 +61,7 @@ export const Header: React.FC<HeaderProps> = ({ onLogoClick }) => {
         >
           <TarxLogoIcon />
         </span>
-        <span className="tarx-logo-text" style={{ fontWeight: 700, letterSpacing: '0.5px' }}>TARX</span>
+        <span className="tarx-logo-text" style={{ fontWeight: 700, letterSpacing: '0.5px' }}>{headerText}</span>
       </div>
     </div>
   );

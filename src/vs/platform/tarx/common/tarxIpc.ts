@@ -13,7 +13,9 @@ import {
 	ITarxPreflightResult,
 	ITarxModelInfo,
 	ITarxEmbeddingSidecarService,
-	ITarxEmbeddingsStatus
+	ITarxEmbeddingsStatus,
+	ITarxMeshSidecarService,
+	ITarxMeshStatus
 } from './tarx.js';
 
 /**
@@ -204,5 +206,84 @@ export class TarxEmbeddingChannelClient implements ITarxEmbeddingSidecarService 
 
 	checkHealth(): Promise<{ healthy: boolean; latencyMs: number }> {
 		return this.channel.call('checkHealth');
+	}
+}
+
+/**
+ * IPC channel name for TARX mesh sidecar service
+ */
+export const TARX_MESH_CHANNEL_NAME = 'tarxMesh';
+
+/**
+ * Server-side IPC channel for TARX mesh sidecar service (runs in main process)
+ */
+export class TarxMeshChannel implements IServerChannel {
+
+	constructor(private readonly service: ITarxMeshSidecarService) { }
+
+	listen(_context: unknown, event: string): Event<any> {
+		switch (event) {
+			case 'onDidChangeStatus': return this.service.onDidChangeStatus;
+		}
+		throw new Error(`Event not found: ${event}`);
+	}
+
+	call(_context: unknown, command: string, _arg?: any): Promise<any> {
+		switch (command) {
+			case 'startMesh': return this.service.startMesh();
+			case 'stopMesh': return this.service.stopMesh();
+			case 'isRunning': return Promise.resolve(this.service.isRunning());
+			case 'checkHealth': return this.service.checkHealth();
+			case 'getPeerCount': return this.service.getPeerCount();
+			case 'getPort': return Promise.resolve(this.service.port);
+		}
+		throw new Error(`Call not found: ${command}`);
+	}
+}
+
+/**
+ * Client-side IPC channel for TARX mesh sidecar service (runs in renderer/browser process)
+ */
+export class TarxMeshChannelClient implements ITarxMeshSidecarService {
+
+	readonly _serviceBrand: undefined;
+
+	get onDidChangeStatus(): Event<ITarxMeshStatus> {
+		return this.channel.listen<ITarxMeshStatus>('onDidChangeStatus');
+	}
+
+	private _port: number = 11436;
+	get port(): number {
+		return this._port;
+	}
+
+	constructor(private readonly channel: IChannel) {
+		this.channel.call<number>('getPort').then(port => {
+			this._port = port;
+		});
+	}
+
+	startMesh(): Promise<ITarxSpawnResult> {
+		return this.channel.call('startMesh');
+	}
+
+	stopMesh(): Promise<void> {
+		return this.channel.call('stopMesh');
+	}
+
+	isRunning(): boolean {
+		return false;
+	}
+
+	async isRunningAsync(): Promise<boolean> {
+		return this.channel.call('isRunning');
+	}
+
+	checkHealth(): Promise<{ healthy: boolean; latencyMs: number }> {
+		return this.channel.call('checkHealth');
+	}
+
+	getPeerCount(): Promise<number> {
+		return this.channel.call('getPeerCount');
 	}
 }

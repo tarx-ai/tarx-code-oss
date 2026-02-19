@@ -231,8 +231,8 @@ export function routeMessage(message: string): RouteDecision {
  */
 export function getRouteIndicator(route: ModelRoute): { icon: string; label: string; color: string } {
 	if (route === 'local') {
-		return { icon: '$(zap)', label: 'Local', color: 'green' };
+		return { icon: 'TARX', label: 'Local', color: 'green' };
 	} else {
-		return { icon: '$(cloud)', label: 'Claude', color: 'blue' };
+		return { icon: 'TARX', label: 'Claude', color: 'blue' };
 	}
 }

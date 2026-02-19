@@ -118,9 +118,10 @@ import { FileUserDataProvider } from '../../platform/userData/common/fileUserDat
 import { addUNCHostToAllowlist, getUNCHost } from '../../base/node/unc.js';
 import { ThemeMainService } from '../../platform/theme/electron-main/themeMainServiceImpl.js';
 import { LINUX_SYSTEM_POLICY_FILE_PATH } from '../../base/common/policy.js';
-import { ITarxSidecarService, ITarxEmbeddingSidecarService } from '../../platform/tarx/common/tarx.js';
+import { ITarxSidecarService, ITarxEmbeddingSidecarService, ITarxMeshSidecarService } from '../../platform/tarx/common/tarx.js';
 import { TarxSidecarService } from '../../platform/tarx/electron-main/tarxSidecarService.js';
 import { TarxEmbeddingSidecarService } from '../../platform/tarx/electron-main/tarxEmbeddingSidecarService.js';
+import { TarxMeshSidecarService } from '../../platform/tarx/electron-main/tarxMeshSidecarService.js';
 
 /**
  * The main VS Code entry point.
@@ -297,6 +298,9 @@ class CodeMain {
 
 		// TARX Embedding Sidecar Service (embeddings on port 11437)
 		services.set(ITarxEmbeddingSidecarService, new SyncDescriptor(TarxEmbeddingSidecarService));
+
+		// TARX Mesh Sidecar Service (mesh network on port 11436)
+		services.set(ITarxMeshSidecarService, new SyncDescriptor(TarxMeshSidecarService));
 
 		// Protocol (instantiated early and not using sync descriptor for security reasons)
 		services.set(IProtocolMainService, new ProtocolMainService(environmentMainService, userDataProfilesMainService, logService));

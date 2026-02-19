@@ -124,8 +124,8 @@ import { NativeMcpDiscoveryHelperService } from '../../platform/mcp/node/nativeM
 import { IWebContentExtractorService } from '../../platform/webContentExtractor/common/webContentExtractor.js';
 import { NativeWebContentExtractorService } from '../../platform/webContentExtractor/electron-main/webContentExtractorService.js';
 import ErrorTelemetry from '../../platform/telemetry/electron-main/errorTelemetry.js';
-import { ITarxSidecarService, ITarxEmbeddingSidecarService } from '../../platform/tarx/common/tarx.js';
-import { TarxSidecarChannel, TARX_SIDECAR_CHANNEL_NAME, TarxEmbeddingChannel, TARX_EMBEDDING_CHANNEL_NAME } from '../../platform/tarx/common/tarxIpc.js';
+import { ITarxSidecarService, ITarxEmbeddingSidecarService, ITarxMeshSidecarService } from '../../platform/tarx/common/tarx.js';
+import { TarxSidecarChannel, TARX_SIDECAR_CHANNEL_NAME, TarxEmbeddingChannel, TARX_EMBEDDING_CHANNEL_NAME, TarxMeshChannel, TARX_MESH_CHANNEL_NAME } from '../../platform/tarx/common/tarxIpc.js';
 
 /**
  * The main VS Code application. There will only ever be one instance,
@@ -1209,6 +1209,10 @@ export class CodeApplication extends Disposable {
 		const tarxEmbeddingChannel = new TarxEmbeddingChannel(accessor.get(ITarxEmbeddingSidecarService));
 		mainProcessElectronServer.registerChannel(TARX_EMBEDDING_CHANNEL_NAME, tarxEmbeddingChannel);
 
+		// TARX Mesh Sidecar Service
+		const tarxMeshChannel = new TarxMeshChannel(accessor.get(ITarxMeshSidecarService));
+		mainProcessElectronServer.registerChannel(TARX_MESH_CHANNEL_NAME, tarxMeshChannel);
+
 		// Workspaces
 		const workspacesChannel = ProxyChannel.fromService(accessor.get(IWorkspacesService), disposables);
 		mainProcessElectronServer.registerChannel('workspaces', workspacesChannel);
@@ -1429,6 +1433,33 @@ export class CodeApplication extends Disposable {
 				}
 			});
 		}, 5000);
+
+		// TARX: Auto-start mesh server (7s delay to let inference + embedding start first)
+		setTimeout(() => {
+			instantiationService.invokeFunction(accessor => {
+				const logService = accessor.get(ILogService);
+				logService.info('[TARX] Mesh server auto-start triggered (7s delay complete)');
+
+				try {
+					const meshSidecar = accessor.get(ITarxMeshSidecarService);
+					logService.info('[TARX] Mesh sidecar service acquired, calling startMesh()...');
+
+					meshSidecar.startMesh().then(result => {
+						if (result.success) {
+							logService.info(`[TARX] Mesh server started successfully (PID: ${result.pid}, ${result.elapsedMs}ms)`);
+						} else {
+							logService.error(`[TARX] Mesh server failed to start: ${result.error}`);
+						}
+					}).catch(e => {
+						const errorMsg = e instanceof Error ? e.message : String(e);
+						logService.error(`[TARX] Mesh sidecar promise rejected: ${errorMsg}`, e);
+					});
+				} catch (e) {
+					const errorMsg = e instanceof Error ? e.message : String(e);
+					logService.error(`[TARX] Mesh service initialization failed: ${errorMsg}`, e);
+				}
+			});
+		}, 7000);
 
 		// Crash reporter
 		this.updateCrashReporterEnablement();
