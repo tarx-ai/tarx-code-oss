@@ -48,7 +48,6 @@ import {
 	formatIssuesForResponse
 } from './codeAnalysis';
 import { registerSidebarProvider, TarxSidebarProvider } from './sidebarProvider';
-import { registerMcpSettingsProvider, McpSettingsProvider } from './core/config/McpSettingsProvider';
 import { HealthService, ConnectionStatus } from './healthService';
 import { TestHarnessService } from './testHarness';
 import { fitToContextWindow, getContextUsage, Message as ContextMessage } from './contextWindow';
@@ -64,6 +63,7 @@ import { registerProjectContextCommands, ProjectContextPanel } from './projectCo
 import { registerSessionPanelCommands, TarxSessionPanel } from './sessionPanel';
 import { registerProjectTreeProvider, ProjectTreeProvider } from './projectTreeProvider';
 import { registerColorCommands } from './sidebar-color';
+import { importChatGPTToTARX } from './importers/chatgpt-to-tarx.js';
 import { registerInteractionCommands } from './sidebar-interactions';
 // project-creation-flow import removed — consolidated into ProjectContextPanel
 import { registerOvernightTestCommands } from './overnight-test';
@@ -328,6 +328,22 @@ async function ensureAuthenticated(): Promise<boolean> {
 		return true;
 	}
 
+	// Sync: if the lock screen already unlocked (e.g. via workbench overlay PIN verify),
+	// pick it up here so chat doesn't re-gate
+	if (AuthStateManager.getInstance().isUnlocked()) {
+		console.log('[TARX] Auth: synced unlock from AuthStateManager');
+		isAuthenticatedSession = true;
+		return true;
+	}
+
+	// Local-only auto-auth: if llama-server is healthy the user is physically
+	// at the machine — no cloud auth gate needed for local inference
+	if (healthService?.isOnline) {
+		console.log('[TARX] Auth: auto-authenticated (llama-server healthy)');
+		isAuthenticatedSession = true;
+		return true;
+	}
+
 	// No auth manager means auth wasn't initialized
 	if (!authManager || !authChatView) {
 		console.warn('[TARX] Auth not initialized');
@@ -520,38 +536,76 @@ export async function activate(context: vscode.ExtensionContext) {
 			return success;
 		});
 
+		// ═══ Lock Screen Commands (used by workbench overlay) ═══
+		context.subscriptions.push(
+			vscode.commands.registerCommand('tarx.lockScreen.shouldLock', async () => {
+				if (isDevBypassAuthEnabled()) {
+					console.log('[TARX Lock] DEV MODE: Auth bypass — no lock needed');
+					return { shouldLock: false };
+				}
+				if (!authManager) {
+					return { shouldLock: false };
+				}
+				const isConfigured = await authManager.isAuthEnabled();
+				const requireOnStartup = authManager.isRequiredOnStartup();
+				const requiresUnlock = await authManager.requiresUnlock();
+				const shouldLock = isConfigured && requireOnStartup && requiresUnlock;
+				console.log('[TARX Lock] shouldLock:', shouldLock, '(configured:', isConfigured, ', requireOnStartup:', requireOnStartup, ', requiresUnlock:', requiresUnlock, ')');
+				// FIX (CC6-A): When lock screen determines no lock is needed, mark
+				// session authenticated so chat auth gate passes through.
+				if (!shouldLock) {
+					isAuthenticatedSession = true;
+					if (authManager) {
+						(authManager as any).isUnlocked = true;
+						authManager.updateActivity();
+					}
+					sidebarProvider?.setLocked(false);
+				}
+				return { shouldLock };
+			})
+		);
+
+		context.subscriptions.push(
+			vscode.commands.registerCommand('tarx.lockScreen.verifyPin', async (pin: string) => {
+				if (!authManager) {
+					return { success: false, error: 'Auth not initialized' };
+				}
+				const pinAuth = (authManager as any).pinAuth;
+				if (!pinAuth) {
+					return { success: false, error: 'PIN auth not available' };
+				}
+				const result = await pinAuth.verifyPIN(pin);
+				if (result.success) {
+					// Update all auth state
+					(authManager as any).isUnlocked = true;
+					(authManager as any).updateActivity();
+					authStateManager.setState('unlocked');
+					isAuthenticatedSession = true;
+					sidebarProvider?.setLocked(false);
+					console.log('[TARX Lock] PIN verified — unlocked');
+				}
+				return result;
+			})
+		);
+
+		// Determine auth state on startup
 		if (isDevBypassAuthEnabled()) {
-			console.log('[TARX] ⚠️  DEV MODE: Auth bypass enabled (env or setting)');
+			console.log('[TARX] DEV MODE: Auth bypass enabled');
 			authStateManager.setState('unlocked');
 			isAuthenticatedSession = true;
 		} else {
+			// FIX (CC6-A): If no lock is needed on startup, mark session authenticated
+			// immediately. Previously relied solely on the lock screen overlay calling
+			// shouldLock → verifyPin, but when shouldLock returned false the session
+			// stayed locked, causing ensureAuthenticated() to block every chat message.
 			const isConfigured = await authManager.isAuthEnabled();
-			const requiresUnlock = await authManager.requiresUnlock();
-			const requireOnStartup = authManager.isRequiredOnStartup();
-
-			if (!isConfigured || (requireOnStartup && requiresUnlock)) {
-				console.log('[TARX] Auth required - showing auth screen (requireOnStartup:', requireOnStartup, ')');
-				// NON-BLOCKING: Show auth screen but continue with command registration
-				// Commands must be available even before auth completes (for sidebar data loading)
-				authChatView.showAndWait().then((success) => {
-					if (!success) {
-						console.log('[TARX] Auth cancelled or failed - extension will require auth on use');
-						isAuthenticatedSession = false;
-					} else {
-						console.log('[TARX] Auth successful - TARX unlocked');
-						isAuthenticatedSession = true;
-						sidebarProvider?.setLocked(false);
-					}
-				}).catch((err) => {
-					console.error('[TARX] Auth error:', err);
-					isAuthenticatedSession = false;
-				});
-				// Continue immediately without waiting for auth
-				console.log('[TARX] Continuing with command registration while auth is pending...');
-			} else {
-				authStateManager.setState('unlocked');
+			const needsLock = isConfigured && authManager.isRequiredOnStartup();
+			if (!needsLock) {
 				isAuthenticatedSession = true;
-				console.log('[TARX] Skipping startup auth (configured:', isConfigured, ', requireOnStartup:', requireOnStartup, ')');
+				(authManager as any).isUnlocked = true;
+				authManager.updateActivity();
+				authStateManager.setState('unlocked');
+				console.log('[TARX] No auth required on startup — session authenticated');
 			}
 		}
 	} catch (authErr) {
@@ -688,10 +742,6 @@ export async function activate(context: vscode.ExtensionContext) {
 	const claudeSessionsProvider = registerClaudeSessionsProvider(context);
 	console.log('[TARX] Claude Sessions provider registered');
 
-	// Initialize MCP settings provider for server configuration
-	const mcpSettingsProvider = registerMcpSettingsProvider(context);
-	console.log('[TARX] MCP settings provider registered');
-
 	// ═══════════════════════════════════════════════════════════════
 	// WEBVIEW SIDEBAR PROVIDER - Custom React left nav
 	// Provides collapsible hierarchy: Projects, Explorer, Conversations,
@@ -713,17 +763,17 @@ export async function activate(context: vscode.ExtensionContext) {
 		);
 		console.log('[TARX] Webview sidebar provider registered - custom React left nav ready');
 
-		// Force the TARX sidebar to show instead of Explorer
+		// Force the TARX sidebar to show and hide native activity bar
 		setTimeout(async () => {
 			try {
-				console.log('[TARX] Forcing TARX sidebar to show...');
-				// Show the activity bar first
-				await vscode.commands.executeCommand('workbench.action.activityBarLocation.default');
+				console.log('[TARX] Forcing TARX sidebar to show, hiding native activity bar...');
+				// Hide the native VS Code activity bar — TARX sidebar IS the nav
+				await vscode.commands.executeCommand('workbench.action.activityBarLocation.hide');
 				// Focus the TARX sidebar container
 				await vscode.commands.executeCommand('workbench.view.extension.tarx-sidebar');
-				console.log('[TARX] TARX sidebar forced to show - custom React nav should be visible');
+				console.log('[TARX] TARX sidebar visible, native activity bar hidden');
 			} catch (e) {
-				console.log('[TARX] Could not auto-show sidebar:', e);
+				console.log('[TARX] Could not configure sidebar:', e);
 			}
 		}, 500);
 	} catch (err) {
@@ -852,9 +902,9 @@ export async function activate(context: vscode.ExtensionContext) {
 		console.error('[TARX DEBUG] ERROR registering Project Context Panel commands:', error);
 	}
 
-	// Register Session Panel commands (live polling webview)
-	registerSessionPanelCommands(context);
-	console.log('[TARX] Session panel commands registered');
+	// Session Panel disabled - using native VS Code chat panel
+	// registerSessionPanelCommands(context);
+	console.log('[TARX] Session panel disabled - using native chat panel');
 
 	// Register color-coded project commands (Shadcn-style)
 	registerColorCommands(context);
@@ -1404,7 +1454,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
 		if (hasActionIntent) {
 			console.log('[TARX Bridge] Action intent detected, trying direct execution first');
-			response.progress('Processing action...');
+			// NOTE: Do NOT call response.progress() here — it creates a progressMessage
+			// part in _responseParts which adds rendering complexity and can cause
+			// content to appear invisible in the chat panel (Bug #1).
 
 			// Path A: Try direct MCP execution (no Claude needed for CRUD)
 			console.log('[TARX Bridge] Calling handleActionIntent...');
@@ -1449,67 +1501,17 @@ export async function activate(context: vscode.ExtensionContext) {
 				return { metadata: { command, routed: 'direct_action', action: actionResult.action } };
 			}
 
-			// Path B: Action not recognized - use Claude bridge for complex reasoning
-			if (bridgeStatus === 'active') {
-				console.log('[TARX] Action not recognized, routing through Claude bridge for reasoning');
-				response.progress('Routing through TARX Bridge...');
-
-				try {
-					const payload = await buildPayload({
-						type: 'reason',
-						query: normalizedPrompt,
-						session_id: activeConversation?.id || `session-${Date.now()}`,
-						project_id: activeProject?.id || 'default'
-					});
-
-					response.progress('Invoking Claude...');
-					const bridgeResponse = await invokeClaudeWithPayload(payload, 'cli');
-
-					// Display response
-					response.markdown(bridgeResponse.response);
-
-					// Execute next steps
-					if (bridgeResponse.next_steps.length > 0) {
-						response.progress('Executing actions...');
-						await executeNextSteps(context, bridgeResponse.next_steps);
-						response.markdown(`\n\n---\n*${bridgeResponse.next_steps.length} action(s) executed via TARX Bridge*`);
-					}
-
-					// Store the exchange in conversation history
-					if (db && activeConversation) {
-						try {
-							await db.addConversationTurn({
-								conversationId: activeConversation.id,
-								role: 'user',
-								content: normalizedPrompt,
-								fileRefs: [],
-								artifacts: null
-							});
-							await db.addConversationTurn({
-								conversationId: activeConversation.id,
-								role: 'assistant',
-								content: bridgeResponse.response,
-								fileRefs: [],
-								artifacts: null
-							});
-							console.log('[TARX] Saved bridge conversation turns to history');
-						} catch (e) {
-							console.error('[TARX] Failed to store bridge exchange:', e);
-						}
-					}
-
-					return { metadata: { command, routed: 'bridge' } };
-
-				} catch (e) {
-					console.error('[TARX] Bridge invocation failed:', e);
-					response.markdown(`**Bridge Error:** ${e}\n\nFalling back to local reasoning...\n\n---\n\n`);
-					// Fall through to local model
-				}
-
-			} else if (bridgeStatus === 'local_only') {
-				// Local model only - explain limitations
+			// FIX (#3): Unrecognized actions fall through to local model immediately.
+			// Previously, unrecognized actions were routed through Claude CLI bridge
+			// (invokeClaudeWithPayload with 120s timeout), which blocked the chat on
+			// the 2nd query. Since detectActionIntent matches very broad keywords,
+			// most follow-up messages triggered this slow bridge path.
+			// Now: only recognized CRUD actions take the direct path above.
+			// Everything else goes straight to local model streaming below.
+			console.log('[TARX] Action not recognized by direct handler, falling through to local model');
+			if (bridgeStatus === 'local_only' || bridgeStatus === 'offline') {
 				const statusDisplay = getBridgeStatusDisplay(bridgeStatus);
-				console.log('[TARX] Action intent detected but bridge not available, using local reasoning');
+				console.log('[TARX] Action intent detected but routing to local model');
 				response.markdown(`*${statusDisplay.icon} ${statusDisplay.text}*\n\n`);
 			}
 
@@ -1553,17 +1555,14 @@ export async function activate(context: vscode.ExtensionContext) {
 
 		messages.push({ role: 'user', content: userPrompt });
 
-		// If we have pre-loaded history, show transcript first (even if server offline)
+		// NOTE (Bug #1 fix): Do NOT render the conversation transcript into the response.
+		// Previously, all previous turns were rendered via response.markdown() which:
+		// 1. Pushed the actual new response far below the fold
+		// 2. Made it look like there was no new response (user saw old conversation text)
+		// 3. Created a massive markdownContent part that consumed the progressive render word budget
+		// The history IS already in the messages array (lines 1290-1410) for the LLM to use as context.
 		if (dbHistoryLoaded && recentTurns.length > 0) {
-			response.markdown('### Conversation Transcript\n\n');
-			for (const turn of recentTurns) {
-				if (turn.role === 'user') {
-					response.markdown(`**You:** ${turn.content}\n\n`);
-				} else if (turn.role === 'assistant') {
-					response.markdown(`**TARX:** ${turn.content}\n\n`);
-				}
-			}
-			response.markdown('---\n\n');
+			console.log(`[TARX] Loaded ${recentTurns.length} history turns for LLM context (not rendering in response)`);
 		}
 
 		// Check if server is online
@@ -1581,8 +1580,10 @@ export async function activate(context: vscode.ExtensionContext) {
 			return { metadata: { command, queued: true } };
 		}
 
-		// Show progress
-		response.progress('Thinking...');
+		// NOTE: Do NOT call response.progress() here — it creates a progressMessage
+		// part in _responseParts which adds rendering complexity and can cause
+		// content to appear invisible in the chat panel (Bug #1).
+		// VS Code's built-in loading indicator is sufficient.
 		console.log(`[TARX PERF] Pre-router: +${Date.now() - chatT0}ms`);
 
 		// ========================================
@@ -1594,7 +1595,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		console.log(`[TARX PERF] Router decided: ${routeDecision.route} +${Date.now() - chatT0}ms`);
 
 		// Show route indicator in response (subtle)
-		response.markdown(`*${routeIndicator.icon} ${routeIndicator.label}*\n\n`);
+		response.markdown(`*${routeIndicator.icon} · ${routeIndicator.label}*\n\n`);
 
 		// NETWORK MODEL PATH - Use Claude API for action-oriented tasks
 		if (routeDecision.route === 'network') {
@@ -1615,7 +1616,8 @@ export async function activate(context: vscode.ExtensionContext) {
 			// If we have a key now, use network model
 			const hasKeyNow = await hasNetworkApiKey();
 			if (hasKeyNow) {
-				response.progress('Connecting to Claude...');
+				// NOTE: Do NOT call response.progress() — see Bug #1 fix notes above
+				console.log('[TARX] Network model: connecting to Claude...');
 
 				try {
 					// Build network model context
@@ -1735,10 +1737,16 @@ export async function activate(context: vscode.ExtensionContext) {
 			// Unique ID for this thinking sequence (used by VS Code's thinking renderer)
 			const thinkingId = `tarx-thinking-${Date.now()}`;
 
+			// Create an AbortController wired to VS Code's cancellation token
+			// so the streaming connection is properly terminated on cancel (Bug #2 fix)
+			const streamAbort = new AbortController();
+			token.onCancellationRequested(() => streamAbort.abort());
+
 			// Stream response from llama-server
 			for await (const chunk of tarxClient.chatCompletionStream(messages, {
 				temperature: 0.7,
-				maxTokens: 2048
+				maxTokens: 2048,
+				signal: streamAbort.signal
 			})) {
 				if (token.isCancellationRequested) {
 					break;
@@ -1762,7 +1770,16 @@ export async function activate(context: vscode.ExtensionContext) {
 					response.markdown(chunk.content);
 				}
 			}
-			console.log(`[TARX PERF] Inference complete: +${Date.now() - chatT0}ms (${fullResponse.length} chars)`);
+			console.log(`[TARX PERF] Inference complete: +${Date.now() - chatT0}ms (${fullResponse.length} chars, thinking=${fullThinking.length} chars)`);
+
+			// Diagnostic: if streaming produced no visible content, show a fallback message
+			if (fullResponse.length === 0 && fullThinking.length === 0) {
+				console.warn('[TARX] WARNING: Streaming completed with zero content. This indicates the LLM returned no tokens.');
+				response.markdown('*No response received from the model. Please try again.*\n\n');
+			} else if (fullResponse.length === 0 && fullThinking.length > 0) {
+				console.warn('[TARX] WARNING: LLM sent only thinking tokens, no content tokens.');
+				response.markdown('*The model was thinking but produced no visible response. Please try again.*\n\n');
+			}
 
 			// Parse artifacts from response
 			const artifacts = parseArtifacts(fullResponse);
@@ -1963,6 +1980,45 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	chatParticipant.iconPath = vscode.Uri.joinPath(context.extensionUri, 'media', 'tarx-eyes.png');
 
+	// Followup provider — contextual suggestion chips after each response
+	chatParticipant.followupProvider = {
+		provideFollowups(result: vscode.ChatResult, _context: vscode.ChatContext, _token: vscode.CancellationToken): vscode.ChatFollowup[] {
+			const hasWorkspace = (vscode.workspace.workspaceFolders?.length ?? 0) > 0;
+			const isFirstMessage = _context.history.length <= 2;
+
+			if (isFirstMessage) {
+				// First interaction: contextual getting-started suggestions
+				if (hasWorkspace) {
+					return [
+						{ prompt:'What files are in this project?', label: 'Explore project' },
+						{ prompt:'Help me think through a problem I\'m working on', label: 'Think together' },
+						{ prompt:'Review the code I have open', label: 'Review code' },
+					];
+				} else {
+					return [
+						{ prompt:'What can you help me with?', label: 'What can you do?' },
+						{ prompt:'Help me think through a problem', label: 'Think together' },
+						{ prompt:'Help me write some code', label: 'Write code' },
+					];
+				}
+			}
+
+			// After ongoing conversation: suggest deeper exploration
+			const meta = result.metadata as Record<string, unknown> | undefined;
+			if (meta?.routed === 'direct_action') {
+				return [
+					{ prompt:'What else can I do here?', label: 'More actions' },
+					{ prompt:'Show me what changed', label: 'Show changes' },
+				];
+			}
+
+			return [
+				{ prompt:'Tell me more about that', label: 'Go deeper' },
+				{ prompt:'Can you give me an example?', label: 'Show example' },
+			];
+		}
+	};
+
 	// Set title provider to generate chat session titles (proposed API)
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	(chatParticipant as any).titleProvider = {
@@ -2098,10 +2154,14 @@ export async function activate(context: vscode.ExtensionContext) {
 	// 4. Register Commands
 	// ========================================
 
-	// Open Chat - spawns TARX chat panel in right column (ViewColumn.Beside)
-	safeRegisterCommand(context, 'tarx.openChat', (prompt?: string) => {
-		TarxChatPanel.createOrShow(context, prompt || undefined);
-		console.log('[TARX] Chat panel opened in right column (ViewColumn.Beside)');
+	// Open Chat - opens native VS Code chat panel with TARX participant
+	safeRegisterCommand(context, 'tarx.openChat', async (prompt?: string) => {
+		if (prompt) {
+			await vscode.commands.executeCommand('workbench.action.chat.open', { query: `@tarx ${prompt}` });
+		} else {
+			await vscode.commands.executeCommand('workbench.action.chat.open');
+		}
+		console.log('[TARX] Native chat panel opened');
 	});
 
 	// Open Dashboard - spawns TARX dashboard in center editor tab
@@ -2805,6 +2865,64 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
+	// Import from ChatGPT — parse export ZIP, store conversations, embed into RAG
+	safeRegisterCommand(context, 'tarx.importChatGPT', async () => {
+		try {
+			const fileUri = await vscode.window.showOpenDialog({
+				canSelectMany: false,
+				canSelectFiles: true,
+				canSelectFolders: false,
+				openLabel: 'Import ChatGPT Export',
+				filters: { 'ZIP files': ['zip'] },
+				title: 'Select your ChatGPT data export file'
+			});
+
+			if (!fileUri || fileUri.length === 0) {
+				return;
+			}
+
+			const zipPath = fileUri[0].fsPath;
+			console.log(`[TARX] Starting ChatGPT import from: ${zipPath}`);
+
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: 'Importing ChatGPT data',
+				cancellable: false
+			}, async (progress) => {
+				let lastPct = 0;
+
+				const result = await importChatGPTToTARX(zipPath, {
+					onProgress: (pct, status) => {
+						const increment = pct - lastPct;
+						lastPct = pct;
+						progress.report({ increment, message: status });
+					}
+				});
+
+				const timeStr = (result.importTimeMs / 1000).toFixed(1);
+				const topicsStr = result.topTopics.length > 0
+					? `\n\nTop topics: ${result.topTopics.join(' \u00B7 ')}`
+					: '';
+
+				const action = await vscode.window.showInformationMessage(
+					`Imported ${result.totalConversations} conversations (${result.totalMessages} messages, ${result.totalChunks} knowledge chunks) in ${timeStr}s.${topicsStr}`,
+					'Ask TARX About Your History'
+				);
+
+				if (action === 'Ask TARX About Your History') {
+					vscode.commands.executeCommand('tarx.chat.send',
+						'What topics did I discuss most in my ChatGPT history? Summarize the main themes.'
+					);
+				}
+			});
+
+		} catch (error) {
+			const msg = error instanceof Error ? error.message : 'Unknown error';
+			console.error('[TARX] ChatGPT import failed:', error);
+			vscode.window.showErrorMessage(`ChatGPT import failed: ${msg}`);
+		}
+	});
+
 	// Attach Uploaded File to Chat - Attach a previously uploaded file from the sidebar
 	safeRegisterCommand(context, 'tarx.attachUploadedFileToChat', async (fileId: string) => {
 		try {
@@ -3342,9 +3460,9 @@ export async function activate(context: vscode.ExtensionContext) {
 			}
 		}
 
-		// Open TARX chat panel in right column (new conversation)
-		TarxChatPanel.createOrShow(context);
-		console.log('[TARX] New chat started in right panel (ViewColumn.Beside)');
+		// Open native VS Code chat panel for new conversation
+		await vscode.commands.executeCommand('workbench.action.chat.open');
+		console.log('[TARX] New chat started using native chat panel');
 	});
 
 	// History Show All - Show conversation history panel
@@ -3417,32 +3535,16 @@ export async function activate(context: vscode.ExtensionContext) {
 			activeConversation = conversation;
 			syncConversationToProvider();
 
-			// Convert turns to message format for session panel
-			const messagesForDisplay = turns.map(turn => ({
-				id: turn.id,
-				role: turn.role,
-				content: turn.content,
-				created_at: turn.createdAt
-			}));
-
-			// Open session panel to display full conversation history (user + assistant messages)
-			TarxSessionPanel.createOrShowWithMessages(
-				context.extensionUri,
-				conversationId,
-				conversation.title || 'Conversation',
-				messagesForDisplay
-			);
-
-			// Also open native chat for continuing the conversation
+			// Open native chat for continuing the conversation
 			await vscode.commands.executeCommand('workbench.action.chat.open', {
 				query: '@tarx '
 			});
 
-			// Show notification with conversation context and source
+			// Show notification with conversation context
 			const turnCount = turns.length;
 			const title = conversation.title || 'Conversation';
 			vscode.window.showInformationMessage(
-				`Resumed ${source} conversation: ${title} (${turnCount} messages) - History visible in panel`
+				`Resumed ${source} conversation: ${title} (${turnCount} messages)`
 			);
 
 			console.log(`[TARX] Conversation ${conversationId} loaded and ready`);
@@ -3592,18 +3694,19 @@ export async function activate(context: vscode.ExtensionContext) {
 			};
 			syncConversationToProvider();
 
-			// Open session panel to display full conversation history (user + assistant messages)
+			// Open native chat for continuing the session
 			const displayTitle = session.title || 'Session';
 			const spaceName = session.space_name ? ` (${session.space_name})` : '';
 
-			TarxSessionPanel.createOrShowWithMessages(
-				context.extensionUri,
-				sessionId,
-				`${displayTitle}${spaceName}`,
-				messages
+			await vscode.commands.executeCommand('workbench.action.chat.open', {
+				query: '@tarx '
+			});
+
+			vscode.window.showInformationMessage(
+				`Resumed session: ${displayTitle}${spaceName} (${messages.length} messages)`
 			);
 
-			console.log(`[TARX] Session ${sessionId} opened in session panel with ${messages.length} messages`);
+			console.log(`[TARX] Session ${sessionId} loaded with ${messages.length} messages`);
 		} catch (e) {
 			console.error('[TARX] Failed to open session:', e);
 			vscode.window.showErrorMessage('Failed to load session');
@@ -4151,11 +4254,6 @@ _Add any project notes here_
 			console.error('[TARX] Error creating project:', error);
 			vscode.window.showErrorMessage(`Failed to create project: ${error instanceof Error ? error.message : String(error)}`);
 		}
-	});
-
-	// Open Chat with pre-filled prompt (duplicate registration — uses new chat panel)
-	safeRegisterCommand(context, 'tarx.openChat', (prompt?: string) => {
-		TarxChatPanel.createOrShow(context, prompt || undefined);
 	});
 
 	console.log('[TARX] Sidebar nav commands registered');
@@ -4748,59 +4846,13 @@ _Add any project notes here_
 	// Opens TARXDashboard in ViewColumn.Active on first launch
 	// or always if user prefers dashboard landing
 	// ═══════════════════════════════════════════════════════════════
-	try {
-		const hasSeenDashboard = context.globalState.get<boolean>('hasSeenDashboard', false);
-		const alwaysOpenDashboard = vscode.workspace.getConfiguration('tarx').get<boolean>('alwaysOpenDashboard', false);
+	// Dashboard auto-open disabled - using native VS Code chat panel as primary UX
+	// The dashboard can still be opened via tarx.openDashboard command if needed
+	console.log('[TARX] Dashboard auto-open disabled - using native chat panel');
 
-		console.log('[TARX] Dashboard check - hasSeenDashboard:', hasSeenDashboard, 'alwaysOpen:', alwaysOpenDashboard);
-
-		if (!hasSeenDashboard || alwaysOpenDashboard) {
-			// Small delay to let the workbench finish layout
-			setTimeout(() => {
-				try {
-					console.log('[TARX] Opening dashboard center tab...');
-					TarxDashboardPanel.createOrShow(context.extensionUri);
-					context.globalState.update('hasSeenDashboard', true);
-					console.log('[TARX] Dashboard center opened - first launch or alwaysOpen');
-				} catch (err) {
-					console.error('[TARX CRASH-GUARD] Failed to auto-open dashboard:', err);
-				}
-			}, 1500);
-		} else {
-			console.log('[TARX] Skipping dashboard auto-open (already seen)');
-		}
-	} catch (err) {
-		console.error('[TARX CRASH-GUARD] Dashboard auto-open check failed:', err);
-	}
-
-	// ═══════════════════════════════════════════════════════════════
-	// AUTO-OPEN RIGHT CHAT PANE ON LAUNCH
-	// Opens the native VS Code chat with TARX participant ready
-	// ═══════════════════════════════════════════════════════════════
-	try {
-		const hasOpenedChat = context.globalState.get<boolean>('tarx.hasAutoOpenedChat', false);
-		console.log('[TARX] Chat auto-open check - hasOpenedChat:', hasOpenedChat);
-
-		if (!hasOpenedChat) {
-			// Auto-open chat in right pane after a short delay
-			setTimeout(async () => {
-				try {
-					console.log('[TARX EVENT] Auto-opening chat in right pane...');
-					// Open VS Code native chat panel
-					await vscode.commands.executeCommand('workbench.action.chat.open');
-					// Mark that we've auto-opened
-					await context.globalState.update('tarx.hasAutoOpenedChat', true);
-					console.log('[TARX EVENT] ✓ Chat auto-opened successfully');
-				} catch (chatErr) {
-					console.error('[TARX] Failed to auto-open chat:', chatErr);
-				}
-			}, 2000); // 2s delay to let workbench settle
-		} else {
-			console.log('[TARX] Skipping chat auto-open (already opened before)');
-		}
-	} catch (err) {
-		console.error('[TARX CRASH-GUARD] Chat auto-open check failed:', err);
-	}
+	// Chat auto-open handled by TarxDashboardStartupContribution (workbench-native)
+	// Do NOT duplicate here — two competing openers caused race condition / black screen
+	console.log('[TARX] Chat auto-open delegated to workbench startup contribution');
 
 	console.log('[TARX CRASH-GUARD] TARX activated safely at', new Date().toISOString());
 

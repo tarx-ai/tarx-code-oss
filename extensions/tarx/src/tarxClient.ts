@@ -43,7 +43,7 @@ function sanitizeModelName(raw?: string): string {
 	// If it's a file path (contains / or \), extract just the filename
 	if (raw.includes('/') || raw.includes('\\')) {
 		const basename = raw.split(/[/\\]/).pop() || raw;
-		// Ollama blobs are like "sha256-2bada8a..." — show "Local Model"
+		// Model blobs are like "sha256-2bada8a..." — show "Local Model"
 		if (basename.startsWith('sha256-')) { return 'Local Model'; }
 		// GGUF files: strip extension, e.g. "qwen2.5-coder-7b-q4.gguf" → "qwen2.5-coder-7b-q4"
 		return basename.replace(/\.gguf$/i, '');
@@ -155,6 +155,9 @@ export class TarxClient {
 	/**
 	 * Send a chat completion request with streaming.
 	 * Yields structured chunks that separate thinking from content.
+	 *
+	 * @param options.signal - Optional AbortSignal for cancellation (e.g., from VS Code CancellationToken)
+	 * @param options.timeoutMs - Stream inactivity timeout in ms (default: 120000 = 2 minutes)
 	 */
 	async *chatCompletionStream(
 		messages: ChatMessage[],
@@ -162,8 +165,22 @@ export class TarxClient {
 			model?: string;
 			temperature?: number;
 			maxTokens?: number;
+			signal?: AbortSignal;
+			timeoutMs?: number;
 		} = {}
 	): AsyncGenerator<StreamChunk, void, unknown> {
+		const streamTimeout = options.timeoutMs ?? 120_000; // 2 minute default
+		const controller = new AbortController();
+
+		// Wire external abort signal (e.g., VS Code cancellation token) to our controller
+		if (options.signal) {
+			if (options.signal.aborted) {
+				controller.abort();
+			} else {
+				options.signal.addEventListener('abort', () => controller.abort(), { once: true });
+			}
+		}
+
 		let response: Response;
 		try {
 			response = await fetch(`${this.serverUrl}/v1/chat/completions`, {
@@ -177,9 +194,13 @@ export class TarxClient {
 					repeat_penalty: 1.15,
 					presence_penalty: 0.3,
 					frequency_penalty: 0.1
-				})
+				}),
+				signal: controller.signal
 			});
 		} catch (error: any) {
+			if (error.name === 'AbortError') {
+				return; // Canceled — exit cleanly
+			}
 			if (error.cause?.code === 'ECONNREFUSED' || error.message?.includes('ECONNREFUSED')) {
 				throw new Error('TARX Desktop is not running. Please start TARX Desktop first.');
 			}
@@ -200,36 +221,57 @@ export class TarxClient {
 
 		const decoder = new TextDecoder();
 		let buffer = '';
+		let lastChunkTime = Date.now();
 
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) break;
+		try {
+			while (true) {
+				// Check for stream inactivity timeout (Bug #2 fix: prevents spinner from getting stuck)
+				const timeSinceLastChunk = Date.now() - lastChunkTime;
+				if (timeSinceLastChunk > streamTimeout) {
+					console.warn(`[TARX] Stream inactivity timeout after ${streamTimeout}ms`);
+					throw new Error(`Stream timed out — no data received for ${Math.round(streamTimeout / 1000)}s`);
+				}
 
-			buffer += decoder.decode(value, { stream: true });
-			const lines = buffer.split('\n');
-			buffer = lines.pop() || '';
+				// Race between reading and a short timeout to check periodically
+				const readPromise = reader.read();
+				const timeoutPromise = new Promise<{ done: true; value: undefined }>((resolve) =>
+					setTimeout(() => resolve({ done: false as any, value: undefined }), 5000)
+				);
 
-			for (const line of lines) {
-				if (line.startsWith('data: ')) {
-					const data = line.slice(6);
-					if (data === '[DONE]') return;
+				const { done, value } = await Promise.race([readPromise, timeoutPromise]);
+				if (done) break;
+				if (!value) continue; // Timeout tick — loop back to check inactivity
 
-					try {
-						const parsed = JSON.parse(data);
-						const delta = parsed.choices?.[0]?.delta;
-						// Handle both standard content and reasoning_content (for QwQ/Qwen reasoning models)
-						// TARX: Yield structured chunks to enable thinking token UI
-						if (delta?.reasoning_content) {
-							yield { type: 'thinking' as const, content: delta.reasoning_content };
+				lastChunkTime = Date.now();
+				buffer += decoder.decode(value, { stream: true });
+				const lines = buffer.split('\n');
+				buffer = lines.pop() || '';
+
+				for (const line of lines) {
+					if (line.startsWith('data: ')) {
+						const data = line.slice(6);
+						if (data === '[DONE]') return;
+
+						try {
+							const parsed = JSON.parse(data);
+							const delta = parsed.choices?.[0]?.delta;
+							// Handle both standard content and reasoning_content (for QwQ/Qwen reasoning models)
+							// TARX: Yield structured chunks to enable thinking token UI
+							if (delta?.reasoning_content) {
+								yield { type: 'thinking' as const, content: delta.reasoning_content };
+							}
+							if (delta?.content) {
+								yield { type: 'content' as const, content: delta.content };
+							}
+						} catch {
+							// Ignore parse errors
 						}
-						if (delta?.content) {
-							yield { type: 'content' as const, content: delta.content };
-						}
-					} catch {
-						// Ignore parse errors
 					}
 				}
 			}
+		} finally {
+			// Always release the reader to prevent connection leaks
+			try { reader.releaseLock(); } catch { /* ignore */ }
 		}
 	}
 

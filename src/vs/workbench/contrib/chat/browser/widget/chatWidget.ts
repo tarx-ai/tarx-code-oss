@@ -1118,8 +1118,14 @@ export class ChatWidget extends Disposable implements IChatWidget {
 		}
 	}
 
+	private _tarxSuggestionGeneration = 0; // generation counter to prevent duplicate chips (Bug #3)
+
 	private async generateTarxSuggestions(lastItem: IChatResponseViewModel): Promise<void> {
 		this.clearTarxSuggestions();
+
+		// Increment generation counter — if another call starts while we're awaiting,
+		// the stale call will detect the mismatch and bail out (Bug #3 fix)
+		const generation = ++this._tarxSuggestionGeneration;
 
 		// Get last user message from the session
 		const items = this.viewModel?.getItems() ?? [];
@@ -1132,6 +1138,12 @@ export class ChatWidget extends Disposable implements IChatWidget {
 			lastUserMsg.messageText,
 			lastItem.response.toString()
 		);
+
+		// Check if a newer generation has started — if so, this result is stale
+		if (generation !== this._tarxSuggestionGeneration) {
+			return;
+		}
+
 		if (suggestions.length === 0) {
 			return;
 		}

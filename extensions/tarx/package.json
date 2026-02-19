@@ -61,6 +61,24 @@
           "edit",
           "agent"
         ],
+        "sampleRequest": [
+          {
+            "text": "What are you working on?",
+            "description": "Start a conversation about your current task"
+          },
+          {
+            "text": "Help me think through a problem",
+            "description": "Brainstorm and analyze approaches"
+          },
+          {
+            "text": "Review the code I have open",
+            "description": "Get feedback on your current file"
+          },
+          {
+            "text": "What can you do?",
+            "description": "Learn about TARX capabilities"
+          }
+        ],
         "commands": [
           {
             "name": "explain",
@@ -249,6 +267,11 @@
         "command": "tarx.attachFileToChat",
         "title": "TARX: Attach File to Chat",
         "icon": "$(attach)"
+      },
+      {
+        "command": "tarx.importChatGPT",
+        "title": "TARX: Import from ChatGPT",
+        "icon": "$(cloud-download)"
       },
       {
         "command": "tarx.attachUploadedFileToChat",
@@ -598,37 +621,37 @@
           "id": "tarx.projects",
           "name": "Projects",
           "type": "tree",
-          "visibility": "visible"
+          "visibility": "hidden"
         },
         {
           "id": "tarx.projectSections",
           "name": "Project Explorer",
           "type": "tree",
-          "visibility": "visible"
+          "visibility": "hidden"
         },
         {
           "id": "tarx.sidebar",
           "name": "Conversations",
           "type": "tree",
-          "visibility": "visible"
+          "visibility": "hidden"
         },
         {
           "id": "tarx.claudeSessions",
           "name": "Claude.ai Sessions",
           "type": "tree",
-          "visibility": "visible"
+          "visibility": "hidden"
         },
         {
           "id": "tarx.contextFiles",
           "name": "Context Files",
           "type": "tree",
-          "visibility": "visible"
+          "visibility": "hidden"
         },
         {
           "id": "tarx.mcpSettings",
           "name": "Agents",
           "type": "tree",
-          "visibility": "visible"
+          "visibility": "hidden"
         }
       ]
     },
@@ -690,6 +713,7 @@
     "lint": "eslint src --ext ts"
   },
   "dependencies": {
+    "adm-zip": "^0.5.16",
     "better-sqlite3": "^12.6.2",
     "mic": "^2.1.2",
     "react": "^18.3.1",
@@ -699,6 +723,7 @@
     "ws": "^8.16.0"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.7",
     "@types/better-sqlite3": "^7.6.13",
     "@types/minimatch": "^5.1.2",
     "@types/node": "^20.0.0",

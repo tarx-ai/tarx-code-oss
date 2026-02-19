@@ -95,7 +95,22 @@
 		]
 	},
 	"configurationDefaults": {
+		"window.restoreWindows": "none",
+		"window.newWindowDimensions": "maximized",
 		"chat.editor.wordWrap": "on",
+		"chat.viewSessions.enabled": false,
+		"chat.checkpoints.enabled": false,
+		"chat.useAgentSkills": true,
+		"chat.tools.terminal.sandbox.enabled": true,
+		"chat.agentSkillsLocations": {
+			".tarx/skills": true,
+			".github/skills": true,
+			"~/.tarx/skills": true
+		},
+		"chat.agentFilesLocations": {
+			".tarx/agents": true,
+			".github/agents": true
+		},
 		"tarx.thinking.enabled": true,
 		"tarx.thinking.autoCollapse": false,
 		"tarx.routing.default": "local",
@@ -113,6 +128,7 @@
 		"editor.cursorBlinking": "smooth",
 		"editor.cursorSmoothCaretAnimation": "on",
 		"terminal.integrated.fontSize": 13,
+		"workbench.activityBar.location": "hidden",
 		"workbench.startupEditor": "none",
 		"workbench.tips.enabled": false,
 		"telemetry.telemetryLevel": "off",
