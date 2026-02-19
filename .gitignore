@@ -27,3 +27,6 @@ vscode-telemetry-docs/
 test-output.json
 models/
 finetune-env/
+
+# Large model adapters
+training/tarx-adapters/*.safetensors
