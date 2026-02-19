@@ -574,6 +574,127 @@ export async function storeMCPEmbeddings(
 }
 
 // ============================================================================
+// MESSAGE STORAGE (for import pipelines)
+// ============================================================================
+
+/**
+ * Store a message in a session (used by ChatGPT importer)
+ */
+export async function addMCPMessage(
+	sessionId: string,
+	role: 'user' | 'assistant' | 'system',
+	content: string,
+	createdAt?: number,
+	model?: string
+): Promise<boolean> {
+	const db = await getDatabase();
+	if (!db) {
+		return false;
+	}
+
+	try {
+		const id = generateUUID();
+		const now = createdAt || Date.now();
+
+		db.run(
+			'INSERT INTO messages (id, session_id, role, content, created_at, model) VALUES (?, ?, ?, ?, ?, ?)',
+			[id, sessionId, role, content, now, model || null]
+		);
+
+		// Update session message count and timestamp
+		db.run(
+			'UPDATE sessions SET message_count = message_count + 1, updated_at = ? WHERE id = ?',
+			[now, sessionId]
+		);
+
+		return true;
+	} catch (error) {
+		console.error('[TARX-MCP] Failed to store message:', error);
+		return false;
+	}
+}
+
+/**
+ * Save pending database changes to disk.
+ * Exposed for bulk import operations that batch writes before saving.
+ */
+export function flushMCPDatabase(): void {
+	saveDatabase();
+}
+
+// ============================================================================
+// EMBEDDING GENERATION (for import pipelines)
+// ============================================================================
+
+const EMBEDDING_URL = 'http://localhost:11437/v1/embeddings';
+
+/**
+ * Generate an embedding vector via the local nomic-embed server.
+ * Returns null if the server is unreachable or fails.
+ */
+export async function generateMCPEmbedding(text: string): Promise<Float32Array | null> {
+	try {
+		const response = await fetch(EMBEDDING_URL, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ input: text, model: 'nomic-embed' })
+		});
+
+		if (!response.ok) {
+			return null;
+		}
+
+		const data = await response.json() as { data: Array<{ embedding: number[] }> };
+		if (!data.data?.[0]?.embedding) {
+			return null;
+		}
+
+		return new Float32Array(data.data[0].embedding);
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Store a single knowledge embedding with metadata.
+ * Used by import pipelines that generate embeddings themselves.
+ */
+export async function storeMCPKnowledgeChunk(
+	spaceId: string,
+	sourceId: string,
+	title: string,
+	content: string,
+	embedding: Float32Array,
+	sourceType: string = 'file'
+): Promise<boolean> {
+	const db = await getDatabase();
+	if (!db) {
+		return false;
+	}
+
+	try {
+		const id = generateUUID();
+		const now = Date.now();
+
+		// Convert Float32Array to Uint8Array for BLOB storage
+		const embeddingBlob = new Uint8Array(embedding.buffer, embedding.byteOffset, embedding.byteLength);
+
+		db.run(
+			`INSERT OR REPLACE INTO knowledge_embeddings
+			(id, space_id, source_type, source_id, title, content, embedding,
+			 model, original_dimensions, stored_dimensions, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, 'nomic-embed-text-v1.5', 768, 768, ?, ?)`,
+			[id, spaceId, sourceType, sourceId, title, content, embeddingBlob, now, now]
+		);
+
+		return true;
+	} catch (error) {
+		console.error('[TARX-MCP] Failed to store knowledge chunk:', error);
+		return false;
+	}
+}
+
+// ============================================================================
 // UTILITIES
 // ============================================================================
 
@@ -620,5 +741,224 @@ export async function getMCPDatabaseStats(): Promise<{
 	} catch (error) {
 		console.error('[TARX] Failed to get MCP database stats:', error);
 		return null;
+	}
+}
+
+// ============================================================================
+// INVITE CODE VALIDATION (extension-side)
+// ============================================================================
+
+export interface InviteCodeResult {
+	valid: boolean;
+	tier: string;
+	metadata: string | null;
+}
+
+/**
+ * Validate an invite code against the MCP database (memory.db).
+ * Returns validation result with metadata (contains profile JSON).
+ */
+export async function validateMCPInviteCode(code: string): Promise<InviteCodeResult> {
+	const db = await getDatabase();
+	if (!db) {
+		// Database unavailable — accept well-formed codes offline
+		const isWellFormed = /^TARX-[A-Z]+-\d{4}$/.test(code.toUpperCase().trim());
+		return { valid: isWellFormed, tier: 'beta', metadata: null };
+	}
+
+	try {
+		const stmt = db.prepare('SELECT code, tier, max_uses, use_count, metadata FROM invite_codes WHERE code = ?');
+		stmt.bind([code]);
+
+		if (stmt.step()) {
+			const row = stmt.getAsObject() as {
+				code: string;
+				tier: string;
+				max_uses: number;
+				use_count: number;
+				metadata: string | null;
+			};
+			stmt.free();
+
+			if (row.use_count >= row.max_uses) {
+				return { valid: false, tier: row.tier, metadata: null };
+			}
+
+			return { valid: true, tier: row.tier, metadata: row.metadata as string | null };
+		}
+
+		stmt.free();
+		return { valid: false, tier: '', metadata: null };
+	} catch (error) {
+		console.error('[TARX] Failed to validate invite code:', error);
+		return { valid: false, tier: '', metadata: null };
+	}
+}
+
+/**
+ * Redeem an invite code (increment use_count).
+ */
+export async function redeemMCPInviteCode(code: string, userId: string = 'default'): Promise<boolean> {
+	const db = await getDatabase();
+	if (!db) {
+		return false;
+	}
+
+	try {
+		const now = Date.now();
+		db.run(
+			'UPDATE invite_codes SET use_count = use_count + 1, redeemed_at = ?, redeemed_by = ? WHERE code = ? AND use_count < max_uses',
+			[now, userId, code]
+		);
+		saveDatabase();
+		return true;
+	} catch (error) {
+		console.error('[TARX] Failed to redeem invite code:', error);
+		return false;
+	}
+}
+
+// ============================================================================
+// ONBOARDING STATE
+// ============================================================================
+
+export type OnboardingStep = 'welcome' | 'profile_confirm' | 'first_prompt' | 'complete';
+
+export interface OnboardingState {
+	user_id: string;
+	invite_code: string | null;
+	step: OnboardingStep;
+	profile_confirmed: boolean;
+	first_inference_at: number | null;
+	import_source: string | null;
+}
+
+/**
+ * Get the current onboarding state for a user.
+ */
+export async function getOnboardingState(userId: string = 'default'): Promise<OnboardingState | null> {
+	const db = await getDatabase();
+	if (!db) {
+		return null;
+	}
+
+	try {
+		const stmt = db.prepare('SELECT * FROM onboarding_state WHERE user_id = ?');
+		stmt.bind([userId]);
+
+		if (stmt.step()) {
+			const row = stmt.getAsObject() as Record<string, unknown>;
+			stmt.free();
+			return {
+				user_id: row.user_id as string,
+				invite_code: row.invite_code as string | null,
+				step: row.step as OnboardingStep,
+				profile_confirmed: (row.profile_confirmed as number) === 1,
+				first_inference_at: row.first_inference_at as number | null,
+				import_source: row.import_source as string | null
+			};
+		}
+
+		stmt.free();
+		return null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Create or update onboarding state.
+ */
+export async function updateOnboardingState(
+	step: OnboardingStep,
+	updates: {
+		invite_code?: string;
+		profile_confirmed?: boolean;
+		import_source?: string;
+	} = {},
+	userId: string = 'default'
+): Promise<void> {
+	const db = await getDatabase();
+	if (!db) {
+		return;
+	}
+
+	try {
+		const now = Date.now();
+		const existing = await getOnboardingState(userId);
+
+		if (existing) {
+			db.run(
+				`UPDATE onboarding_state SET step = ?, profile_confirmed = ?, invite_code = COALESCE(?, invite_code), import_source = COALESCE(?, import_source), updated_at = ? WHERE user_id = ?`,
+				[step, updates.profile_confirmed ? 1 : 0, updates.invite_code || null, updates.import_source || null, now, userId]
+			);
+		} else {
+			db.run(
+				`INSERT INTO onboarding_state (user_id, invite_code, step, profile_confirmed, import_source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+				[userId, updates.invite_code || null, step, updates.profile_confirmed ? 1 : 0, updates.import_source || null, now, now]
+			);
+		}
+
+		saveDatabase();
+	} catch (error) {
+		console.error('[TARX] Failed to update onboarding state:', error);
+	}
+}
+
+// ============================================================================
+// RAG SEEDING FROM PROFILE
+// ============================================================================
+
+/**
+ * Embed user profile into RAG so TARX "knows" the user from first interaction.
+ * Creates a knowledge embedding in a global/personal space.
+ */
+export async function seedRAGWithProfile(profileText: string): Promise<boolean> {
+	const db = await getDatabase();
+	if (!db) {
+		return false;
+	}
+
+	try {
+		const embedding = await generateMCPEmbedding(`search_document: ${profileText}`);
+		if (!embedding) {
+			console.error('[TARX] Failed to generate profile embedding — embedding server may be down');
+			return false;
+		}
+
+		// Store in a "Personal" space, creating if needed
+		let spaceId: string | null = null;
+		const spacesResult = db.exec("SELECT id FROM spaces WHERE name = 'Personal' AND deleted_at IS NULL");
+		if (spacesResult[0]?.values?.[0]?.[0]) {
+			spaceId = spacesResult[0].values[0][0] as string;
+		}
+
+		if (!spaceId) {
+			spaceId = generateUUID();
+			const now = Date.now();
+			db.run(
+				'INSERT INTO spaces (id, name, description, emoji, created_at, updated_at, last_accessed_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+				[spaceId, 'Personal', 'Your profile and preferences', '👤', now, now, now]
+			);
+		}
+
+		const stored = await storeMCPKnowledgeChunk(
+			spaceId,
+			'user-profile',
+			'User Profile',
+			profileText,
+			embedding,
+			'note'
+		);
+
+		if (stored) {
+			saveDatabase();
+			console.log('[TARX] Profile embedded into RAG');
+		}
+
+		return stored;
+	} catch (error) {
+		console.error('[TARX] Failed to seed RAG with profile:', error);
+		return false;
 	}
 }
