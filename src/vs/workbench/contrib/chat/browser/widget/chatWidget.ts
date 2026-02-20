@@ -40,7 +40,6 @@ import { bindContextKey } from '../../../../../platform/observable/common/platfo
 import product from '../../../../../platform/product/common/product.js';
 import { ITelemetryService } from '../../../../../platform/telemetry/common/telemetry.js';
 import { IThemeService } from '../../../../../platform/theme/common/themeService.js';
-import { IWorkspaceContextService, WorkbenchState } from '../../../../../platform/workspace/common/workspace.js';
 import { EditorResourceAccessor } from '../../../../common/editor.js';
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
 import { IChatEntitlementService } from '../../../../services/chat/common/chatEntitlementService.js';
@@ -367,7 +366,6 @@ export class ChatWidget extends Disposable implements IChatWidget {
 		@IChatSessionsService private readonly chatSessionsService: IChatSessionsService,
 		@IAgentSessionsService private readonly agentSessionsService: IAgentSessionsService,
 		@IChatTodoListService private readonly chatTodoListService: IChatTodoListService,
-		@IWorkspaceContextService private readonly contextService: IWorkspaceContextService,
 		@ILifecycleService private readonly lifecycleService: ILifecycleService
 	) {
 		super();
@@ -883,7 +881,7 @@ export class ChatWidget extends Disposable implements IChatWidget {
 
 		let title: string;
 		if (this.input.currentModeKind === ChatModeKind.Ask) {
-			title = localize('chatDescription', "Ask TARX anything...");
+			title = localize('chatDescription', "TARX is running locally. What are you working on?");
 		} else if (this.input.currentModeKind === ChatModeKind.Edit) {
 			title = localize('editsTitle', "What would you like to edit?");
 		} else {
@@ -905,52 +903,34 @@ export class ChatWidget extends Disposable implements IChatWidget {
 
 	private getPromptFileSuggestions(): IChatSuggestedPrompts[] {
 
-		// Use predefined suggestions for new users
+		// TARX suggestion chips — work openers, not weather
 		if (!this.chatEntitlementService.sentiment.installed) {
-			const isEmpty = this.contextService.getWorkbenchState() === WorkbenchState.EMPTY;
-			if (isEmpty) {
-				return [
-					{
-						icon: Codicon.code,
-						label: localize('chatWidget.suggestedPrompts.helpMeCode', "Help me code"),
-						description: localize('chatWidget.suggestedPrompts.helpMeCodeDesc', "Write code with AI assistance"),
-						prompt: localize('chatWidget.suggestedPrompts.helpMeCodePrompt', "@tarx help me write code"),
-					},
-					{
-						icon: Codicon.lightbulb,
-						label: localize('chatWidget.suggestedPrompts.explainThis', "Explain this"),
-						description: localize('chatWidget.suggestedPrompts.explainThisDesc', "Understand code concepts"),
-						prompt: localize('chatWidget.suggestedPrompts.explainThisPrompt', "@tarx explain how this works"),
-					},
-					{
-						icon: Codicon.bug,
-						label: localize('chatWidget.suggestedPrompts.debug', "Debug"),
-						description: localize('chatWidget.suggestedPrompts.debugDesc', "Find and fix issues"),
-						prompt: localize('chatWidget.suggestedPrompts.debugPrompt', "@tarx help me debug this issue"),
-					}
-				];
-			} else {
-				return [
-					{
-						icon: Codicon.code,
-						label: localize('chatWidget.suggestedPrompts.helpMeCodeProject', "Help me code"),
-						description: localize('chatWidget.suggestedPrompts.helpMeCodeProjectDesc', "Write code with AI assistance"),
-						prompt: localize('chatWidget.suggestedPrompts.helpMeCodeProjectPrompt', "@tarx help me write code for this project"),
-					},
-					{
-						icon: Codicon.lightbulb,
-						label: localize('chatWidget.suggestedPrompts.explainThisProject', "Explain this"),
-						description: localize('chatWidget.suggestedPrompts.explainThisProjectDesc', "Understand this codebase"),
-						prompt: localize('chatWidget.suggestedPrompts.explainThisProjectPrompt', "@tarx explain this codebase"),
-					},
-					{
-						icon: Codicon.bug,
-						label: localize('chatWidget.suggestedPrompts.debugProject', "Debug"),
-						description: localize('chatWidget.suggestedPrompts.debugProjectDesc', "Find and fix issues"),
-						prompt: localize('chatWidget.suggestedPrompts.debugProjectPrompt', "@tarx help me debug this issue"),
-					}
-				];
-			}
+			return [
+				{
+					icon: Codicon.comment,
+					label: localize('chatWidget.suggestedPrompts.whatBuilding', "What are you building?"),
+					description: localize('chatWidget.suggestedPrompts.whatBuildingDesc', "Tell TARX what you're working on"),
+					prompt: localize('chatWidget.suggestedPrompts.whatBuildingPrompt', "@tarx What are you working on right now?"),
+				},
+				{
+					icon: Codicon.zap,
+					label: localize('chatWidget.suggestedPrompts.showCapabilities', "Show me what you can do"),
+					description: localize('chatWidget.suggestedPrompts.showCapabilitiesDesc', "See TARX in action on your project"),
+					prompt: localize('chatWidget.suggestedPrompts.showCapabilitiesPrompt', "@tarx Show me what TARX can do with my current project"),
+				},
+				{
+					icon: Codicon.lightbulb,
+					label: localize('chatWidget.suggestedPrompts.helpThink', "Help me think"),
+					description: localize('chatWidget.suggestedPrompts.helpThinkDesc', "Think through a problem together"),
+					prompt: localize('chatWidget.suggestedPrompts.helpThinkPrompt', "@tarx Help me think through a problem I'm stuck on"),
+				},
+				{
+					icon: Codicon.folderOpened,
+					label: localize('chatWidget.suggestedPrompts.projectContext', "My project context"),
+					description: localize('chatWidget.suggestedPrompts.projectContextDesc', "See what TARX knows about your project"),
+					prompt: localize('chatWidget.suggestedPrompts.projectContextPrompt', "@tarx What's in my project context right now?"),
+				}
+			];
 		}
 
 		// Get the current workspace folder context if available
