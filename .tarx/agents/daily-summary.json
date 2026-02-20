@@ -1,0 +1,20 @@
+{
+  "id": "daily-summary",
+  "name": "Daily Summary",
+  "description": "Compiles daily activity into a summary at 6pm",
+  "creator": "@tarx",
+  "version": "1.0",
+  "trigger": {
+    "type": "schedule",
+    "cron": "0 18 * * *"
+  },
+  "steps": [
+    { "tool": "tarx_list_sessions", "label": "Get today's sessions" },
+    { "tool": "tarx_list_spaces", "label": "Get active projects" },
+    { "tool": "tarx_chat", "label": "Generate daily summary", "params": { "prompt": "Summarize today's work across all sessions and projects." } }
+  ],
+  "requires": [],
+  "status": "active",
+  "lastRun": null,
+  "runs": []
+}

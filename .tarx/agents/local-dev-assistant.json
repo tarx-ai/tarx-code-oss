@@ -1,0 +1,20 @@
+{
+  "id": "local-dev-assistant",
+  "name": "Local Dev Assistant",
+  "description": "Watches file changes and suggests fixes",
+  "creator": "@tarx",
+  "version": "1.0",
+  "trigger": {
+    "type": "watch",
+    "pattern": "**/*.{ts,tsx,js,jsx}"
+  },
+  "steps": [
+    { "tool": "tarx_list_files", "label": "Get changed files" },
+    { "tool": "tarx_chat", "label": "Analyze changes and suggest fixes", "params": { "prompt": "Review the changed files and suggest any fixes or improvements." } },
+    { "tool": "tarx_send_message", "label": "Report findings" }
+  ],
+  "requires": [],
+  "status": "active",
+  "lastRun": null,
+  "runs": []
+}

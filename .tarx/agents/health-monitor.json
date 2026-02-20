@@ -1,0 +1,20 @@
+{
+  "id": "health-monitor",
+  "name": "Health Monitor",
+  "description": "Checks all TARX services and reports issues",
+  "creator": "@tarx",
+  "version": "1.0",
+  "trigger": {
+    "type": "schedule",
+    "cron": "*/30 * * * *"
+  },
+  "steps": [
+    { "tool": "tarx_health", "label": "Check service health" },
+    { "tool": "tarx_db_stats", "label": "Get database stats" },
+    { "tool": "tarx_chat", "label": "Analyze and report findings", "params": { "prompt": "Summarize the health check results. Flag any issues." } }
+  ],
+  "requires": [],
+  "status": "active",
+  "lastRun": null,
+  "runs": []
+}
