@@ -1978,7 +1978,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		return { metadata: { command } };
 	});
 
-	chatParticipant.iconPath = vscode.Uri.joinPath(context.extensionUri, 'media', 'tarx-eyes.png');
+	chatParticipant.iconPath = vscode.Uri.joinPath(context.extensionUri, 'media', 'tarx-icon.svg');
 
 	// Followup provider — contextual suggestion chips after each response
 	chatParticipant.followupProvider = {

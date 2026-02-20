@@ -248,10 +248,10 @@ export class ChatViewWelcomePart extends Disposable {
 						if (!this.chatWidgetService.lastFocusedWidget) {
 							const widgets = this.chatWidgetService.getWidgetsByLocations(ChatAgentLocation.Chat);
 							if (widgets.length) {
-								widgets[0].setInput(prompt.prompt);
+								widgets[0].acceptInput(prompt.prompt);
 							}
 						} else {
-							this.chatWidgetService.lastFocusedWidget.setInput(prompt.prompt);
+							this.chatWidgetService.lastFocusedWidget.acceptInput(prompt.prompt);
 						}
 					};
 					// Add context menu handler
