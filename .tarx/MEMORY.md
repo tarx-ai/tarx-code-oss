@@ -1,0 +1,34 @@
+# TARX System Memory
+Last updated: 2026-02-20T12:00:00Z
+
+## Services
+- Inference: port 11435, model tarx-qwen2.5-7b-deep-Q4_K_M.gguf (4.68GB), status unknown
+- Mesh: port 11436, peers 0, status unknown
+- Embeddings: port 11437, model nomic-embed-text-v1.5 (768-dim), status unknown
+
+## MCP Servers
+- tarx-core: 51 tools, status ok
+- tarx-ops: 50 tools, status ok
+- tarx-ui: 168 tools, status ok
+- tarx-mesh: 9 tools, status ok
+- tarx-verify: 24 tools, status ok
+- tarx-martech: 18 tools, status ok (standalone ~/Desktop/tarx-martech/)
+Total: 320 tools (311 in-repo + 9 mesh MCP)
+
+## Known Issues
+- tarx-observer-mcp-server: MISSING FROM DISK — directory does not exist (2026-02-20)
+- @sentry/browser: NEVER import in renderer — bare specifiers fail in ESM. Use globalThis.Sentry stubs (2026-02-20)
+- Embedding server: llama-server (NOT Ollama) — auto-managed as sidecar by tarxEmbeddingSidecarService.ts (2026-02-20)
+
+## Architecture Decisions
+- Conversational-first UX: @tarx chat participant is primary surface, webviews are last resort (2026-02-20)
+- Upstream-first UI: use VS Code APIs before building custom components (2026-02-20)
+- MCP consolidation complete: 5 servers, zero name collisions (2026-02-20)
+- Sentry: @sentry/node in main+exthost, no-op stubs in renderer (2026-02-20)
+- Persistence: SQLite via tarx-core MCP is database of record (2026-02-20)
+
+## Build Pipeline Reminder
+1. Webview bundle FIRST: `cd extensions/tarx && node esbuild.webview.js --production`
+2. Inline: `node build/lib/tarx-webview-inline.js`
+3. Compile: `yarn compile`
+BLACK SCREEN = missing webview bundle. Always run step 1 if sidebar changed.

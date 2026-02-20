@@ -1,56 +1,303 @@
-You are Claude Code operating inside Workbench — a VS Code fork that IS the product you're building. You have full MCP access to TARX's brain (memory, RAG, health, Sentry, orchestration). Use it.
+# CLAUDE.md — CC ↔ TARX Protocol
 
-## WHO YOU ARE
+**This file is law.** Every Claude Code session reads this at startup.
+No exceptions. No drift. No improvisation on process.
 
-You are a senior systems engineer embedded in TARX. You don't ask permission. You read the codebase, check TARX memory for context, query Sentry for errors, and execute. You store what you learn back into TARX memory so future sessions inherit your knowledge.
+---
 
-## WORKSPACE
+## Session Lifecycle
 
-Repository: ~/Desktop/tarx-code-oss
-This is a VS Code (code-oss) fork. The product IS the IDE.
+### On Session Start (MANDATORY — do these before ANY work)
 
-Key directories:
-- extensions/tarx/src/           → Main TARX extension (sidebar, chat, commands, status bar)
-- extensions/tarx/src/services/  → Core services (health, database, inference, RAG)
-- extensions/tarx-core/          → MCP server: memory, spaces, sessions, files, RAG, chat (46 tools)
-- extensions/tarx-ops/           → MCP server: Sentry, CC orchestration, file locks, daemon (47 tools)
-- extensions/tarx-ui-mcp-server/ → MCP server: UI control, screenshots, testing (167 tools)
-- extensions/tarx-theme/         → TARX purple theme
-- extensions/tarx-shared/        → Shared utilities across extensions
-- src/vs/workbench/contrib/tarx/ → Core workbench integration (sidebar, panels)
+```
+1. Run tarx_health → confirm services are up
+2. Run tarx_db_stats → get current state counts
+3. Read .tarx/SESSION_LOG.md → know what the last session did
+4. Read .tarx/MEMORY.md → know what TARX remembers
+5. Read V1_SHIP_PLAN.md → know current priorities
+6. Report findings to user in 3 lines. No novels.
+```
 
-## PORTS (all on localhost)
+If any service is down, fix it before starting work. Don't build on a broken foundation.
 
-| Port  | Service         | What it does                    |
-|-------|-----------------|---------------------------------|
-| 11435 | llama-server    | Local LLM inference (Qwen 8.2B) |
-| 11436 | Mesh HTTP API   | P2P networking (libp2p)         |
-| 11437 | Embedding server| RAG embeddings (nomic-embed)    |
+### During Session (MANDATORY — do these as you work)
 
-## SESSION PROTOCOL — DO THIS FIRST
+```
+- Every significant decision → append to .tarx/SESSION_LOG.md
+- Every file created/modified → log path + purpose in SESSION_LOG.md
+- Every 30 minutes of work → checkpoint: what's done, what's next
+- Before any destructive action → confirm with user
+- After any build → run compile check, report errors
+```
 
-Before writing ANY code, run these MCP calls in order:
-1. `tarx_session_context` — Gets system health + recent memories in one call
-2. `memory_search_index` with query relevant to your task — Scan for prior work
-3. If results look relevant: `memory_search` with same query — Get full details
-4. `tarx_admin_sentry_issues` with project="all" — Check for related errors
+### On Session End (MANDATORY — do these before closing)
 
-## V1.1 SHIP PLAN — CURRENT PRIORITIES
+```
+1. Write session summary to .tarx/SESSION_LOG.md:
+   - Session ID (date-time-topic)
+   - What was attempted
+   - What shipped (files committed, features working)
+   - What's broken or incomplete
+   - Exact next steps for the next session
+2. Update .tarx/MEMORY.md if any system facts changed
+3. Run git status → report uncommitted changes
+4. If work is done: git add + commit with descriptive message
+5. If work is incomplete: document EXACTLY where you stopped
+```
 
-CRITICAL (blocks ship):
-- #3: Chat blocks on 2nd query after direct action execution
-- #4: Sidebar race condition — "No projects yet" despite existing data
-- #16: Claude Code CLI integration polish
+---
 
-HIGH PRIORITY:
-- #5: Icons show emoji not codicons
-- #6: File upload UI
-- #7: TARX purple theme + welcome screen
-- #8: HostProvider not setup (Sentry 2533 events)
-- #9: mkdir '/mock' denied (Sentry 694 events)
-- #10: Build pipeline — webview not in gulp
+## Memory Architecture
 
-## BUILD PIPELINE
+### Where State Lives
+
+| What | Where | Why |
+|------|-------|-----|
+| System facts (ports, services, tool counts) | `.tarx/MEMORY.md` | Survives across sessions |
+| Session history (what happened, decisions made) | `.tarx/SESSION_LOG.md` | Audit trail |
+| Current priorities | `V1_SHIP_PLAN.md` | Single source of truth |
+| User preferences | VS Code `settings.json` (workspace) | Upstream pattern |
+| Project context | `.tarx/context.md` per workspace | Workspace-scoped |
+| Runtime state | `context.globalState` keys | VS Code API |
+| Conversation memory | SQLite via tarx-core MCP | Persistent, queryable |
+
+### .tarx/MEMORY.md Format
+
+```markdown
+# TARX System Memory
+Last updated: [ISO timestamp by last CC session]
+
+## Services
+- Inference: port 11435, model [name], status [up/down]
+- Mesh: port 11436, peers [n], status [up/down]
+- Embeddings: port 11437, model nomic-embed-v1.5, status [up/down]
+
+## MCP Servers
+- tarx-core: [n] tools, status [ok/error]
+- tarx-ops: [n] tools, status [ok/error]
+- tarx-ui: [n] tools, status [ok/error]
+- tarx-admin: [n] tools, status [ok/error]
+- tarx-mesh: [n] tools, status [ok/error]
+- tarx-verify: [n] tools, status [ok/error]
+Total: [n] tools
+
+## Known Issues
+- [issue]: [status] [date]
+
+## Architecture Decisions
+- [decision]: [rationale] [date]
+```
+
+### .tarx/SESSION_LOG.md Format
+
+```markdown
+# Session Log
+
+## [YYYY-MM-DD-HHMM] [topic]
+**Attempted:** What was the goal
+**Shipped:** What actually landed (file paths)
+**Broken:** What's not working
+**Next:** Exact next steps
+**Commits:** [hash] [message]
+---
+```
+
+Newest session on top. Never delete old entries. This is the audit trail.
+
+---
+
+## Division of Labor
+
+### CC Owns (Do in Claude Code)
+
+- Writing code
+- Running builds
+- Git operations
+- File system changes
+- Running tests
+- Debugging with Sentry MCP tools
+- Applying fixes
+
+### TARX Owns (Query via MCP, don't replicate)
+
+- Database state → `tarx_list_spaces`, `tarx_list_sessions`, `tarx_db_stats`
+- Health monitoring → `tarx_health`
+- Embeddings/RAG → `tarx_embed`, search via tarx-core
+- Mesh status → `tarx_mesh_status`
+- Voice pipeline → `tarx_voice_health`
+
+### Claude.ai Owns (Browser sessions)
+
+- High-level architecture decisions
+- UX/design direction
+- GTM strategy
+- Work queue generation for CC
+- Reviewing CC output
+- Prompt engineering for CC sessions
+
+### The Rule
+
+**CC never stores system state in its own context.** Ask TARX, get answer, act on it, move on. If you need the data again, ask again. Don't hoard.
+
+**Claude.ai never does implementation.** Design, decide, direct. Then hand to CC with a specific prompt.
+
+**TARX is the database of record.** Not Claude.ai's memory. Not CC's context window. TARX's SQLite + MCP tools.
+
+---
+
+## Development Principles
+
+### 1. Upstream First
+
+If VS Code has it, use it. Do not build custom UI for anything the editor already provides.
+
+Before writing ANY new component, answer: "Does VS Code already have this?"
+- Breadcrumbs → yes, use them
+- Tree views → yes, use TreeViewProvider
+- Settings → yes, use workspace settings
+- Auth inputs → yes, use showInputBox
+- Notifications → yes, use showInformationMessage
+- Progress → yes, use withProgress
+- File watching → yes, use FileSystemWatcher
+- Webviews → LAST RESORT, not first instinct
+
+### 2. Conversational First
+
+The @tarx chat participant is the primary UX surface. All user flows route through conversation unless they require persistent spatial UI.
+
+**Spatial UI (keep as visual):**
+- File tree, editor, terminal, activity bar, status bar
+
+**Conversational UI (route through @tarx):**
+- Onboarding, auth, settings, project setup, agent management, help
+
+Before building ANY new panel or webview, answer: "Can @tarx handle this in chat?"
+If yes → do it in chat. No exceptions.
+
+### 3. Don't Invent, Integrate
+
+No custom implementations of solved problems.
+- MCP for tool orchestration (not custom RPC)
+- SQLite for persistence (not custom file formats)
+- libp2p for mesh (not custom networking)
+- llama-server for inference (not Ollama, not custom)
+- VS Code APIs for UI (not custom webviews)
+
+### 4. Ship > Perfect
+
+If it works, commit it. Polish later. Every session should end with at least one commit. If a session produces zero commits, something went wrong.
+
+---
+
+## Naming Conventions
+
+### Git Commits
+```
+feat: [what] — new capability
+fix: [what] — bug fix
+brand: [what] — branding/theming
+ux: [what] — user experience
+chore: [what] — maintenance, docs, deps
+perf: [what] — performance
+security: [what] — security fix
+```
+
+### State Keys
+```
+tarx.[domain].[key]
+Examples:
+  tarx.auth.pinHash
+  tarx.memory.enabled
+  tarx.mesh.autoConnect
+```
+
+### MCP Tools
+```
+tarx_[verb]_[noun]  (user tools)
+tarx_admin_[verb]_[noun]  (admin tools)
+tarx_mesh_[verb]_[noun]  (mesh tools)
+```
+
+### File Paths
+```
+extensions/tarx/src/[domain]/[feature].ts
+.tarx/[system-file].md
+```
+
+---
+
+## Anti-Patterns (Things That Get Sessions Killed)
+
+1. **Building custom UI that VS Code already has.** Stop. Use upstream.
+2. **Storing state in CC's context instead of TARX.** Ask TARX, don't hoard.
+3. **Starting work without reading SESSION_LOG.md.** You'll redo what was already done.
+4. **Session with zero commits.** If nothing shipped, the session failed.
+5. **Creating files without logging them.** Phantom files = vaporware at next QA.
+6. **Ignoring build errors.** Fix red before adding green.
+7. **Inventing new patterns when upstream exists.** Upstream first. Always.
+8. **Building webviews when chat participant works.** Conversational first.
+9. **Working on P2/P3 when P0 is incomplete.** Check V1_SHIP_PLAN.md.
+10. **Not updating MEMORY.md after system changes.** Next session won't know.
+
+---
+
+## QA Checkpoints
+
+### Before Any Commit
+```bash
+# Build passes
+yarn compile 2>&1 | tail -5
+
+# Services healthy
+curl -s localhost:11435/health
+curl -s localhost:11436/health
+curl -s localhost:11437/health
+
+# No regressions
+git diff --stat
+```
+
+### Before Session End
+```bash
+# Working tree status
+git status
+
+# Recent commits
+git log --oneline -5
+
+# Update session log
+# Update memory if system facts changed
+```
+
+---
+
+## Emergency Protocols
+
+### Service Won't Start
+```bash
+lsof -i :11435  # Check for orphan process
+kill -9 [PID]   # Kill it
+# Restart via TARX app or launch script
+```
+
+### Build Broken
+```bash
+git stash        # Save work
+git checkout .   # Reset to clean
+yarn compile     # Verify clean builds
+git stash pop    # Reapply and fix
+```
+
+### State Corruption
+```bash
+# Reset globalState keys
+# In extension: context.globalState.update('tarx.[key]', undefined)
+# Or delete the VS Code storage file and restart
+```
+
+---
+
+## Build Pipeline
 
 ```bash
 # If you edited webview code (sidebar, chat panel):
@@ -66,7 +313,15 @@ cd ~/Desktop/tarx-code-oss && yarn compile 2>&1 | tail -30
 
 Always verify with `yarn compile` — 0 errors required.
 
-## MCP TOOLS — YOUR SUPERPOWERS (260 tools across 3 servers)
+## Ports (all on localhost)
+
+| Port  | Service          | What it does                     |
+|-------|------------------|----------------------------------|
+| 11435 | llama-server     | Local LLM inference (Qwen 8.2B)  |
+| 11436 | Mesh HTTP API    | P2P networking (libp2p)          |
+| 11437 | Embedding server | RAG embeddings (nomic-embed)     |
+
+## MCP Tools (311 tools across 5 servers)
 
 Memory: memory_search_index (lightweight scan FIRST), memory_search (full), memory_store_observation (store learnings), memory_recall, tarx_search_knowledge
 Health: tarx_system_brief (everything in one call), tarx_health, tarx_project_context
@@ -74,19 +329,12 @@ Sentry: tarx_admin_sentry_issues, tarx_admin_sentry_events, tarx_admin_sentry_se
 Console: tarx_admin_read_console, tarx_admin_tail_console
 Orchestration: tarx_admin_file_lock/unlock, tarx_orchestrate_assign_task/task_update
 
-## CRITICAL RULES
+---
 
-1. ALWAYS store observations via memory_store_observation after every bugfix/feature/decision/discovery
-2. Check memory_search_index BEFORE building anything — someone may have already solved it
-3. Don't modify core VS Code unless absolutely necessary. Prefer extensions/tarx/
-4. Check Sentry before fixing anything — tarx_admin_sentry_search for related events
-5. RAG knowledge in space 4690883b-33b5-491b-af7c-91bee7c97723
-6. Never say done without yarn compile showing 0 errors
-7. Use tarx_admin_file_lock if editing files another session might touch
-8. The product IS the IDE — test by reloading window
+## This Document's Lifecycle
 
-## ARCHITECTURE
-
-7 extension dirs (all active), 3 MCP servers (260 tools: core 46 + ops 47 + ui 167), llama-server on 11435, nomic-embed on 11437, libp2p mesh on 11436, Sentry at tarx-fo.sentry.io, SQLite database. Model: tarx-qwen2.5-7b-deep-Q4_K_M.gguf (4.68GB)
-
-Now — call tarx_session_context, then ask me what to work on.
+- Lives at: `~/Desktop/tarx-code-oss/CLAUDE.md`
+- Also referenced in: `~/Desktop/tarx-code-oss/.tarx/MEMORY.md`
+- Updated by: Any CC session that discovers a new rule or anti-pattern
+- Never deleted. Only appended or refined.
+- Version: 3.0 — February 20, 2026
