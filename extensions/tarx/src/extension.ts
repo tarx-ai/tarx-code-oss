@@ -2100,6 +2100,22 @@ export async function activate(context: vscode.ExtensionContext) {
 
 					// Update sidebar with latest conversations from both tables
 					loadSidebarHistory();
+
+					// Context Protocol: Extract and store observations (async, non-blocking)
+					if (contextProtocol) {
+						contextProtocol.extractObservations(messages).then(observations => {
+							if (observations.length > 0) {
+								console.log(`[TARX Context] Extracted ${observations.length} observations`);
+								for (const obs of observations) {
+									contextProtocol!.storeObservation(obs).catch(obsErr =>
+										console.warn('[TARX Context] Observation storage failed:', obsErr)
+									);
+								}
+							}
+						}).catch(obsErr => {
+							console.warn('[TARX Context] Observation extraction failed:', obsErr);
+						});
+					}
 				} catch (e) {
 					console.warn('[TARX] Failed to save conversation turns:', e);
 				}
@@ -5428,6 +5444,12 @@ export function deactivate() {
 	if (grokDispatchProcess) {
 		grokDispatchProcess.kill('SIGTERM');
 		grokDispatchProcess = undefined;
+	}
+
+	// Clean up context protocol
+	if (contextProtocol) {
+		contextProtocol.dispose();
+		contextProtocol = undefined;
 	}
 
 	// Close MCP database connection (performance optimization cleanup)
