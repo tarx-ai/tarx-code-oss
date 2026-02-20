@@ -74,6 +74,8 @@ CREATE TABLE IF NOT EXISTS projects (
     name TEXT NOT NULL,
     root TEXT NOT NULL UNIQUE,
     type TEXT,
+    instructions TEXT,
+    color TEXT,
     created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
     is_active INTEGER NOT NULL DEFAULT 0
 );

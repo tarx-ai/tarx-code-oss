@@ -220,6 +220,18 @@ export class SqliteDatabase implements DatabaseOperations {
 			this.execSQL(SCHEMA_SQL);
 			this.execSQL(SQLITE_EXTENSIONS_SQL);
 
+			// Migrate: add columns to projects table if missing (ALTER TABLE has no IF NOT EXISTS)
+			for (const col of [
+				{ name: 'instructions', type: 'TEXT' },
+				{ name: 'color', type: 'TEXT' },
+			]) {
+				try {
+					this.execSQL(`ALTER TABLE projects ADD COLUMN ${col.name} ${col.type};`);
+				} catch {
+					// Column already exists — expected on subsequent runs
+				}
+			}
+
 			this.initialized = true;
 			console.log('[TARX-DB] SQLite database initialized at:', this.dbPath);
 		} catch (e) {

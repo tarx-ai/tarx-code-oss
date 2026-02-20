@@ -476,27 +476,6 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	try { // ====== TOP-LEVEL CRASH GUARD ======
 
-	// ========== DIAGNOSTIC: DB PATH CHECK ==========
-	const mcpDbPath = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
-	console.log('[TARX DIAG] DB path:', mcpDbPath);
-	console.log('[TARX DIAG] DB exists:', fs.existsSync(mcpDbPath));
-	if (fs.existsSync(mcpDbPath)) {
-		try {
-			const stats = fs.statSync(mcpDbPath);
-			console.log('[TARX DIAG] DB size:', stats.size, 'bytes');
-			console.log('[TARX DIAG] DB mtime:', stats.mtime.toISOString());
-			// Quick query to count spaces
-			const countResult = execSync(
-				`sqlite3 "${mcpDbPath}" "SELECT COUNT(*) FROM spaces WHERE deleted_at IS NULL"`,
-				{ encoding: 'utf8', timeout: 5000 }
-			).trim();
-			console.log('[TARX DIAG] Space count:', countResult);
-		} catch (e) {
-			console.error('[TARX DIAG] DB stat/query error:', e);
-		}
-	}
-	// ========== END DIAGNOSTIC ==========
-
 	// Version command - register early so it's always available
 	context.subscriptions.push(vscode.commands.registerCommand('tarx.version', () => {
 		vscode.window.showInformationMessage(`TARX Version: ${TARX_VERSION}`);
@@ -696,7 +675,24 @@ export async function activate(context: vscode.ExtensionContext) {
 			fs.mkdirSync(sharedTarxPath, { recursive: true });
 		}
 		db = new SqliteDatabase(sharedTarxPath);
+		// Force schema creation NOW so tables exist before sidebar queries fire
+		await db.ensureDbReady();
 		console.log('[TARX] Database initialized at:', sharedTarxPath);
+
+		// ========== DIAGNOSTIC: DB STATS ==========
+		try {
+			const mcpDbPath = path.join(sharedTarxPath, 'memory.db');
+			const stats = fs.statSync(mcpDbPath);
+			console.log(`[TARX DIAG] DB: ${(stats.size / 1024).toFixed(0)}KB, modified ${stats.mtime.toISOString()}`);
+			const countResult = execSync(
+				`sqlite3 "${mcpDbPath}" "SELECT COUNT(*) FROM spaces WHERE deleted_at IS NULL"`,
+				{ encoding: 'utf8', timeout: 5000 }
+			).trim();
+			console.log('[TARX DIAG] Space count:', countResult);
+		} catch (e) {
+			console.warn('[TARX DIAG] DB stat error (non-critical):', e);
+		}
+		// ========== END DIAGNOSTIC ==========
 	} catch (dbErr) {
 		console.error('[TARX CRASH-GUARD] Database init failed:', dbErr);
 	}
