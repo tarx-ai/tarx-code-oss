@@ -67,6 +67,7 @@ export const unicodeFilter = Object.freeze<string[]>([
 	'!src/vs/base/browser/dompurify/**',
 	'!src/vs/workbench/services/keybinding/browser/keyboardLayouts/**',
 	'!src/vs/workbench/contrib/terminal/common/scripts/psreadline/**',
+	'!src/vs/workbench/browser/parts/tarxsidebar/**',
 ]);
 
 export const indentationFilter = Object.freeze<string[]>([
@@ -101,6 +102,7 @@ export const indentationFilter = Object.freeze<string[]>([
 	'!extensions/terminal-suggest/src/completions/upstream/**',
 	'!extensions/tarx/**',
 	'!extensions/tarx-*/**',
+	'!src/vs/workbench/browser/parts/tarxsidebar/**',
 	'!extensions/typescript-language-features/test-workspace/**',
 	'!extensions/typescript-language-features/resources/walkthroughs/**',
 	'!extensions/typescript-language-features/package-manager/node-maintainer/**',
@@ -194,6 +196,7 @@ export const copyrightFilter = Object.freeze<string[]>([
 	'!extensions/*/server/bin/*',
 	'!extensions/tarx/**',
 	'!extensions/tarx-*/**',
+	'!src/vs/workbench/browser/parts/tarxsidebar/**',
 	'!src/vs/workbench/contrib/terminal/common/scripts/psreadline/**',
 ]);
 
@@ -216,6 +219,7 @@ export const tsFormattingFilter = Object.freeze<string[]>([
 	'!extensions/terminal-suggest/src/shell/fishBuiltinsCache.ts',
 	'!extensions/tarx/**',
 	'!extensions/tarx-*/**',
+	'!src/vs/workbench/browser/parts/tarxsidebar/**',
 ]);
 
 export const eslintFilter = Object.freeze<string[]>([
