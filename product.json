@@ -2,7 +2,7 @@
 	"version": "1.96.0",
 	"nameShort": "TARX Workbench",
 	"nameLong": "TARX Workbench",
-	"applicationName": "tarx-code",
+	"applicationName": "tarx-workbench",
 	"dataFolderName": ".tarx-code",
 	"win32MutexName": "tarx",
 	"licenseName": "MIT",
