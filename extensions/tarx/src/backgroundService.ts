@@ -143,6 +143,7 @@ export class TarxBackgroundService extends EventEmitter {
 		// Only emit when status changes
 		if (!this.lastHealth || this.healthChanged(this.lastHealth, health)) {
 			this.lastHealth = health;
+			console.log('[TARX-BG] Emitting health:', JSON.stringify(health));
 			this.emit('event', { type: 'health', data: health } as BackgroundEvent);
 		}
 	}
@@ -189,7 +190,7 @@ export class TarxBackgroundService extends EventEmitter {
 	// SESSION BRIEF (on start)
 	// ====================================================================
 
-	private async emitSessionBrief(): Promise<void> {
+	async emitSessionBrief(): Promise<void> {
 		const health = await this.getHealthSnapshot();
 		const timeSinceLastSession = await this.getTimeSinceLastSession();
 		const spaceSummary = await this.getSpaceSummary();
@@ -201,6 +202,7 @@ export class TarxBackgroundService extends EventEmitter {
 			spaceSummary
 		};
 
+		console.log('[TARX-BG] Emitting session-brief:', JSON.stringify(brief));
 		this.emit('event', { type: 'session-brief', data: brief } as BackgroundEvent);
 	}
 

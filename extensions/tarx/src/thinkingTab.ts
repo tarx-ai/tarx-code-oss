@@ -4,13 +4,13 @@
  *
  *  TARX Thinking Tab
  *
- *  A full editor-area tab showing TARX's continuous background activity as a
- *  living conversation. The default landing experience — replaces VS Code's
- *  Welcome tab with proof of intelligence.
+ *  Editor-area tab showing TARX's continuous background activity as a living
+ *  conversation feed, with a user input at the bottom. The default landing
+ *  experience — replaces VS Code's Welcome tab with proof of intelligence.
  *
  *  Architecture:
- *    BackgroundService emits events → ThinkingTab renders as conversation entries
- *    User types at bottom → routed to @tarx chat participant → response appears
+ *    BackgroundService emits events → ThinkingTab renders as feed entries
+ *    User types at bottom → routed to @tarx chat participant → response in Chat panel
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
@@ -27,11 +27,14 @@ export class TarxThinkingTab implements vscode.Disposable {
 	private panel: vscode.WebviewPanel;
 	private service: TarxBackgroundService;
 	private disposables: vscode.Disposable[] = [];
+	private webviewReady = false;
+	private pendingMessages: unknown[] = [];
 
 	private constructor(panel: vscode.WebviewPanel, service: TarxBackgroundService) {
 		this.panel = panel;
 		this.service = service;
 		this.attachListeners();
+		console.log('[TARX-TT] ThinkingTab constructed, listeners attached');
 	}
 
 	/**
@@ -98,15 +101,28 @@ export class TarxThinkingTab implements vscode.Disposable {
 	private attachListeners(): void {
 		// Listen for background service events
 		const onEvent = (event: BackgroundEvent) => {
+			console.log('[TARX-TT] Received service event:', event.type);
 			this.handleServiceEvent(event);
 		};
 		this.service.on('event', onEvent);
 		this.disposables.push({ dispose: () => this.service.removeListener('event', onEvent) });
 
-		// Listen for webview messages (user input)
+		// Listen for webview messages (ready signal + user input)
 		this.panel.webview.onDidReceiveMessage(
 			(msg: { type: string; text?: string }) => {
-				if (msg.type === 'user-input' && msg.text) {
+				if (msg.type === 'ready') {
+					console.log('[TARX-TT] Webview ready, flushing pending + requesting brief');
+					this.webviewReady = true;
+					// Flush any messages that arrived before the webview was ready
+					for (const pending of this.pendingMessages) {
+						this.panel.webview.postMessage(pending);
+					}
+					this.pendingMessages = [];
+					// Request a fresh session brief now that webview can receive it
+					this.service.emitSessionBrief().catch(err => {
+						console.error('[TARX-TT] Failed to emit session brief:', err);
+					});
+				} else if (msg.type === 'user-input' && msg.text) {
 					this.handleUserInput(msg.text);
 				}
 			},
@@ -175,7 +191,7 @@ export class TarxThinkingTab implements vscode.Disposable {
 		if (mesh.ok) {
 			const peerStr = mesh.peers && mesh.peers > 0
 				? `${mesh.peers} peer${mesh.peers !== 1 ? 's' : ''}`
-				: '0 peers — you\'re the first node';
+				: "0 peers";
 			lines.push(`✓ Mesh networking active (${peerStr})`);
 		} else {
 			lines.push('⚠ Mesh networking offline');
@@ -256,14 +272,13 @@ export class TarxThinkingTab implements vscode.Disposable {
 		});
 
 		// Route to the @tarx chat participant via the chat panel
-		// This opens the chat and sends the message through the standard handler
 		try {
 			await vscode.commands.executeCommand(
 				'workbench.action.chat.open',
 				{ query: `@tarx ${text}` }
 			);
 		} catch (e) {
-			this.postEntry('⚠', `Failed to send message: ${e instanceof Error ? e.message : String(e)}`);
+			this.postEntry('⚠', `Failed to send: ${e instanceof Error ? e.message : String(e)}`);
 		}
 	}
 
@@ -277,13 +292,18 @@ export class TarxThinkingTab implements vscode.Disposable {
 			entry: {
 				icon,
 				text,
-				time: new Date().toLocaleTimeString(),
-				isUser: false
+				time: new Date().toLocaleTimeString()
 			}
 		});
 	}
 
 	private postMessage(msg: unknown): void {
+		if (!this.webviewReady) {
+			// Queue until the webview signals ready
+			this.pendingMessages.push(msg);
+			console.log('[TARX-TT] Queued message (webview not ready yet)');
+			return;
+		}
 		try {
 			this.panel.webview.postMessage(msg);
 		} catch {
@@ -485,7 +505,7 @@ function getWebviewHtml(): string {
 <body>
 	<div class="thinking-feed" id="feed"></div>
 	<div class="input-area">
-		<input type="text" id="userInput" placeholder="Type here to respond..." />
+		<input type="text" id="userInput" placeholder="Ask TARX anything..." />
 		<button id="sendBtn">Send</button>
 	</div>
 
@@ -497,12 +517,12 @@ function getWebviewHtml(): string {
 
 		// Icon class mapping
 		function iconClass(icon) {
-			if (icon === '✓') return 'icon-ok';
-			if (icon === '⚠') return 'icon-warn';
-			if (icon === '✗') return 'icon-error';
-			if (icon === '●') return 'icon-event';
-			if (icon === '→' || icon === '↑' || icon === '↓') return 'icon-action';
-			if (icon === '◐') return 'icon-working';
+			if (icon === '\\u2713') return 'icon-ok';
+			if (icon === '\\u26A0') return 'icon-warn';
+			if (icon === '\\u2717') return 'icon-error';
+			if (icon === '\\u25CF') return 'icon-event';
+			if (icon === '\\u2192' || icon === '\\u2191' || icon === '\\u2193') return 'icon-action';
+			if (icon === '\\u25D0') return 'icon-working';
 			return '';
 		}
 
@@ -516,9 +536,8 @@ function getWebviewHtml(): string {
 		// Simple markdown-like formatting
 		function formatText(text) {
 			return esc(text)
-				.replace(/\\n/g, '\n')
-				.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-				.replace(/\n/g, '<br>');
+				.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>')
+				.replace(/\\n/g, '<br>');
 		}
 
 		// Add an entry to the feed
@@ -538,8 +557,6 @@ function getWebviewHtml(): string {
 			}
 
 			feed.appendChild(div);
-
-			// Auto-scroll to bottom
 			feed.scrollTop = feed.scrollHeight;
 		}
 
@@ -567,6 +584,9 @@ function getWebviewHtml(): string {
 				sendInput();
 			}
 		});
+
+		// Signal the extension that webview JS is loaded and ready
+		vscode.postMessage({ type: 'ready' });
 
 		// Focus input on load
 		userInput.focus();
