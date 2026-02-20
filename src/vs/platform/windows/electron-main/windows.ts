@@ -202,6 +202,9 @@ export function defaultBrowserWindowOptions(accessor: ServicesAccessor, windowSt
 	const hideNativeTitleBar = !hasNativeTitlebar(configurationService, overrides?.forceNativeTitlebar ? TitlebarStyle.NATIVE : undefined);
 	if (hideNativeTitleBar) {
 		options.titleBarStyle = 'hidden';
+		if (isMacintosh) {
+			options.trafficLightPosition = { x: 14, y: 14 };
+		}
 		if (!isMacintosh) {
 			options.frame = false;
 		}

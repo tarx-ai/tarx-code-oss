@@ -13,6 +13,10 @@
 	flex-direction: row-reverse;
 }
 
+.monaco-workbench.mac:not(.fullscreen) .part.titlebar {
+	padding-top: 4px;
+}
+
 /* Root Container */
 .monaco-workbench .part.titlebar > .titlebar-container {
 	box-sizing: border-box;

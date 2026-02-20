@@ -66,11 +66,15 @@ body {
 }
 
 .monaco-workbench.border.mac {
-	border-radius: 10px;
+	border-radius: 26px;
 }
 
 .monaco-workbench.border.mac.macos-tahoe {
-	border-radius: 16px; /* macOS Tahoe increased rounded corners size */
+	border-radius: 26px;
+}
+
+.monaco-workbench.mac:not(.fullscreen) {
+	border-radius: 26px;
 }
 
 .monaco-workbench img {
