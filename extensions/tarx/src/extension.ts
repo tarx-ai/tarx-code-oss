@@ -97,6 +97,9 @@ import { detectAgentIntent, handleListAgents, handleRunAgent, handleAgentStatus,
 import { startDaemon, stopDaemon, getDaemon } from './daemon';
 // TARX QA Test Harness - Feb 2026
 import { runQATests, runStartupChecks } from './test/qa-harness';
+// TARX Context Protocol — Phase 1 (Feb 2026)
+import { ContextProtocol } from './services/contextProtocol';
+import { buildProtocolPrompt } from './services/promptBuilder';
 // chatPanel, dashboardPanel REMOVED - conversational-first (Feb 2026)
 import {
 	detectConversationalIntent,
@@ -319,6 +322,7 @@ let fileWatcher: vscode.Disposable | undefined;
 let proactiveSystem: ProactiveSystem | undefined;
 let creditBridge: CreditBridge | undefined;
 let grokDispatchProcess: ChildProcess | undefined;
+let contextProtocol: ContextProtocol | undefined;
 
 // Auth objects - module level for guard access
 let authManager: AuthManager | undefined;
