@@ -1370,12 +1370,30 @@ export async function activate(context: vscode.ExtensionContext) {
 			fileContextStr = buildPrompt('', loadedContext, '').trim();
 		}
 
-		// 4. Build dynamic system prompt with all context (FIX: Use buildTarxSystemPrompt)
+		// 4. Build dynamic system prompt with all context
 		let systemPrompt = buildTarxSystemPrompt({
 			projectContext: projectInstructions,
 			fileContext: fileContextStr,
-			// conversationSummary could be added here if needed
 		});
+
+		// Context Protocol: Inject Tier 1 identity into system prompt
+		if (contextProtocol) {
+			const identity = contextProtocol.getIdentity();
+			if (identity) {
+				const idParts: string[] = [];
+				if (identity.name) { idParts.push(`Name: ${identity.name}`); }
+				if (identity.role) { idParts.push(`Role: ${identity.role}`); }
+				if (identity.goals?.length) { idParts.push(`Goals: ${identity.goals.join(', ')}`); }
+				idParts.push(`Communication: ${identity.preferences.style}, ${identity.preferences.verbosity}`);
+				idParts.push(`Pushback level: ${identity.preferences.pushbackLevel}/5`);
+				if (identity.hardware) {
+					idParts.push(`Hardware: ${identity.hardware.cpu}, ${identity.hardware.ram}GB RAM, ${identity.hardware.gpu}`);
+				}
+				if (idParts.length > 0) {
+					systemPrompt += `\n\n## USER PROFILE\n${idParts.join('\n')}`;
+				}
+			}
+		}
 
 		// Add context about conversation source if resuming a Claude conversation
 		const isClaudeConversation = activeConversation?.title?.startsWith('Claude') || false;
