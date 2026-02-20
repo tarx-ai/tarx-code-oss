@@ -200,6 +200,10 @@ export async function handleFTUXSkip(
 ): Promise<void> {
 	await completeFTUX(context);
 
+	// Mark first run complete so FTUX doesn't re-trigger if user closes before onboarding
+	await context.globalState.update('tarx.firstRunCompleted', true);
+	await context.globalState.update('tarx.onboardingVersion', 2);
+
 	// Open chat cleanly — conversational onboarding takes over from here
 	await vscode.commands.executeCommand('workbench.action.chat.open');
 }

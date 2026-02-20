@@ -818,6 +818,26 @@ export async function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
+	// Sidebar data commands (return empty arrays if data unavailable)
+	context.subscriptions.push(
+		vscode.commands.registerCommand('tarx.getMcpServers', () => []),
+		vscode.commands.registerCommand('tarx.getClaudeSessions', () => {
+			try {
+				const os = require('os');
+				const path = require('path');
+				const { execSync } = require('child_process');
+				const mcpDb = path.join(os.homedir(), 'Library/Application Support/tarx/memory.db');
+				const result = execSync(`sqlite3 "${mcpDb}" -json`, {
+					encoding: 'utf8',
+					input: `SELECT s.id, s.title, sp.name as spaceName
+						FROM sessions s LEFT JOIN spaces sp ON s.space_id = sp.id
+						WHERE s.deleted_at IS NULL ORDER BY s.updated_at DESC LIMIT 20;`
+				});
+				return result.trim() ? JSON.parse(result) : [];
+			} catch { return []; }
+		}),
+		vscode.commands.registerCommand('tarx.context.list', () => [])
+	);
 
 	// Sync project tree provider with active project when it changes
 	if (projectTreeProvider) {

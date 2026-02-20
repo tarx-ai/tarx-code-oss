@@ -268,7 +268,7 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 		// Periodic empty-data check: if sidebar is still empty after startup, keep retrying
 		const emptyDataCheck = setInterval(() => {
 			if (this.projects.length === 0 || this.historyItems.length === 0) {
-				console.log(`[TARX Sidebar] Empty data check: projects=${this.projects.length}, history=${this.historyItems.length} — retrying`);
+				console.log(`[TARX Sidebar] Empty data check: projects=${this.projects.length}, history=${this.historyItems.length} - retrying`);
 				if (this.projects.length === 0) {
 					this.loadProjectsWithRetry(2);
 				}
@@ -289,9 +289,9 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 	 * These commands allow MCP tools to control the sidebar UI
 	 */
 	private registerSidebarCommands(): void {
-		// ═══════════════════════════════════════════════════════════════════════
+		// ======================================================================
 		// UI STATE COMMANDS
-		// ═══════════════════════════════════════════════════════════════════════
+		// ======================================================================
 
 		this._register(CommandsRegistry.registerCommand(
 			TarxSidebarCommands.UI_REFRESH,
@@ -378,9 +378,9 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 			}
 		));
 
-		// ═══════════════════════════════════════════════════════════════════════
+		// ======================================================================
 		// PROJECT COMMANDS
-		// ═══════════════════════════════════════════════════════════════════════
+		// ======================================================================
 
 		this._register(CommandsRegistry.registerCommand(
 			TarxSidebarCommands.PROJECT_SELECT,
@@ -402,9 +402,9 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 			}
 		));
 
-		// ═══════════════════════════════════════════════════════════════════════
+		// ======================================================================
 		// HISTORY COMMANDS
-		// ═══════════════════════════════════════════════════════════════════════
+		// ======================================================================
 
 		this._register(CommandsRegistry.registerCommand(
 			TarxSidebarCommands.HISTORY_REFRESH,
@@ -414,9 +414,9 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 			}
 		));
 
-		// ═══════════════════════════════════════════════════════════════════════
+		// ======================================================================
 		// INTERNAL COMMANDS
-		// ═══════════════════════════════════════════════════════════════════════
+		// ======================================================================
 
 		this._register(CommandsRegistry.registerCommand(
 			TarxSidebarCommands.INTERNAL_POST_MESSAGE,
@@ -457,7 +457,7 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 		} catch (err: unknown) {
 			const errMsg = err instanceof Error ? err.stack || err.message : String(err);
 			console.error('[TARX CRASH-GUARD] TarxSidebarPart.create() CRASHED:', errMsg);
-			// Don't re-throw — let workbench survive with a broken sidebar rather than crash entirely
+			// Don't re-throw - let workbench survive with a broken sidebar rather than crash entirely
 		}
 	}
 
@@ -744,20 +744,14 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 
 		switch (message.command) {
 			case 'ready':
-				// Webview is ready - check PIN status first, then send data
-				console.log('[TARX Webview] Ready - checking PIN status');
-				this.checkPINStatus();
+				// Webview is ready - send initial data
+				console.log('[TARX Webview] Ready');
 				this.sendWebviewMessage({
 					command: 'connectionStatusChanged',
 					status: this.connectionStatus
 				});
 				this.loadHistoryWithRetry(3);
 				this.loadProjectsWithRetry(3);
-				break;
-			case 'setPIN':
-				// Handle PIN creation/verification
-				console.log('[TARX Webview] setPIN command, mode:', message.mode);
-				this.handleSetPIN(message.pin, message.mode);
 				break;
 			case 'getProjects':
 				this.sendWebviewMessage({
@@ -907,109 +901,6 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 				type: 'tarx-host',
 				...message
 			});
-		}
-	}
-
-	// ═══════════════════════════════════════════════════════════════
-	// PIN STORAGE KEYS - Direct storage, no extension dependency
-	// ═══════════════════════════════════════════════════════════════
-	private static readonly PIN_HASH_KEY = 'tarx.pin.hash';
-	private static readonly PIN_SET_KEY = 'tarx.pin.hasSet';
-
-	/**
-	 * Simple SHA-256 hash for PIN (browser-compatible)
-	 */
-	private async hashPIN(pin: string): Promise<string> {
-		try {
-			const encoder = new TextEncoder();
-			const data = encoder.encode(pin + 'tarx-salt-2024');
-			const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-			const hashArray = Array.from(new Uint8Array(hashBuffer));
-			return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-		} catch (e) {
-			// Fallback for environments without crypto.subtle
-			console.warn('[TARX PIN] crypto.subtle unavailable, using fallback hash');
-			let hash = 0;
-			const str = pin + 'tarx-salt-2024';
-			for (let i = 0; i < str.length; i++) {
-				const char = str.charCodeAt(i);
-				hash = ((hash << 5) - hash) + char;
-				hash = hash & hash;
-			}
-			return Math.abs(hash).toString(16).padStart(16, '0');
-		}
-	}
-
-	/**
-	 * Check if PIN is set and show overlay if needed
-	 * Uses storageService directly - no extension dependency
-	 */
-	private checkPINStatus(): void {
-		console.log('[TARX PIN] Checking PIN status via storageService...');
-		try {
-			const hasSetPIN = this.storageService.getBoolean(TarxSidebarPart.PIN_SET_KEY, StorageScope.APPLICATION, false);
-			console.log('[TARX PIN] hasSetPIN:', hasSetPIN);
-
-			if (!hasSetPIN) {
-				// No PIN set - show create overlay (unclosable, full-app lock)
-				console.log('[TARX PIN] No PIN set - showing unclosable lock overlay');
-				this.sendWebviewMessage({ command: 'showPINOverlay', mode: 'create' });
-			} else {
-				// PIN is already set - app can proceed
-				console.log('[TARX PIN] PIN is set - app unlocked');
-				this.sendWebviewMessage({ command: 'pinCheckComplete' });
-			}
-		} catch (e) {
-			console.error('[TARX PIN] Failed to check PIN status:', e);
-			// On error, show PIN overlay to be safe (fail secure)
-			this.sendWebviewMessage({ command: 'showPINOverlay', mode: 'create' });
-		}
-	}
-
-	/**
-	 * Handle PIN creation from webview
-	 * Hashes and stores PIN directly via storageService
-	 */
-	private async handleSetPIN(pin: string, mode: 'create' | 'verify'): Promise<void> {
-		console.log('[TARX PIN] handleSetPIN, mode:', mode);
-		try {
-			// Validate PIN format
-			if (!/^\d{6}$/.test(pin)) {
-				this.sendWebviewMessage({ command: 'pinError', error: 'PIN must be exactly 6 digits' });
-				return;
-			}
-
-			// Hash the PIN
-			const pinHash = await this.hashPIN(pin);
-			console.log('[TARX PIN] PIN hashed successfully');
-
-			if (mode === 'create') {
-				// Store hash and flag directly in storageService
-				this.storageService.store(TarxSidebarPart.PIN_HASH_KEY, pinHash, StorageScope.APPLICATION, StorageTarget.USER);
-				this.storageService.store(TarxSidebarPart.PIN_SET_KEY, true, StorageScope.APPLICATION, StorageTarget.USER);
-				console.log('[TARX PIN] PIN created and stored');
-
-				// Hide overlay and reload to apply
-				this.sendWebviewMessage({ command: 'hidePINOverlay' });
-
-				// Reload window after brief delay
-				setTimeout(() => {
-					this.commandService.executeCommand('workbench.action.reloadWindow');
-				}, 500);
-			} else {
-				// Verify mode - compare hashes
-				const storedHash = this.storageService.get(TarxSidebarPart.PIN_HASH_KEY, StorageScope.APPLICATION, '');
-				if (pinHash === storedHash) {
-					console.log('[TARX PIN] PIN verified');
-					this.sendWebviewMessage({ command: 'hidePINOverlay' });
-				} else {
-					console.log('[TARX PIN] PIN incorrect');
-					this.sendWebviewMessage({ command: 'pinError', error: 'Incorrect PIN' });
-				}
-			}
-		} catch (e) {
-			console.error('[TARX PIN] Failed to set/verify PIN:', e);
-			this.sendWebviewMessage({ command: 'pinError', error: 'An error occurred. Please try again.' });
 		}
 	}
 
@@ -1796,7 +1687,7 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 
 		if (this.uploadedFiles.length === 0) {
 			const emptyEl = append(container as HTMLElement, $('.tarx-empty-state'));
-			emptyEl.textContent = 'Drop files here or click 📎';
+			emptyEl.textContent = 'Drop files here or click to attach';
 			return;
 		}
 
@@ -1901,7 +1792,7 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 				console.log(`[TARX Sidebar] No projects, retrying in ${delayMs}ms (${retries} left)`);
 				setTimeout(() => this.loadProjectsWithRetry(retries - 1, Math.min(delayMs * 2, 8000)), delayMs);
 			} else if (this.projects.length > 0) {
-				console.log(`[TARX Sidebar] ✅ Got ${this.projects.length} projects - stopping retries`);
+				console.log(`[TARX Sidebar] Got ${this.projects.length} projects - stopping retries`);
 			}
 		} catch (e) {
 			if (retries > 0) {
@@ -2240,7 +2131,7 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 				console.log(`[TARX Sidebar] loadHistory returned no data, retrying in ${delayMs}ms (${retries} left)`);
 				setTimeout(() => this.loadHistoryWithRetry(retries - 1, Math.min(delayMs * 2, 8000)), delayMs);
 			} else if (foundData) {
-				console.log('[TARX Sidebar] ✅ Got history data - stopping retries');
+				console.log('[TARX Sidebar] Got history data - stopping retries');
 			}
 		} catch (e) {
 			if (retries > 0) {

@@ -32,7 +32,6 @@ export async function executeFirstRunFlow(
 	const alreadyValidated = context.globalState.get<boolean>(INVITE_VALIDATED_KEY);
 	if (alreadyValidated) {
 		console.log('[TARX] Invite already validated, skipping FTUX');
-		await firstRunMgr.markFirstRunComplete();
 		return;
 	}
 
@@ -70,8 +69,8 @@ export async function executeFirstRunFlow(
 			type: 'info'
 		});
 
-		// Mark first run complete
-		await firstRunMgr.markFirstRunComplete();
+		// Note: firstRunCompleted is set by ChatOnboardingManager.finalize()
+		// or by the FTUX skip handler — NOT here, to avoid premature gating.
 
 		console.log('[TARX] First-run flow completed successfully');
 

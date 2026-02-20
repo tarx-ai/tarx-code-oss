@@ -173,11 +173,6 @@ export type ExtensionMessage =
 	| { command: 'contextFilesLoaded'; files: Array<{ id: string; filename: string; path: string }> }
 	| { command: 'agentsLoaded'; agents: Array<{ id: string; name: string; description?: string; enabled?: boolean; toolCount?: number }> }
 	| { command: 'ragSearchResults'; results: Array<{ id: string; filename: string; path: string; snippet: string; score: number }> }
-	// PIN Overlay messages
-	| { command: 'showPINOverlay'; mode: 'create' | 'verify' }
-	| { command: 'hidePINOverlay' }
-	| { command: 'pinCheckComplete' }
-	| { command: 'pinError'; error: string }
 	// Event confirmation messages (for VS Code native event firing)
 	| { command: 'eventFired'; event: string; data?: Record<string, unknown> }
 	| { command: 'eventError'; event: string; error: string }

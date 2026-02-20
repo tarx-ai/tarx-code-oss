@@ -24,6 +24,7 @@ import {
 	createMCPSpace,
 	updateOnboardingState
 } from '../mcpKnowledge.js';
+import { PinAuth } from '../auth/pinAuth.js';
 
 // ============================================================================
 // TYPES
@@ -31,6 +32,8 @@ import {
 
 type OnboardingStep =
 	| 'welcome'
+	| 'ask_pin'
+	| 'confirm_pin'
 	| 'ask_role'
 	| 'ask_project'
 	| 'ask_tools'
@@ -53,9 +56,12 @@ interface OnboardingResult {
 
 export class ChatOnboardingManager {
 	private context: vscode.ExtensionContext;
+	private pinAuth: PinAuth;
+	private pendingPin: string | undefined;
 
 	constructor(context: vscode.ExtensionContext) {
 		this.context = context;
+		this.pinAuth = new PinAuth(context);
 	}
 
 	/**
@@ -94,6 +100,12 @@ export class ChatOnboardingManager {
 		switch (step) {
 			case 'welcome':
 				return this.runWelcome(response);
+
+			case 'ask_pin':
+				return this.handlePinEntry(prompt, response);
+
+			case 'confirm_pin':
+				return this.handlePinConfirm(prompt, response);
 
 			case 'ask_role':
 				return this.handleNameResponse(prompt, response);
@@ -154,16 +166,87 @@ export class ChatOnboardingManager {
 	private async runWelcome(
 		response: vscode.ChatResponseStream
 	): Promise<OnboardingResult> {
-		// Check for signup profile data from FTUX
+		// Check for signup profile data from FTUX — store it but still do PIN first
 		const signupJson = this.context.globalState.get<string>('tarx.signupProfile');
 		if (signupJson) {
 			try {
 				const profile = JSON.parse(signupJson) as Partial<InviteProfile>;
 				if (profile.name && profile.role) {
-					// Store profile data and go to confirmation
+					// Store profile data — confirmation happens after PIN
 					await this.setUserData(profile.name, profile.role, profile.project);
+				}
+			} catch {
+				// Malformed signup data — ignore
+			}
+		}
+
+		// No signup data — start with PIN setup
+		response.markdown(
+			`**Welcome to TARX.** I run locally on your machine — your data never leaves.\n\n` +
+			`Let's secure your workspace first. Pick a 6-digit PIN — it's stored locally, never transmitted.`
+		);
+		await this.setStep('ask_pin');
+		return {
+			metadata: { command: 'onboarding', onboarding: true, step: 'welcome' }
+		};
+	}
+
+	private async handlePinEntry(
+		input: string,
+		response: vscode.ChatResponseStream
+	): Promise<OnboardingResult> {
+		const pin = input.replace(/\s/g, '');
+		if (!/^\d{6}$/.test(pin)) {
+			response.markdown(`Just 6 numbers, nothing fancy.`);
+			return {
+				metadata: { command: 'onboarding', onboarding: true, step: 'ask_pin' }
+			};
+		}
+
+		this.pendingPin = pin;
+		response.markdown(`Confirm it one more time.`);
+		await this.setStep('confirm_pin');
+		return {
+			metadata: { command: 'onboarding', onboarding: true, step: 'ask_pin' }
+		};
+	}
+
+	private async handlePinConfirm(
+		input: string,
+		response: vscode.ChatResponseStream
+	): Promise<OnboardingResult> {
+		const pin = input.replace(/\s/g, '');
+		if (pin !== this.pendingPin) {
+			this.pendingPin = undefined;
+			response.markdown(`Those didn't match. Try again — first, your new PIN:`);
+			await this.setStep('ask_pin');
+			return {
+				metadata: { command: 'onboarding', onboarding: true, step: 'confirm_pin' }
+			};
+		}
+
+		// Store PIN via PinAuth (PBKDF2 + SecretStorage)
+		const result = await this.pinAuth.setPIN(pin);
+		this.pendingPin = undefined;
+
+		if (!result.success) {
+			response.markdown(`Something went wrong saving your PIN. Try again:`);
+			await this.setStep('ask_pin');
+			return {
+				metadata: { command: 'onboarding', onboarding: true, step: 'confirm_pin' }
+			};
+		}
+
+		console.log('[TARX] PIN set via onboarding');
+
+		// Check if we have signup profile data — if so, go to confirm
+		const signupJson = this.context.globalState.get<string>('tarx.signupProfile');
+		if (signupJson) {
+			try {
+				const profile = JSON.parse(signupJson) as Partial<InviteProfile>;
+				if (profile.name && profile.role) {
 					response.markdown(
-						`**Welcome to TARX!**\n\n` +
+						`Locked down. \u2713\n\n` +
 						`Based on your signup, you're **${profile.name}**, ` +
 						`a **${profile.role}**` +
 						(profile.project ? ` working on **${profile.project}**` : '') +
@@ -172,22 +255,19 @@ export class ChatOnboardingManager {
 					);
 					await this.setStep('confirm');
 					return {
-						metadata: { command: 'onboarding', onboarding: true, step: 'confirm' }
+						metadata: { command: 'onboarding', onboarding: true, step: 'confirm_pin' }
 					};
 				}
 			} catch {
-				// Malformed signup data — fall through to questions
+				// Fall through to name question
 			}
 		}
 
-		// No signup data — ask name
-		response.markdown(
-			`**Welcome to TARX.** I run locally on your machine — your data never leaves.\n\n` +
-			`Let's get you set up. What should I call you?`
-		);
+		// No signup data — proceed to name question
+		response.markdown(`Locked down. \u2713 Now let's get to know each other.\n\nWhat should I call you?`);
 		await this.setStep('ask_role');
 		return {
-			metadata: { command: 'onboarding', onboarding: true, step: 'welcome' }
+			metadata: { command: 'onboarding', onboarding: true, step: 'confirm_pin' }
 		};
 	}
 
@@ -324,6 +404,8 @@ export class ChatOnboardingManager {
 
 		// Mark complete
 		await this.context.globalState.update('tarx.onboardingComplete', true);
+		await this.context.globalState.update('tarx.firstRunCompleted', true);
+		await this.context.globalState.update('tarx.onboardingVersion', 2);
 		await this.setStep('complete');
 
 		// Clean up signup profile (no longer needed)
@@ -353,6 +435,7 @@ export class ChatOnboardingManager {
 	}
 
 	private async resetOnboarding(): Promise<void> {
+		this.pendingPin = undefined;
 		await this.context.globalState.update('tarx.onboardingComplete', undefined);
 		await this.context.globalState.update('tarx.onboardingStep', undefined);
 		await this.context.globalState.update('tarx.userName', undefined);

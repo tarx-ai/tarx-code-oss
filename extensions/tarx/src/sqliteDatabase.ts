@@ -108,6 +108,51 @@ CREATE TABLE IF NOT EXISTS mesh_nodes (
 CREATE INDEX IF NOT EXISTS idx_user_preferences_project ON user_preferences(project_id);
 CREATE INDEX IF NOT EXISTS idx_skills_trigger ON skills(trigger_type, trigger_value);
 CREATE INDEX IF NOT EXISTS idx_mesh_nodes_status ON mesh_nodes(status);
+
+-- MCP-compatible tables (matches tarx-core schema)
+CREATE TABLE IF NOT EXISTS spaces (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT,
+    emoji TEXT DEFAULT '📁', created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL, last_accessed_at INTEGER NOT NULL,
+    message_count INTEGER DEFAULT 0, total_tokens INTEGER DEFAULT 0,
+    deleted_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_spaces_last_accessed ON spaces(last_accessed_at);
+
+CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY, space_id TEXT NOT NULL, title TEXT,
+    created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+    message_count INTEGER DEFAULT 0, total_tokens INTEGER DEFAULT 0,
+    model TEXT, deleted_at INTEGER,
+    FOREIGN KEY (space_id) REFERENCES spaces(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_space ON sessions(space_id);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id TEXT PRIMARY KEY, session_id TEXT NOT NULL,
+    role TEXT NOT NULL CHECK(role IN ('user','assistant','system')),
+    content TEXT NOT NULL, created_at INTEGER NOT NULL,
+    model TEXT, tokens INTEGER, latency_ms INTEGER, deleted_at INTEGER,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
+
+CREATE TABLE IF NOT EXISTS files (
+    id TEXT PRIMARY KEY, filename TEXT NOT NULL, mime_type TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL, storage_path TEXT NOT NULL,
+    sha256_hash TEXT NOT NULL, created_at INTEGER NOT NULL,
+    last_accessed_at INTEGER, reference_count INTEGER DEFAULT 1,
+    deleted_at INTEGER, source_type TEXT, original_path TEXT,
+    is_reference INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_files_hash ON files(sha256_hash);
+
+CREATE TABLE IF NOT EXISTS space_files (
+    space_id TEXT NOT NULL, file_id TEXT NOT NULL, added_at INTEGER NOT NULL,
+    PRIMARY KEY (space_id, file_id),
+    FOREIGN KEY (space_id) REFERENCES spaces(id) ON DELETE CASCADE,
+    FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
+);
 `;
 
 /**

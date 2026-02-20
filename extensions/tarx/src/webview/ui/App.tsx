@@ -18,7 +18,6 @@ import { UploadProgress } from './components/UploadProgress';
 import { SettingsView } from './components/SettingsView';
 import TARXDashboard from './components/Dashboard';
 import { FirstRunWelcome } from './components/FirstRunWelcome';
-import { PINModal } from './components/PINModal';
 import type {
 	TarxProject,
 	TarxHistoryItem,
@@ -113,25 +112,6 @@ export const App: React.FC<AppProps> = ({ mode, logoUri, eyesUri }) => {
 	// Set to true and remove hasSeenWelcome check to re-enable welcome screen
 	const [showFirstRun, setShowFirstRun] = useState<boolean>(false);
 
-	// PIN overlay state - locks app until PIN is set/verified
-	// Start with null (unknown) to show loading state until PIN check completes
-	const [pinCheckComplete, setPinCheckComplete] = useState(false);
-	const [showPINOverlay, setShowPINOverlay] = useState(false);
-	const [pinMode, setPinMode] = useState<'create' | 'verify'>('create');
-	const [pinError, setPinError] = useState<string | null>(null);
-
-	// Handle PIN submission
-	const handlePINSubmit = useCallback((pin: string) => {
-		console.log('[TARX WEBVIEW] PIN submitted, mode:', pinMode);
-		setPinError(null); // Clear previous errors
-		try {
-			postMessage({ command: 'setPIN', pin, mode: pinMode });
-			console.log('[TARX WEBVIEW] Posted setPIN message');
-		} catch (e) {
-			console.error('[TARX WEBVIEW] Failed to submit PIN:', e);
-			setPinError('Failed to submit PIN. Please try again.');
-		}
-	}, [pinMode]);
 
 	// Handlers
 	const toggleSection = useCallback((sectionId: keyof SectionState) => {
@@ -467,34 +447,6 @@ export const App: React.FC<AppProps> = ({ mode, logoUri, eyesUri }) => {
 					setRagLoading(false);
 					break;
 
-				// PIN Overlay messages
-				case 'showPINOverlay':
-					console.log('[TARX WEBVIEW] showPINOverlay:', message.mode);
-					setPinCheckComplete(true);
-					setShowPINOverlay(true);
-					setPinMode(message.mode || 'create');
-					setPinError(null); // Clear any previous errors
-					break;
-
-				case 'hidePINOverlay':
-					console.log('[TARX WEBVIEW] hidePINOverlay');
-					setPinCheckComplete(true);
-					setShowPINOverlay(false);
-					setPinError(null);
-					break;
-
-				case 'pinCheckComplete':
-					// PIN check is complete and no PIN needed
-					console.log('[TARX WEBVIEW] pinCheckComplete - no PIN required');
-					setPinCheckComplete(true);
-					setShowPINOverlay(false);
-					break;
-
-				case 'pinError':
-					console.log('[TARX WEBVIEW] pinError:', message.error);
-					setPinError(message.error);
-					break;
-
 				// ═══════════════════════════════════════════════════════════════
 				// EVENT CONFIRMATION MESSAGES - Confirm native VS Code events fired
 				// ═══════════════════════════════════════════════════════════════
@@ -542,65 +494,6 @@ export const App: React.FC<AppProps> = ({ mode, logoUri, eyesUri }) => {
 
 	// Show loading indicator when connecting
 	const showLoading = connectionStatus === 'connecting';
-
-	// ═══════════════════════════════════════════════════════════════
-	// PIN OVERLAY - Locks entire app until PIN is set/verified
-	// Must be checked FIRST before any other render
-	// ═══════════════════════════════════════════════════════════════
-
-	// Show loading state while waiting for PIN check to complete
-	if (!pinCheckComplete) {
-		return (
-			<div
-				style={{
-					position: 'fixed',
-					top: 0,
-					left: 0,
-					right: 0,
-					bottom: 0,
-					width: '100vw',
-					height: '100vh',
-					background: 'var(--vscode-editor-background, #1e1e1e)',
-					display: 'flex',
-					alignItems: 'center',
-					justifyContent: 'center',
-					zIndex: 99999,
-				}}
-			>
-				<div style={{ textAlign: 'center' }}>
-					{logoUri && (
-						<img
-							src={logoUri}
-							alt="TARX"
-							style={{
-								width: 64,
-								height: 64,
-								marginBottom: 16,
-								animation: 'pulse 1.5s ease-in-out infinite',
-							}}
-						/>
-					)}
-					<div style={{
-						color: 'var(--vscode-descriptionForeground, #888)',
-						fontSize: 12,
-					}}>
-						Loading TARX...
-					</div>
-				</div>
-			</div>
-		);
-	}
-
-	if (showPINOverlay) {
-		return (
-			<PINModal
-				mode={pinMode}
-				onSubmit={handlePINSubmit}
-				logoUri={logoUri}
-				externalError={pinError}
-			/>
-		);
-	}
 
 	// If showing first-run welcome, render FirstRunWelcome
 	if (showFirstRun) {
