@@ -651,6 +651,17 @@ export async function activate(context: vscode.ExtensionContext) {
 		tarxClient = new TarxClient(serverUrl); // Fallback  - TarxClient constructor shouldn't throw
 	}
 
+	// Context Protocol — Phase 1 (non-blocking init)
+	try {
+		if (ragClient) {
+			contextProtocol = new ContextProtocol(tarxClient, ragClient);
+			contextProtocol.init().catch(e => console.warn('[TARX] Context protocol init failed:', e));
+			console.log('[TARX] Context protocol initializing...');
+		}
+	} catch (ctxErr) {
+		console.error('[TARX CRASH-GUARD] Context protocol init failed:', ctxErr);
+	}
+
 	try {
 		healthService = new HealthService(tarxClient);
 		healthService.startPolling();
@@ -1343,6 +1354,14 @@ export async function activate(context: vscode.ExtensionContext) {
 			} catch (e) {
 				console.warn('[TARX] Context loading failed:', e);
 			}
+		}
+
+		// 2b. Context Protocol: Apply retrieval gating to RAG chunks
+		if (contextProtocol && loadedContext?.chunks && loadedContext.chunks.length > 0) {
+			const budget = contextProtocol.calculateBudget('local');
+			const gated = contextProtocol.gateRetrievedChunks(loadedContext.chunks, budget.tier2);
+			console.log(`[TARX Context] RAG gating: ${loadedContext.chunks.length} → ${gated.length} chunks`);
+			loadedContext = { ...loadedContext, chunks: gated };
 		}
 
 		// 3. Build file context string from loaded context

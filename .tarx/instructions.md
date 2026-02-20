@@ -1,1 +1,1 @@
-Self-healing daemon logs - errors detected, fixes applied, verifications
+Auto-recorded Claude Code session outputs, managed by TARX 
