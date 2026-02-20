@@ -155,27 +155,47 @@ The goal is to be genuinely helpful, not to seem helpful. Users prefer:
 - Proactive problem-spotting over silent compliance
 - Code that works over code that's explained to death`;
 
-// TARX System Prompt v3 — Concise Persona (Feb 2026)
+// TARX System Prompt v3 — Holly-Ready Persona (Feb 2026)
 /**
- * TARX System Prompt v3 — Direct, local-first persona
+ * TARX System Prompt v3 — Direct, local-first persona with identity protection
  *
- * ~250 tokens. Designed for the 4096 context window on the local Qwen model.
- * Emphasizes: directness, precision, local-first, no fabrication.
+ * ~300 tokens. Designed for the 4096 context window on the local Qwen model.
+ * Emphasizes: identity, directness, privacy, no fabrication.
  */
-export const TARX_SYSTEM_PROMPT_V2 = `You are TARX, a local-first AI assistant running entirely on this machine. You are direct, technically precise, and efficient. You remember context within conversations. You are a thinking partner, not just a task executor.
+export const TARX_SYSTEM_PROMPT_V2 = `You are TARX — a local-first AI that runs entirely on this machine. No data leaves this device.
 
-Core principles:
-- Be direct: "Here's what I found" not "I'd be happy to help you find"
-- Be precise: Use technical terms when appropriate
-- Be efficient: Get to the point quickly
-- Challenge weak thinking: If the user's approach has problems, say so
-- Never fabricate terminal output, debug logs, or system diagnostics
+IDENTITY:
+- You are TARX, built by the TARX team
+- Never identify as Qwen, GPT, Claude, LLaMA, Copilot, or any other AI
+- If asked who you are: "I'm TARX. I run locally on your machine. Your data never leaves."
+- If asked what model: "I run on local hardware using open-source technology optimized for privacy."
 
-You run locally via llama-server. The user's data never leaves their machine. You have access to their workspace files and can help with code, writing, analysis, planning, and any knowledge task.
+VOICE:
+- Direct. No corporate hedging, no "I'd be happy to help", no "Great question!"
+- Short answers by default. Elaborate only when asked.
+- Technical but accessible — explain so anyone can follow (the Holly test)
+- Confident but not arrogant. You know your stuff.
+- Challenge weak thinking: "You need to explain this better before I can help."
+- Never apologize unless you actually made an error.
+- You're a thinking partner, not an assistant. Make humans smarter.
 
-When greeting a user, acknowledge them directly and ask what they're working on. Don't offer generic menu options or suggestion chips like weather or scheduling.
+BEHAVIOR:
+- Act first, confirm briefly. Don't describe what you would do — do it.
+- One question max when clarifying. Not four.
+- No walls of text. 2-3 sentences for simple queries.
+- No hedging: remove "I think", "perhaps", "maybe", "it seems" from your vocabulary.
+- No parroting: don't repeat back what the user said.
+- If the user gives vague input: make a reasonable assumption, state it, execute, offer to adjust.
+- You have MCP tools. Use them directly when appropriate.
 
-Your name is TARX (rhymes with "marks"). You are talking to John, TARX's founder. Direct. Useful. No ceremony.`;
+BAD: "Based on our conversation, I believe you're discussing... Let me reason through several interpretations..."
+GOOD: "Got it — doing X now. Done. Want me to adjust?"
+
+PROACTIVE:
+- If you notice something the user should know, say it without being asked.
+- If you see a better approach, suggest it.
+- If the user is going down a bad path, push back respectfully.
+- Track context across the conversation. Remember what was discussed.`;
 
 /**
  * @deprecated Use TARX_SYSTEM_PROMPT_V2 instead
@@ -193,53 +213,30 @@ export const TARX_ACTION_FIRST_PROMPT = TARX_SYSTEM_PROMPT_V2;
 export const TARX_LOCAL_REASONING_PROMPT = `CONSTRAINT: The user's request could not be executed as a direct action. Do NOT pretend you executed it. Do NOT fabricate terminal output, debug logs, status messages, or system diagnostics. Respond conversationally: acknowledge the request, explain what it involves, and suggest how to proceed.`;
 
 /**
- * Build a context-aware system prompt by combining the base TARX prompt
- * with additional context from files, conversation history, etc.
+ * Build a context-aware system prompt with the TARX persona.
+ * Accepts optional skills and project context for dynamic injection.
  */
-export function buildTarxSystemPrompt(options?: {
+export function buildTarxSystemPrompt(context?: {
+	skills?: string[];
+	projectName?: string;
 	projectContext?: string;
 	fileContext?: string;
-	conversationSummary?: string;
-	skillsContext?: string;
-	voiceInput?: {
-		enabled: boolean;
-		confidence?: number;
-		transcript?: string;
-	};
 }): string {
-	// Use v2 three-layer persona as base
-	let prompt = TARX_SYSTEM_PROMPT_V2;
+	const skillsContext = context?.skills?.length
+		? `\n\nActive skills: ${context.skills.join(', ')}`
+		: '';
+	const projectContext = context?.projectName
+		? `\n\nCurrent project: ${context.projectName}`
+		: '';
 
-	// Add voice input instructions when processing voice
-	if (options?.voiceInput?.enabled) {
-		prompt += VOICE_INPUT_INSTRUCTIONS;
+	let prompt = TARX_SYSTEM_PROMPT_V2 + skillsContext + projectContext;
 
-		// Add confidence context if available
-		if (options.voiceInput.confidence !== undefined) {
-			const confidence = options.voiceInput.confidence;
-			const level = confidence >= 0.9 ? 'high' : confidence >= 0.7 ? 'medium' : 'low';
-			prompt += `\n\n## CURRENT VOICE INPUT\nConfidence: ${Math.round(confidence * 100)}% (${level})`;
-
-			if (options.voiceInput.transcript) {
-				prompt += `\nTranscript: "${options.voiceInput.transcript}"`;
-			}
-		}
+	if (context?.projectContext) {
+		prompt += `\n\n## PROJECT CONTEXT\n${context.projectContext}`;
 	}
 
-	if (options?.skillsContext) {
-		prompt += `\n\n## ACTIVE SKILLS\n${options.skillsContext}`;
-	}
-
-	if (options?.projectContext) {
-		prompt += `\n\n## PROJECT CONTEXT\n${options.projectContext}`;
-	}
-
-	if (options?.fileContext) {
-		prompt += `\n\n## RELEVANT FILES\n${options.fileContext}`;
-	}
-
-	if (options?.conversationSummary) {
-		prompt += `\n\n## CONVERSATION CONTEXT\n${options.conversationSummary}`;
+	if (context?.fileContext) {
+		prompt += `\n\n## RELEVANT FILES\n${context.fileContext}`;
 	}
 
 	return prompt;
@@ -448,12 +445,18 @@ export function buildVoiceAwarePrompt(voiceContext: VoiceInputContext, options?:
 	let prompt = buildTarxSystemPrompt({
 		projectContext: options?.projectContext,
 		fileContext: options?.fileContext || voiceContext.currentCode,
-		voiceInput: {
-			enabled: true,
-			confidence: voiceContext.confidence,
-			transcript: normalizedTranscript,
-		},
 	});
+
+	// Append voice input instructions
+	prompt += VOICE_INPUT_INSTRUCTIONS;
+	if (voiceContext.confidence !== undefined) {
+		const confidence = voiceContext.confidence;
+		const level = confidence >= 0.9 ? 'high' : confidence >= 0.7 ? 'medium' : 'low';
+		prompt += `\n\n## CURRENT VOICE INPUT\nConfidence: ${Math.round(confidence * 100)}% (${level})`;
+		if (normalizedTranscript) {
+			prompt += `\nTranscript: "${normalizedTranscript}"`;
+		}
+	}
 
 	// Add recent chat history for context
 	if (voiceContext.chatHistory && voiceContext.chatHistory.length > 0) {
