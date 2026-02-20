@@ -37,17 +37,19 @@ export class TarxStatusBar implements vscode.Disposable {
 			if (this._disposed || !this._statusBarItem) return;
 
 			if (health.healthy) {
-				const modelName = health.model || 'Local AI';
-				this._statusBarItem.text = `$(check) TARX`;
-				this._statusBarItem.tooltip = `Local AI: Connected — ${modelName} (${health.latencyMs}ms)`;
+				this._statusBarItem.text = `$(circle-filled) TARX \u00B7 Local`;
+				this._statusBarItem.tooltip = `TARX running locally (${health.latencyMs}ms)`;
 				this._statusBarItem.backgroundColor = undefined;
 			} else {
-				this._statusBarItem.text = `$(loading~spin) TARX`;
-				this._statusBarItem.tooltip = 'TARX: Connecting...\n\nLocal AI server starting up';
-				this._statusBarItem.backgroundColor = undefined; // Neutral, not warning yellow
+				this._statusBarItem.text = `$(loading~spin) TARX \u00B7 Starting`;
+				this._statusBarItem.tooltip = 'TARX: Local AI server starting up';
+				this._statusBarItem.backgroundColor = undefined;
 			}
 		} catch {
-			// Silently ignore errors during status bar update (disposed, network error, etc.)
+			if (this._disposed || !this._statusBarItem) { return; }
+			this._statusBarItem.text = `$(circle-outline) TARX \u00B7 Offline`;
+			this._statusBarItem.tooltip = 'TARX: Local AI server not running';
+			this._statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
 		}
 	}
 
