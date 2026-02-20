@@ -1303,10 +1303,10 @@ body {
    ============================================================================ */
 
 /* ============================================================================
-   TARX Button Design System — Official Design Tokens
-   Primary: Cyan→Purple (Create, Submit, Save, Confirm)
-   Accent: Pink→Orange (Delete, Warning, Upgrade CTAs)
-   Success: Green→Mint (Connected, Complete, Active states)
+   TARX Button Design System -- Official Design Tokens
+   Primary: Cyan->Purple (Create, Submit, Save, Confirm)
+   Accent: Pink->Orange (Delete, Warning, Upgrade CTAs)
+   Success: Green->Mint (Connected, Complete, Active states)
    ============================================================================ */
 
 :root {
@@ -1328,7 +1328,7 @@ body {
 	--tarx-gradient-glow-hover: 0 10px 25px rgba(0, 240, 255, 0.35);
 }
 
-/* ── TARX Button Base ── */
+/* -- TARX Button Base -- */
 .tarx-btn {
 	height: 2.5rem;
 	width: 100%;
@@ -1360,7 +1360,7 @@ body {
 	transform: none;
 }
 
-/* ── Primary: Cyan→Purple (Create, Submit, Save, Confirm) ── */
+/* -- Primary: Cyan->Purple (Create, Submit, Save, Confirm) -- */
 .tarx-btn-primary {
 	background: var(--tarx-btn-primary);
 	box-shadow: var(--tarx-gradient-glow);
@@ -1371,7 +1371,7 @@ body {
 	box-shadow: var(--tarx-gradient-glow-hover);
 }
 
-/* ── Accent: Pink→Orange (Delete, Warning, Upgrade CTAs) ── */
+/* -- Accent: Pink->Orange (Delete, Warning, Upgrade CTAs) -- */
 .tarx-btn-accent {
 	background: var(--tarx-btn-accent);
 	box-shadow: 0 4px 15px rgba(255, 46, 151, 0.25);
@@ -1382,7 +1382,7 @@ body {
 	box-shadow: 0 10px 25px rgba(255, 46, 151, 0.35);
 }
 
-/* ── Success: Green→Mint (Connected, Complete, Active) ── */
+/* -- Success: Green->Mint (Connected, Complete, Active) -- */
 .tarx-btn-success {
 	background: var(--tarx-btn-success);
 	color: #0a0a0a;
@@ -1529,7 +1529,7 @@ body {
 	background-clip: text;
 }
 
-/* Apply gradient to modal primary button — Uses TARX Cyan→Purple */
+/* Apply gradient to modal primary button -- Uses TARX Cyan->Purple */
 .tarx-modal-btn.primary.gradient {
 	background: var(--tarx-btn-primary);
 	border: none;
@@ -2390,7 +2390,7 @@ body {
 	-webkit-text-fill-color: currentColor;
 }
 
-/* ── Projects Section ── */
+/* -- Projects Section -- */
 .tarx-section-loading {
 	display: flex;
 	align-items: center;
@@ -2486,7 +2486,7 @@ body {
 	flex-shrink: 0;
 }
 
-/* ── Project Tree Hierarchy ── */
+/* -- Project Tree Hierarchy -- */
 .tarx-project-tree {
 	margin-bottom: 1px;
 }
@@ -2566,7 +2566,7 @@ body {
 	font-style: italic;
 }
 
-/* ── History Section Search ── */
+/* -- History Section Search -- */
 .tarx-history-search {
 	display: flex;
 	align-items: center;
@@ -2634,7 +2634,7 @@ body {
 	background: var(--vscode-list-hoverBackground);
 }
 
-/* ── Files Section Meta ── */
+/* -- Files Section Meta -- */
 .tarx-file-meta {
 	display: flex;
 	align-items: center;
@@ -2649,7 +2649,7 @@ body {
 	white-space: nowrap;
 }
 
-/* ── Footer Version ── */
+/* -- Footer Version -- */
 .tarx-footer-version {
 	text-align: center;
 	font-size: var(--tarx-font-xs);
@@ -2658,11 +2658,11 @@ body {
 	letter-spacing: 0.3px;
 }
 
-/* ── Emoji Picker (DEPRECATED - removed for cleaner UX) ── */
+/* -- Emoji Picker (DEPRECATED - removed for cleaner UX) -- */
 /* Emoji picker has been removed from project creation flow */
 
 /* ============================================================================
-   Collapsed Sidebar — Icon-Only Rail (shadcn-inspired)
+   Collapsed Sidebar -- Icon-Only Rail (shadcn-inspired)
    When sidebar is collapsed, show icons only at 48px width.
    Consistent 40px row height, 16px centered icons, uniform vertical rhythm.
    ============================================================================ */
@@ -3049,11 +3049,11 @@ body {
 	color: var(--vscode-foreground);
 }
 
-/* ═══════════════════════════════════════════════════════════════
+/* =================================================================
    HIERARCHY NAV - Custom React Collapsible Left Nav
-   Projects/Spaces → Project Explorer → Conversations →
-   Claude Sessions → Context Files → Agents
-   ═══════════════════════════════════════════════════════════════ */
+   Projects/Spaces > Project Explorer > Conversations >
+   Claude Sessions > Context Files > Agents
+   ================================================================= */
 
 .tarx-hierarchy-container {
 	flex: 1;

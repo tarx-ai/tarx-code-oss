@@ -66,12 +66,8 @@ function main() {
 	console.log(`[tarx-webview-inline] JS: ${(js.length / 1024).toFixed(1)}KB`);
 
 	const output = `/*---------------------------------------------------------------------------------------------
- *  Copyright (c) TARX AI. All rights reserved.
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
- *
- *  AUTO-GENERATED FILE - Do not edit manually!
- *  Run: node build/lib/tarx-webview-inline.js
- *  Source: extensions/tarx/out/webview/sidebar.{css,js}
  *--------------------------------------------------------------------------------------------*/
 
 export const TARX_CODICON_CSS = \`${escapeTemplateLiteral(codiconCss)}\`;

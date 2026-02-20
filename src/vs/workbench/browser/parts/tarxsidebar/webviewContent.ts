@@ -1,5 +1,5 @@
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) TARX AI. All rights reserved.
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
@@ -1313,7 +1313,7 @@ body {
    ============================================================================ */
 
 /* ============================================================================
-   TARX Button Design System  - Official Design Tokens
+   TARX Button Design System -- Official Design Tokens
    Primary: Cyan->Purple (Create, Submit, Save, Confirm)
    Accent: Pink->Orange (Delete, Warning, Upgrade CTAs)
    Success: Green->Mint (Connected, Complete, Active states)
@@ -1539,7 +1539,7 @@ body {
 	background-clip: text;
 }
 
-/* Apply gradient to modal primary button  - Uses TARX Cyan->Purple */
+/* Apply gradient to modal primary button -- Uses TARX Cyan->Purple */
 .tarx-modal-btn.primary.gradient {
 	background: var(--tarx-btn-primary);
 	border: none;
@@ -2672,7 +2672,7 @@ body {
 /* Emoji picker has been removed from project creation flow */
 
 /* ============================================================================
-   Collapsed Sidebar  - Icon-Only Rail (shadcn-inspired)
+   Collapsed Sidebar -- Icon-Only Rail (shadcn-inspired)
    When sidebar is collapsed, show icons only at 48px width.
    Consistent 40px row height, 16px centered icons, uniform vertical rhythm.
    ============================================================================ */
@@ -3059,11 +3059,11 @@ body {
 	color: var(--vscode-foreground);
 }
 
-/* ═══════════════════════════════════════════════════════════════
+/* =================================================================
    HIERARCHY NAV - Custom React Collapsible Left Nav
-   Projects/Spaces -> Project Explorer -> Conversations ->
-   Claude Sessions -> Context Files -> Agents
-   ═══════════════════════════════════════════════════════════════ */
+   Projects/Spaces > Project Explorer > Conversations >
+   Claude Sessions > Context Files > Agents
+   ================================================================= */
 
 .tarx-hierarchy-container {
 	flex: 1;
