@@ -383,6 +383,9 @@ export class TarxAutonomicDaemon {
   }
 
   private async fetchSentryErrors(): Promise<SentryError[]> {
+    if (!process.env.SENTRY_AUTH_TOKEN || !process.env.SENTRY_ORG || !process.env.SENTRY_PROJECT) {
+      return [];
+    }
     try {
       const response = await fetch(
         `https://sentry.io/api/0/projects/${process.env.SENTRY_ORG}/${process.env.SENTRY_PROJECT}/issues/?statsPeriod=${this.SENTRY_LOOKBACK_MINUTES}m&query=is:unresolved`,

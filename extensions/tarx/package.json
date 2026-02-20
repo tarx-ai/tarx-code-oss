@@ -691,7 +691,8 @@
       {
         "icon": "$(tarx-icon)",
         "title": "What are we working on?",
-        "content": "TARX is ready to assist with your code.\n\n**Local. Private. Proactive.**\n\n[Start New Chat](command:workbench.action.chat.open)"
+        "content": "TARX is ready to assist with your code.\n\n**Local. Private. Proactive.**\n\n[Start New Chat](command:workbench.action.chat.open)",
+        "when": "true"
       }
     ],
     "walkthroughs": [

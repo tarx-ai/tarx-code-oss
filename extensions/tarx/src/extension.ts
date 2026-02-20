@@ -2383,10 +2383,12 @@ export async function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
-	// Open Thinking Tab on fresh launch
-	backgroundService.start();
+	// Open Thinking Tab on fresh launch — create tab BEFORE starting service
+	// so the event listener is attached before session-brief fires
 	const thinkingTab = TarxThinkingTab.create(backgroundService);
 	context.subscriptions.push(thinkingTab);
+	console.log('[TARX-BG] backgroundService.start() called');
+	backgroundService.start();
 
 	// Command to focus the Thinking Tab
 	safeRegisterCommand(context, 'tarx.openThinking', () => {
@@ -5248,7 +5250,8 @@ async function initAutonomicDaemon(context: vscode.ExtensionContext): Promise<vo
 		const dispatchScript = path.join(context.extensionPath, '..', '..', 'scripts', 'grok-dispatch.js');
 		const dispatchCwd = path.join(context.extensionPath, '..', 'tarx-core');
 
-		if (fs.existsSync(dispatchScript) && fs.existsSync(dispatchCwd)) {
+		const sqliteNative = path.join(dispatchCwd, 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node');
+		if (fs.existsSync(dispatchScript) && fs.existsSync(dispatchCwd) && fs.existsSync(sqliteNative)) {
 			// Only start if not already running (check PID file or state)
 			const stateFile = path.join(os.homedir(), 'Library/Application Support/tarx/grok-dispatch-state.json');
 			let alreadyRunning = false;
@@ -5287,7 +5290,7 @@ async function initAutonomicDaemon(context: vscode.ExtensionContext): Promise<vo
 				console.log('[TARX Grok] Dispatch already running (recent state file), skipping spawn');
 			}
 		} else {
-			console.log('[TARX Grok] Dispatch script not found, skipping');
+			console.log('[TARX Grok] Dispatch skipped (missing script, cwd, or better-sqlite3 native module)');
 		}
 	} catch (e) {
 		console.error('[TARX Grok] Failed to start dispatch:', e);
