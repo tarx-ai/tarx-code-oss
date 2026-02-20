@@ -331,6 +331,12 @@ Orchestration: tarx_admin_file_lock/unlock, tarx_orchestrate_assign_task/task_up
 
 ---
 
+## Key Specs
+
+- **Context Protocol:** [`extensions/tarx/docs/TARX_CONTEXT_PROTOCOL.md`](extensions/tarx/docs/TARX_CONTEXT_PROTOCOL.md) — Three-tier context hierarchy (Identity/Knowledge/Conversation), adaptive budgeting, RAG quality management, privacy levels, degradation chain.
+
+---
+
 ## This Document's Lifecycle
 
 - Lives at: `~/Desktop/tarx-code-oss/CLAUDE.md`
