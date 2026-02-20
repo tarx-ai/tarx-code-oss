@@ -220,15 +220,15 @@ export class SqliteDatabase implements DatabaseOperations {
 			this.execSQL(SCHEMA_SQL);
 			this.execSQL(SQLITE_EXTENSIONS_SQL);
 
-			// Migrate: add columns to projects table if missing (ALTER TABLE has no IF NOT EXISTS)
+			// Migrate: add columns to projects table if missing
+			const existingCols = this.queryJSON<{ name: string }>('PRAGMA table_info(projects);');
+			const colNames = new Set(existingCols.map(c => c.name));
 			for (const col of [
 				{ name: 'instructions', type: 'TEXT' },
 				{ name: 'color', type: 'TEXT' },
 			]) {
-				try {
+				if (!colNames.has(col.name)) {
 					this.execSQL(`ALTER TABLE projects ADD COLUMN ${col.name} ${col.type};`);
-				} catch {
-					// Column already exists — expected on subsequent runs
 				}
 			}
 

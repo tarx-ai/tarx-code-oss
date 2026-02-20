@@ -2377,7 +2377,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				if (backgroundService) {
 					const tab = TarxThinkingTab.revive(panel, backgroundService);
 					context.subscriptions.push(tab);
-					backgroundService.start();
+					// Don't call backgroundService.start() here — the main code path does it
 				}
 			}
 		})

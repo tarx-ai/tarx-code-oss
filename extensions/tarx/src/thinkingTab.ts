@@ -64,8 +64,15 @@ export class TarxThinkingTab implements vscode.Disposable {
 
 	/**
 	 * Restore a serialized Thinking Tab (survives restart).
+	 * If an instance already exists, dispose the duplicate panel.
 	 */
 	static revive(panel: vscode.WebviewPanel, service: TarxBackgroundService): TarxThinkingTab {
+		if (TarxThinkingTab.instance) {
+			// Already have a tab — dispose this duplicate restored panel
+			console.log('[TARX-TT] revive() skipped — instance already exists, disposing duplicate');
+			panel.dispose();
+			return TarxThinkingTab.instance;
+		}
 		const tab = new TarxThinkingTab(panel, service);
 		TarxThinkingTab.instance = tab;
 		panel.webview.html = getWebviewHtml();
@@ -111,17 +118,15 @@ export class TarxThinkingTab implements vscode.Disposable {
 		this.panel.webview.onDidReceiveMessage(
 			(msg: { type: string; text?: string }) => {
 				if (msg.type === 'ready') {
-					console.log('[TARX-TT] Webview ready, flushing pending + requesting brief');
+					console.log('[TARX-TT] Webview ready, flushing', this.pendingMessages.length, 'pending messages');
 					this.webviewReady = true;
-					// Flush any messages that arrived before the webview was ready
+					// Flush any messages that arrived before the webview was ready.
+					// The session brief from backgroundService.start() is already queued here —
+					// do NOT call emitSessionBrief() again or it renders twice.
 					for (const pending of this.pendingMessages) {
 						this.panel.webview.postMessage(pending);
 					}
 					this.pendingMessages = [];
-					// Request a fresh session brief now that webview can receive it
-					this.service.emitSessionBrief().catch(err => {
-						console.error('[TARX-TT] Failed to emit session brief:', err);
-					});
 				} else if (msg.type === 'user-input' && msg.text) {
 					this.handleUserInput(msg.text);
 				}
