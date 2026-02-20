@@ -23,9 +23,9 @@ extensions/
 ## Naming Conventions
 
 - **Package name**: `tarx-{target}-{feature}`
-  - `tarx-claude-memory` - Memory for Claude
-  - `tarx-openai-memory` - Memory for ChatGPT
-  - `tarx-local-inference` - Local LLM tools
+  - `tarx-core` - Core MCP server (inference, memory, files)
+  - `tarx-ops` - Operations MCP server (admin, orchestration)
+  - `tarx-local` - Local inference management
 
 - **Display name**: `TARX {Feature}`
   - Always capitalize "TARX"

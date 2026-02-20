@@ -45,26 +45,27 @@ Local-first, privacy-preserving AI. Your code never leaves your machine unless y
 
 ## 3. MCP TOOL INVENTORY
 
-### Total: 260 tools across 3 servers
+### Total: 262 tools across 3 in-repo servers (+ 51 standalone)
 
-### tarx-core (46 tools)
-Core TARX functionality: inference, memory, spaces, sessions, files, RAG.
+### tarx-core (30 tools)
+Core TARX functionality: inference, memory, spaces, sessions, files, GTM.
 
 | Category | Count | Tools |
 |----------|-------|-------|
-| Core | 7 | tarx_health, tarx_chat, tarx_stress_test, tarx_reason_stream, tarx_prewarm, tarx_cancel, tarx_list_active |
+| Core | 3 | tarx_health, tarx_chat, tarx_stress_test |
 | Spaces | 3 | tarx_list_spaces, tarx_create_space, tarx_get_space |
 | Sessions | 4 | tarx_list_sessions, tarx_create_session, tarx_get_chat_history, tarx_send_message |
-| Memory | 8 | memory_store, memory_store_observation, memory_search, memory_search_index, memory_recall, memory_list, memory_forget, memory_stats |
-| Memory Sessions | 4 | memory_create_session, memory_thread_to_session, memory_get_session, memory_list_sessions |
-| Thread | 1 | thread_message |
-| Files/RAG | 10 | tarx_list_files, tarx_upload_file, tarx_get_file, tarx_search_knowledge, tarx_knowledge_stats, tarx_delete_file, tarx_scan_directory, tarx_add_watch, tarx_remove_watch, tarx_rescan |
-| Training | 3 | tarx_export_training_data, tarx_rate_response, tarx_training_stats |
-| Sidebar | 3 | tarx_sidebar_refresh, tarx_sidebar_navigate, tarx_sidebar_get_state |
-| Smart | 3 | tarx_system_brief, tarx_project_context, tarx_session_context |
+| Memory | 5 | tarx_memory_store, tarx_memory_search, tarx_memory_recall, tarx_memory_list, tarx_memory_delete |
+| Memory Sessions | 1 | tarx_memory_thread_to_session |
+| Files | 3 | tarx_list_files, tarx_upload_file, tarx_get_file |
+| Smart | 2 | tarx_system_brief, tarx_project_context |
+| GTM Invites | 2 | tarx_validate_invite, tarx_redeem_invite |
+| GTM Profiles | 2 | tarx_get_profile, tarx_update_profile |
+| GTM Skills | 4 | tarx_list_skills, tarx_install_skill, tarx_uninstall_skill, tarx_get_active_skills |
+| GTM Metrics | 1 | tarx_weekly_report |
 
-### tarx-ops (47 tools)
-Admin, Sentry, orchestration, Claude Code session management.
+### tarx-ops (55 tools)
+Admin, Sentry, orchestration, Claude Code session management, daemon, GTM, Datadog.
 
 | Category | Count | Tools |
 |----------|-------|-------|
@@ -74,10 +75,12 @@ Admin, Sentry, orchestration, Claude Code session management.
 | Claude Code | 6 | tarx_admin_start/list/get/send/stop/clear_code_session |
 | Tether | 3 | tarx_dispatch_work, tarx_check_work, tarx_work_history |
 | Console | 2 | tarx_admin_read_console, tarx_admin_tail_console |
-| Orchestration | 19 | register_session, state, report_activity, activity, list_sessions, pause, read_file, update_file, create_doc, list_docs, doc_history, assign_task, task_update, task_list, milestone_create/update/list, push_context, broadcast, get_updates, mark_delivered, request_feedback, list_feedback_requests, status_report |
+| Orchestration | 24 | register_session, state, report_activity, activity, list_sessions, pause, read_file, update_file, create_doc, list_docs, doc_history, assign_task, task_update, task_list, milestone_create/update/list, push_context, broadcast, get_updates, mark_delivered, request_feedback, list_feedback_requests, status_report |
 | Daemon | 3 | tarx_daemon_start, stop, status |
+| GTM Invites | 2 | tarx_admin_generate_invite, list_invites |
+| Datadog | 3 | tarx_admin_datadog_status, flush, record_inference |
 
-### tarx-ui-mcp-server (167 tools)
+### tarx-ui-mcp-server (177 tools)
 Full UI automation, editor control, screenshots, testing.
 
 | Module | Count | Purpose |

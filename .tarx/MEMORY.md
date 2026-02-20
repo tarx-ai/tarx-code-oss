@@ -7,13 +7,13 @@ Last updated: 2026-02-20T12:00:00Z
 - Embeddings: port 11437, model nomic-embed-text-v1.5 (768-dim), status unknown
 
 ## MCP Servers
-- tarx-core: 51 tools, status ok
-- tarx-ops: 50 tools, status ok
-- tarx-ui: 168 tools, status ok
-- tarx-mesh: 9 tools, status ok
-- tarx-verify: 24 tools, status ok
+- tarx-core: 30 tools, status ok (v1.2.0)
+- tarx-ops: 55 tools, status ok (v1.2.0)
+- tarx-ui: 177 tools, status ok (v2.0.0)
+- tarx-mesh: 9 tools, status ok (standalone ~/Desktop/tarx-mesh/mcp/)
+- tarx-verify: 24 tools, status ok (standalone ~/Desktop/tarx-verify/)
 - tarx-martech: 18 tools, status ok (standalone ~/Desktop/tarx-martech/)
-Total: 320 tools (311 in-repo + 9 mesh MCP)
+Total: 313 tools (262 in-repo + 51 standalone)
 
 ## Known Issues
 - tarx-observer-mcp-server: DELETED (commit 0a85116). 8 tools retired. All doc references cleaned up (2026-02-20)

@@ -321,9 +321,9 @@ Always verify with `yarn compile` — 0 errors required.
 | 11436 | Mesh HTTP API    | P2P networking (libp2p)          |
 | 11437 | Embedding server | RAG embeddings (nomic-embed)     |
 
-## MCP Tools (311 tools across 5 servers)
+## MCP Tools (313 tools across 6 servers)
 
-Memory: memory_search_index (lightweight scan FIRST), memory_search (full), memory_store_observation (store learnings), memory_recall, tarx_search_knowledge
+Memory: tarx_memory_store, tarx_memory_search, tarx_memory_recall, tarx_memory_list, tarx_memory_delete
 Health: tarx_system_brief (everything in one call), tarx_health, tarx_project_context
 Sentry: tarx_admin_sentry_issues, tarx_admin_sentry_events, tarx_admin_sentry_search, tarx_admin_sentry_event_details, tarx_admin_sentry_trace
 Console: tarx_admin_read_console, tarx_admin_tail_console

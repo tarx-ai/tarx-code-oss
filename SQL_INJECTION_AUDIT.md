@@ -83,7 +83,7 @@ SELECT id FROM sessions WHERE id = '${sanitizeSQL(sessionId)}'
 2. Remove CLI-based queries entirely
 3. Use prepared statements throughout
 
-### ⚠️ MCP Servers (extensions/tarx-ops, tarx-orchestration-mcp, etc.)
+### ⚠️ MCP Servers (extensions/tarx-ops)
 **Status**: IDENTIFIED BUT NOT PRIORITIZED
 **Pattern**: Dynamic SQL with template string building
 **Examples**:
@@ -123,7 +123,7 @@ SELECT id FROM sessions WHERE id = '${sanitizeSQL(sessionId)}'
 
 ### Phase 4: MCP Servers
 11. tarx-ops/src/server.ts
-12. tarx-orchestration-mcp/src/server.ts
+12. ~~tarx-orchestration-mcp/src/server.ts~~ (REMOVED - merged into tarx-ops)
 13. ~~tarx-observer-mcp-server/src/storage.ts~~ (REMOVED - server deleted)
 
 ### Phase 5: Test Code

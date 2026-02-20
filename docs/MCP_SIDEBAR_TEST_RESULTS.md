@@ -108,7 +108,7 @@ The MCP → Sidebar bridge implementation has been verified through code analysi
 
 ### Modified Files
 - `src/vs/workbench/browser/parts/tarxsidebar/tarxSidebarPart.ts` - Command registration
-- `extensions/tarx-mcp-server/src/server.ts` - 8 new MCP tools
+- `extensions/tarx-core/src/server.ts` - MCP tools (formerly tarx-mcp-server)
 - `extensions/tarx/src/webview/ui/App.tsx` - Message handlers
 - `extensions/tarx/src/webview/ui/types.ts` - Type definitions
 - `extensions/tarx/src/services/index.ts` - Barrel export

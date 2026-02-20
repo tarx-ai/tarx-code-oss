@@ -1,21 +1,26 @@
 #!/usr/bin/env node
 /**
- * TARX Core MCP Server v1.0.0
+ * TARX Core MCP Server v1.2.0 -- 30 tools
  *
  * Merged server combining:
  * - tarx-mcp-server (core inference, spaces, sessions, files/RAG, sidebar tools)
  * - tarx-claude-memory (memory tools: store, search, recall, list, forget, stats + session sync)
  *
- * Tool categories (21 total):
+ * Tool categories (30 total):
  *   Core: 3         | tarx_health, tarx_chat, tarx_stress_test
  *   Spaces: 3       | tarx_list_spaces, tarx_create_space, tarx_get_space
  *   Sessions: 4     | tarx_list_sessions, tarx_create_session, tarx_get_chat_history, tarx_send_message
- *   Memory: 6       | tarx_memory_store, tarx_memory_search, tarx_memory_recall, tarx_memory_list, tarx_memory_delete, tarx_memory_thread_to_session
+ *   Memory: 5       | tarx_memory_store, tarx_memory_search, tarx_memory_recall, tarx_memory_list, tarx_memory_delete
+ *   Memory Sess: 1  | tarx_memory_thread_to_session
  *   Files: 3        | tarx_list_files, tarx_upload_file, tarx_get_file
  *   Smart: 2        | tarx_system_brief, tarx_project_context
+ *   GTM Invites: 2  | tarx_validate_invite, tarx_redeem_invite
+ *   GTM Profiles: 2 | tarx_get_profile, tarx_update_profile
+ *   GTM Skills: 4   | tarx_list_skills, tarx_install_skill, tarx_uninstall_skill, tarx_get_active_skills
+ *   GTM Metrics: 1  | tarx_weekly_report
  *
  * @package tarx-core
- * @version 1.0.0
+ * @version 1.2.0
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * TARX Ops MCP Server v1.1.0 -- 47 tools
+ * TARX Ops MCP Server v1.2.0 -- 55 tools
  *
  * Merged admin + orchestration server.
  * All tools gated by TARX_CREATOR_KEY via creator_only middleware.
  *
- * Tool categories (47 total):
+ * Tool categories (55 total):
  *   Sentry: 7          | tarx_admin_sentry_projects, events, issues, search, event_details, issue_events, trace
  *   Admin Status: 2    | tarx_admin_status, tarx_admin_performance_metrics
  *   File Locks: 3      | tarx_admin_file_lock, unlock, conflicts
@@ -21,13 +21,11 @@
  *   Orch Feedback: 2   | tarx_orchestrate_request_feedback, list_feedback_requests
  *   Orch Status: 1     | tarx_orchestrate_status_report
  *   Daemon: 3          | tarx_daemon_start, stop, status
- *
- * Dropped from admin: session_create/assign/progress/complete/list_all/log (-> orchestration),
- *   milestone_track/dashboard/dependency_set/handoff_create/handoff_accept, clear_console
- * Dropped from orchestration: model management (8), provide_feedback, check_feedback
+ *   GTM Invites: 2     | tarx_admin_generate_invite, list_invites
+ *   Datadog: 3         | tarx_admin_datadog_status, flush, record_inference
  *
  * @package tarx-ops-mcp-server
- * @version 1.0.0
+ * @version 1.2.0
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -3263,7 +3261,7 @@ async function main() {
   Datadog.start();
 
   console.error("TARX Ops MCP Server v1.2.0 started");
-  console.error(`  - 52 tools available (44 ops + 3 daemon + 2 gtm + 3 datadog)`);
+  console.error(`  - 55 tools available (44 ops + 3 daemon + 2 gtm + 3 datadog + 3 tether)`);
   console.error(`  - Sentry: ${SENTRY_TOKEN ? `${SENTRY_ORG} (${ALL_PROJECTS.join(", ")})` : "NOT CONFIGURED"}`);
   console.error(`  - Datadog: ${process.env.DD_API_KEY ? `${process.env.DD_SITE || "datadoghq.com"}` : "NOT CONFIGURED (set DD_API_KEY)"}`);
   console.error(`  - Database: ${DB_PATH}`);
