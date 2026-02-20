@@ -135,7 +135,8 @@ export class ContextProtocol {
 		this.ensureSchema();
 		await this.loadIdentity();
 		await this.detectContextWindow();
-		console.log('[TARX Context] Protocol initialized');
+		const id = this.identity;
+		console.log(`[TARX-CP] Protocol initialized: identity=${id?.name || 'anonymous'}, role=${id?.role || 'none'}, contextWindow=${this.contextWindow}, spaces=${id?.goals?.length || 0} goals`);
 	}
 
 	getIdentity(): UserIdentity | null {
@@ -175,7 +176,7 @@ export class ContextProtocol {
 				createdAt: row.created_at,
 				updatedAt: row.updated_at,
 			};
-			console.log(`[TARX Context] Identity loaded: ${this.identity.userId}`);
+			console.log(`[TARX-CP] Identity loaded: ${this.identity.userId}`);
 			return this.identity;
 		}
 
@@ -220,7 +221,7 @@ export class ContextProtocol {
 			VALUES ('${userId}', '[]', 3, 'balanced', 'direct', '${escapedCpu}', ${ram}, '${escapedGpu}', ${now}, ${now});
 		`);
 
-		console.log(`[TARX Context] Default identity created: ${userId} (${cpu}, ${ram}GB RAM, ${gpu})`);
+		console.log(`[TARX-CP] Default identity created: ${userId} (${cpu}, ${ram}GB RAM, ${gpu})`);
 		return this.identity;
 	}
 
@@ -316,7 +317,7 @@ export class ContextProtocol {
 				const ctxLen = data.data?.[0]?.context_length;
 				if (ctxLen && ctxLen > 0) {
 					this.contextWindow = ctxLen;
-					console.log(`[TARX Context] Detected context window: ${ctxLen}`);
+					console.log(`[TARX-CP] Detected context window: ${ctxLen}`);
 					return ctxLen;
 				}
 			}
@@ -340,7 +341,7 @@ export class ContextProtocol {
 				const nCtx = data.default_generation_settings?.n_ctx_train;
 				if (nCtx && nCtx > 0) {
 					this.contextWindow = nCtx;
-					console.log(`[TARX Context] Detected context window from /props: ${nCtx}`);
+					console.log(`[TARX-CP] Detected context window from /props: ${nCtx}`);
 					return nCtx;
 				}
 			}
@@ -348,31 +349,39 @@ export class ContextProtocol {
 			// Fall through
 		}
 
-		console.log(`[TARX Context] Using default context window: ${this.contextWindow}`);
+		console.log(`[TARX-CP] Using default context window: ${this.contextWindow}`);
 		return this.contextWindow;
 	}
 
 	calculateBudget(computePath: ComputePath, contextWindow?: number): ContextBudget {
 		const total = contextWindow || this.contextWindow;
+		let budget: ContextBudget;
 
 		switch (computePath) {
 			case 'local': {
-				// Generous splits — free compute
+				// Generous splits - free compute
 				if (total <= 4096) {
-					return { tier1: 1000, tier2: 800, tier3: 1200, response: 1096, total };
+					budget = { tier1: 1000, tier2: 800, tier3: 1200, response: 1096, total };
+				} else {
+					// Larger context models - scale proportionally
+					const tier1 = Math.min(1500, Math.round(total * 0.05));
+					const response = Math.round(total * 0.33);
+					const tier2 = Math.round(total * 0.12);
+					const tier3 = total - tier1 - tier2 - response;
+					budget = { tier1, tier2, tier3, response, total };
 				}
-				// Larger context models — scale proportionally
-				const tier1 = Math.min(1500, Math.round(total * 0.05));
-				const response = Math.round(total * 0.33);
-				const tier2 = Math.round(total * 0.12);
-				const tier3 = total - tier1 - tier2 - response;
-				return { tier1, tier2, tier3, response, total };
+				break;
 			}
 			case 'mesh':
-				return { tier1: 200, tier2: 400, tier3: 600, response: 800, total: 2000 };
+				budget = { tier1: 200, tier2: 400, tier3: 600, response: 800, total: 2000 };
+				break;
 			case 'cloud':
-				return { tier1: 200, tier2: 400, tier3: 400, response: 1000, total: 2000 };
+				budget = { tier1: 200, tier2: 400, tier3: 400, response: 1000, total: 2000 };
+				break;
 		}
+
+		console.log(`[TARX-CP] Budget (${computePath}): total=${budget.total}, tier1=${budget.tier1}, tier2=${budget.tier2}, tier3=${budget.tier3}, response=${budget.response}`);
+		return budget;
 	}
 
 	// ==============================
@@ -427,7 +436,7 @@ export class ContextProtocol {
 			);
 			return { messages: recentMessages, summary };
 		} catch (e) {
-			console.warn('[TARX Context] Summarization failed, truncating:', e);
+			console.warn('[TARX-CP] Summarization failed, truncating:', e);
 			return this.truncateToFit(recentMessages, budget);
 		}
 	}
@@ -587,7 +596,8 @@ export class ContextProtocol {
 		try {
 			// Embed the observation text
 			const embedding = await this.ragClient.embed(
-				`[${observation.type.toUpperCase()}] ${observation.content}`
+				`[${observation.type.toUpperCase()}] ${observation.content}`,
+				'search_document'
 			);
 
 			// Check for duplicate/similar existing observations
@@ -600,7 +610,7 @@ export class ContextProtocol {
 			// If similarity > 0.85, this is a duplicate — skip
 			const duplicate = existing.find(e => e.similarity > 0.85);
 			if (duplicate) {
-				console.log(`[TARX Context] Skipping duplicate observation (sim=${duplicate.similarity.toFixed(2)})`);
+				console.log(`[TARX-CP] Skipping duplicate observation (sim=${duplicate.similarity.toFixed(2)})`);
 				return;
 			}
 
@@ -611,9 +621,19 @@ export class ContextProtocol {
 				[embedding]
 			);
 
-			console.log(`[TARX Context] Stored observation: ${observation.type}`);
+			// Self-test: verify the observation is retrievable
+			try {
+				const verify = await searchMCPKnowledge('__observations__', embedding, 1);
+				if (verify.length > 0 && verify[0].similarity > 0.8) {
+					console.log(`[TARX-CP] Observation stored and verified (sim=${verify[0].similarity.toFixed(2)}): ${observation.type}`);
+				} else {
+					console.warn(`[TARX-CP] Observation stored but verification weak: ${observation.type} (results=${verify.length}, sim=${verify[0]?.similarity?.toFixed(2) || 'none'})`);
+				}
+			} catch (verifyErr) {
+				console.warn('[TARX-CP] Observation stored but verify search failed:', verifyErr);
+			}
 		} catch (e) {
-			console.warn('[TARX Context] Failed to store observation:', e);
+			console.warn('[TARX-CP] Failed to store observation:', e);
 		}
 	}
 
@@ -623,24 +643,27 @@ export class ContextProtocol {
 
 	async safeTier2Load(queryText: string, spaceId?: string): Promise<RetrievedChunk[]> {
 		if (!this.tier2Available) {
+			console.log('[TARX-CP] RAG search: tier2 disabled (will retry after cooldown)');
 			return [];
 		}
 
 		try {
-			const embedding = await this.ragClient.embed(queryText);
+			const embedding = await this.ragClient.embed(queryText, 'search_query');
 			const results = await searchMCPKnowledge(
 				spaceId || null,
 				embedding,
 				10
 			);
 
-			return results.map(r => ({
+			const chunks = results.map(r => ({
 				content: r.content,
 				filePath: r.title,
 				similarity: r.similarity,
 			}));
+			console.log(`[TARX-CP] RAG search: found ${chunks.length} chunks (top similarity: ${chunks[0]?.similarity?.toFixed(2) || 'none'})`);
+			return chunks;
 		} catch (e) {
-			console.warn('[TARX Context] Tier 2 load failed, disabling temporarily:', e);
+			console.warn('[TARX-CP] Tier 2 load failed, disabling temporarily:', e);
 			this.tier2Available = false;
 
 			// Retry in 30 seconds
@@ -649,7 +672,7 @@ export class ContextProtocol {
 			}
 			this.tier2RetryTimer = setTimeout(() => {
 				this.tier2Available = true;
-				console.log('[TARX Context] Tier 2 re-enabled for retry');
+				console.log('[TARX-CP] Tier 2 re-enabled for retry');
 			}, 30_000);
 
 			return [];
@@ -663,7 +686,7 @@ export class ContextProtocol {
 		try {
 			return await this.buildConversationContext(messages, budget);
 		} catch (e) {
-			console.warn('[TARX Context] Summarization failed, hard-truncating:', e);
+			console.warn('[TARX-CP] Summarization failed, hard-truncating:', e);
 			return this.truncateToFit(
 				messages.filter(m => m.role !== 'system'),
 				budget
@@ -722,7 +745,7 @@ export class ContextProtocol {
 			this.execSQL(IDENTITY_SCHEMA);
 			this.schemaReady = true;
 		} catch (e) {
-			console.error('[TARX Context] Schema creation failed:', e);
+			console.error('[TARX-CP] Schema creation failed:', e);
 		}
 	}
 

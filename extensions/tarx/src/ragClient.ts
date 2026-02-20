@@ -69,14 +69,17 @@ export class RagClient {
 	}
 
 	/**
-	 * Get embedding for a single text
+	 * Get embedding for a single text.
+	 * task: 'search_query' for retrieval queries, 'search_document' for storage.
+	 * nomic-embed-text-v1.5 uses these prefixes for better quality.
 	 */
-	async embed(text: string): Promise<Float32Array> {
+	async embed(text: string, task: 'search_query' | 'search_document' = 'search_query'): Promise<Float32Array> {
+		const prefixed = `${task}: ${text}`;
 		const response = await fetch(`${this.serverUrl}/v1/embeddings`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
-				input: text,
+				input: prefixed,
 				model: 'nomic-embed-text-v1.5'
 			})
 		});
@@ -94,9 +97,10 @@ export class RagClient {
 	}
 
 	/**
-	 * Get embeddings for multiple texts (batch)
+	 * Get embeddings for multiple texts (batch).
+	 * task: 'search_document' for storage (default), 'search_query' for retrieval.
 	 */
-	async embedBatch(texts: string[]): Promise<Float32Array[]> {
+	async embedBatch(texts: string[], task: 'search_query' | 'search_document' = 'search_document'): Promise<Float32Array[]> {
 		if (texts.length === 0) return [];
 
 		// Batch in groups of 32 for efficiency
@@ -104,7 +108,7 @@ export class RagClient {
 		const results: Float32Array[] = [];
 
 		for (let i = 0; i < texts.length; i += batchSize) {
-			const batch = texts.slice(i, i + batchSize);
+			const batch = texts.slice(i, i + batchSize).map(t => `${task}: ${t}`);
 
 			const response = await fetch(`${this.serverUrl}/v1/embeddings`, {
 				method: 'POST',

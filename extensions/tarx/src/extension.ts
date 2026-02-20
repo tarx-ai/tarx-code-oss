@@ -110,6 +110,8 @@ import {
 	registerConversationalCommands
 } from './chat/conversationalFlows.js';
 import { ChatOnboardingManager } from './onboarding/chat-onboarding.js';
+import { TarxBackgroundService } from './backgroundService';
+import { TarxThinkingTab } from './thinkingTab';
 // TARX Model Router - Feb 2026
 import {
 	routeMessage,
@@ -323,6 +325,7 @@ let proactiveSystem: ProactiveSystem | undefined;
 let creditBridge: CreditBridge | undefined;
 let grokDispatchProcess: ChildProcess | undefined;
 let contextProtocol: ContextProtocol | undefined;
+let backgroundService: TarxBackgroundService | undefined;
 
 // Auth objects - module level for guard access
 let authManager: AuthManager | undefined;
@@ -1360,7 +1363,8 @@ export async function activate(context: vscode.ExtensionContext) {
 		if (contextProtocol && loadedContext?.chunks && loadedContext.chunks.length > 0) {
 			const budget = contextProtocol.calculateBudget('local');
 			const gated = contextProtocol.gateRetrievedChunks(loadedContext.chunks, budget.tier2);
-			console.log(`[TARX Context] RAG gating: ${loadedContext.chunks.length} → ${gated.length} chunks`);
+			console.log(`[TARX-CP] RAG gating: ${loadedContext.chunks.length} \u{2192} ${gated.length} chunks (budget tier2=${budget.tier2})`);
+
 			loadedContext = { ...loadedContext, chunks: gated };
 		}
 
@@ -1391,6 +1395,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				}
 				if (idParts.length > 0) {
 					systemPrompt += `\n\n## USER PROFILE\n${idParts.join('\n')}`;
+					console.log(`[TARX-CP] Identity loaded: { name: ${identity.name}, role: ${identity.role}, goals: ${identity.goals?.length || 0} }`);
 				}
 			}
 		}
@@ -1856,7 +1861,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			const queryType = contextProtocol.classifyQueryType(normalizedPrompt, hasRag);
 			const sampling = contextProtocol.selectSamplingParams(queryType);
 			inferenceTemp = sampling.temperature;
-			console.log(`[TARX Context] Query type: ${queryType}, temperature: ${sampling.temperature}`);
+			console.log(`[TARX-CP] Temperature: ${sampling.temperature} (query type: ${queryType})`);
 		}
 
 		// Context Protocol: Sliding window with summarization
@@ -1885,7 +1890,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				}
 				messages.push(...convoCtx.messages);
 				messages.push(lastUserMsg);
-				console.log(`[TARX Context] Sliding window: ${historyMessages.length} → ${convoCtx.messages.length} messages${convoCtx.summary ? ' + summary' : ''}`);
+				console.log(`[TARX-CP] Sliding window: ${historyMessages.length} \u{2192} ${convoCtx.messages.length} messages${convoCtx.summary ? ' + summary' : ''}`);
 			}
 		} else {
 			// Fallback: original context window management
@@ -2105,15 +2110,15 @@ export async function activate(context: vscode.ExtensionContext) {
 					if (contextProtocol) {
 						contextProtocol.extractObservations(messages).then(observations => {
 							if (observations.length > 0) {
-								console.log(`[TARX Context] Extracted ${observations.length} observations`);
+								console.log(`[TARX-CP] Extracted ${observations.length} observations`);
 								for (const obs of observations) {
 									contextProtocol!.storeObservation(obs).catch(obsErr =>
-										console.warn('[TARX Context] Observation storage failed:', obsErr)
+										console.warn('[TARX-CP] Observation storage failed:', obsErr)
 									);
 								}
 							}
 						}).catch(obsErr => {
-							console.warn('[TARX Context] Observation extraction failed:', obsErr);
+							console.warn('[TARX-CP] Observation extraction failed:', obsErr);
 						});
 					}
 				} catch (e) {
@@ -2344,6 +2349,42 @@ export async function activate(context: vscode.ExtensionContext) {
 		claudeCodeStatusBar.show();
 		context.subscriptions.push(claudeCodeStatusBar);
 	}
+
+	// ========================================
+	// 3b. TARX Thinking Tab — Living system conversation
+	// ========================================
+	backgroundService = new TarxBackgroundService();
+	context.subscriptions.push({ dispose: () => backgroundService?.stop() });
+
+	// Register serializer BEFORE creating panel (VS Code needs it for restart restore)
+	context.subscriptions.push(
+		vscode.window.registerWebviewPanelSerializer(TarxThinkingTab.viewType, {
+			async deserializeWebviewPanel(panel: vscode.WebviewPanel, _state: unknown) {
+				if (backgroundService) {
+					const tab = TarxThinkingTab.revive(panel, backgroundService);
+					context.subscriptions.push(tab);
+					backgroundService.start();
+				}
+			}
+		})
+	);
+
+	// Open Thinking Tab on fresh launch
+	backgroundService.start();
+	const thinkingTab = TarxThinkingTab.create(backgroundService);
+	context.subscriptions.push(thinkingTab);
+
+	// Command to focus the Thinking Tab
+	safeRegisterCommand(context, 'tarx.openThinking', () => {
+		if (backgroundService) {
+			if (TarxThinkingTab.isOpen()) {
+				TarxThinkingTab.focus();
+			} else {
+				const tab = TarxThinkingTab.create(backgroundService);
+				context.subscriptions.push(tab);
+			}
+		}
+	});
 
 	// ========================================
 	// 4. Register Commands
@@ -3192,11 +3233,12 @@ export async function activate(context: vscode.ExtensionContext) {
 					const knowledgeCount = await getMCPKnowledgeCount();
 					if (knowledgeCount > 0) {
 						console.log(`[TARX PERF] RAG: ${knowledgeCount} embeddings, starting embed +${Date.now() - t0}ms`);
-						const queryEmbedding = await ragClient.embed(`search_query: ${message}`);
+						const queryEmbedding = await ragClient.embed(message, 'search_query');
 						console.log(`[TARX PERF] RAG embed done: +${Date.now() - t0}ms`);
 
 						const ragResults = await searchMCPKnowledge(null, queryEmbedding, 5);
 						const relevantResults = ragResults.filter(r => r.similarity > 0.5);
+						console.log(`[TARX-CP] RAG search: found ${relevantResults.length} chunks (top similarity: ${relevantResults[0]?.similarity?.toFixed(2) || 'n/a'})`);
 
 						if (relevantResults.length > 0) {
 							ragContext = '\n\n<relevant_context>\n';
@@ -5429,6 +5471,7 @@ export function deactivate() {
 	}
 
 	statusBar?.dispose();
+	backgroundService?.stop();
 	languageModelProvider?.dispose();
 	projectIndexer?.dispose();
 	fileWatcher?.dispose();
