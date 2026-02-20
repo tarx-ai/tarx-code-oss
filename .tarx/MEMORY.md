@@ -1,5 +1,5 @@
 # TARX System Memory
-Last updated: 2026-02-20T12:00:00Z
+Last updated: 2026-02-20T15:20:00Z
 
 ## Services
 - Inference: port 11435, model tarx-qwen2.5-7b-deep-Q4_K_M.gguf (4.68GB), status unknown
@@ -19,6 +19,10 @@ Total: 313 tools (262 in-repo + 51 standalone)
 - tarx-observer-mcp-server: DELETED (commit 0a85116). 8 tools retired. All doc references cleaned up (2026-02-20)
 - @sentry/browser: NEVER import in renderer — bare specifiers fail in ESM. Use globalThis.Sentry stubs (2026-02-20)
 - Embedding server: llama-server (NOT Ollama) — auto-managed as sidecar by tarxEmbeddingSidecarService.ts (2026-02-20)
+- tarx-cli extension: missing `engines.vscode` in package.json — logs error on every startup but non-blocking (2026-02-20)
+- chatViewsWelcome: 'when' clause deserialization fails for undefined value — cosmetic log error, no user impact (2026-02-20)
+- better-sqlite3 in tarx-core: NODE_MODULE_VERSION 137 vs 141 mismatch — grok-dispatch.js fails to load. Fix: `cd extensions/tarx-core && npm rebuild better-sqlite3` (2026-02-20)
+- Sentry Autonomic: 403 on fetch (every 60s, suppressed after 4th) — auth token expired or rate-limited (2026-02-20)
 
 ## Architecture Decisions
 - Conversational-first UX: @tarx chat participant is primary surface, webviews are last resort (2026-02-20)
