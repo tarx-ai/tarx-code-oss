@@ -607,9 +607,8 @@ export class ContextProtocol {
 			await storeMCPEmbeddings(
 				'__observations__',
 				`[${observation.type}] ${observation.content.slice(0, 50)}`,
-				observation.content,
-				embedding,
-				`observation_${observation.type}_${Date.now()}`
+				[{ content: observation.content, index: 0 }],
+				[embedding]
 			);
 
 			console.log(`[TARX Context] Stored observation: ${observation.type}`);
