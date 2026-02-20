@@ -1849,15 +1849,55 @@ export async function activate(context: vscode.ExtensionContext) {
 
 		// LOCAL MODEL PATH - Use Qwen via llama-server
 
-		// Context window management - ensure messages fit within 4096 token limit
-		const contextUsage = getContextUsage(messages as ContextMessage[]);
-		if (!contextUsage.willFit) {
-			console.log(`[TARX] Context overflow: ${contextUsage.totalTokens} tokens > ${contextUsage.available} available`);
-			messages = fitToContextWindow(messages as ContextMessage[], 4096, 512) as ChatMessage[];
-			const newUsage = getContextUsage(messages as ContextMessage[]);
-			console.log(`[TARX] After truncation: ${newUsage.totalTokens} tokens (${newUsage.utilization}% utilization)`);
+		// Context Protocol: Classify query and select sampling parameters
+		let inferenceTemp = 0.7;
+		if (contextProtocol) {
+			const hasRag = (loadedContext?.chunks?.length || 0) > 0;
+			const queryType = contextProtocol.classifyQueryType(normalizedPrompt, hasRag);
+			const sampling = contextProtocol.selectSamplingParams(queryType);
+			inferenceTemp = sampling.temperature;
+			console.log(`[TARX Context] Query type: ${queryType}, temperature: ${sampling.temperature}`);
+		}
+
+		// Context Protocol: Sliding window with summarization
+		if (contextProtocol) {
+			const budget = contextProtocol.calculateBudget('local');
+
+			// Extract history (between system and final user message)
+			const systemMsg = messages.find(m => m.role === 'system');
+			const lastUserMsg = messages[messages.length - 1]; // Last message is user
+			const historyMessages = messages.slice(
+				systemMsg ? 1 : 0,
+				messages.length - 1
+			);
+
+			if (historyMessages.length > 0) {
+				const convoCtx = await contextProtocol.safeSummarize(historyMessages, budget.tier3);
+
+				// Rebuild messages with sliding window result
+				messages = [];
+				if (systemMsg) {
+					let sysContent = systemMsg.content;
+					if (convoCtx.summary) {
+						sysContent += `\n\n## CONVERSATION SUMMARY\n${convoCtx.summary}`;
+					}
+					messages.push({ role: 'system', content: sysContent });
+				}
+				messages.push(...convoCtx.messages);
+				messages.push(lastUserMsg);
+				console.log(`[TARX Context] Sliding window: ${historyMessages.length} → ${convoCtx.messages.length} messages${convoCtx.summary ? ' + summary' : ''}`);
+			}
 		} else {
-			console.log(`[TARX] Context OK: ${contextUsage.totalTokens}/${contextUsage.available} tokens (${contextUsage.utilization}%)`);
+			// Fallback: original context window management
+			const contextUsage = getContextUsage(messages as ContextMessage[]);
+			if (!contextUsage.willFit) {
+				console.log(`[TARX] Context overflow: ${contextUsage.totalTokens} tokens > ${contextUsage.available} available`);
+				messages = fitToContextWindow(messages as ContextMessage[], 4096, 512) as ChatMessage[];
+				const newUsage = getContextUsage(messages as ContextMessage[]);
+				console.log(`[TARX] After truncation: ${newUsage.totalTokens} tokens (${newUsage.utilization}% utilization)`);
+			} else {
+				console.log(`[TARX] Context OK: ${contextUsage.totalTokens}/${contextUsage.available} tokens (${contextUsage.utilization}%)`);
+			}
 		}
 
 		// Collect full response for artifact parsing
@@ -1875,9 +1915,9 @@ export async function activate(context: vscode.ExtensionContext) {
 			const streamAbort = new AbortController();
 			token.onCancellationRequested(() => streamAbort.abort());
 
-			// Stream response from llama-server
+			// Stream response from llama-server (temperature from context protocol)
 			for await (const chunk of tarxClient.chatCompletionStream(messages, {
-				temperature: 0.7,
+				temperature: inferenceTemp,
 				maxTokens: 2048,
 				signal: streamAbort.signal
 			})) {
