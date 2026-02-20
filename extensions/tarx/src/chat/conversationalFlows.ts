@@ -20,6 +20,7 @@ import {
 	createMCPSpace,
 	createMCPSession
 } from '../mcpKnowledge.js';
+import { parseInviteProfile } from '../invite/invite-system.js';
 
 // ============================================================================
 // INTENT DETECTION
@@ -174,15 +175,21 @@ export async function handleFTUXInviteCode(
 	// Redeem and complete
 	await redeemMCPInviteCode(upperCode);
 	await context.globalState.update('tarx.inviteTier', result.tier);
+
+	// Store signup profile metadata if present (for conversational onboarding)
+	if (result.metadata) {
+		const profile = parseInviteProfile(upperCode, result.metadata);
+		if (profile) {
+			await context.globalState.update('tarx.signupProfile', JSON.stringify(profile));
+		}
+	}
+
 	await completeFTUX(context, upperCode);
 
 	vscode.window.showInformationMessage('Invite code accepted. Welcome to TARX.');
 
-	// Open chat with a starter prompt
-	await vscode.commands.executeCommand(
-		'workbench.action.chat.open',
-		{ query: '@tarx What can you help me with?' }
-	);
+	// Open chat cleanly — conversational onboarding takes over from here
+	await vscode.commands.executeCommand('workbench.action.chat.open');
 }
 
 /**
@@ -193,11 +200,8 @@ export async function handleFTUXSkip(
 ): Promise<void> {
 	await completeFTUX(context);
 
-	// Open chat with welcome
-	await vscode.commands.executeCommand(
-		'workbench.action.chat.open',
-		{ query: '@tarx What can you help me with?' }
-	);
+	// Open chat cleanly — conversational onboarding takes over from here
+	await vscode.commands.executeCommand('workbench.action.chat.open');
 }
 
 async function completeFTUX(
@@ -206,7 +210,9 @@ async function completeFTUX(
 ): Promise<void> {
 	await context.globalState.update('tarx.inviteValidated', true);
 	await context.globalState.update('tarx.inviteTier', 'beta');
-	await updateOnboardingState('complete', inviteCode ? { invite_code: inviteCode } : undefined);
+	// Mark FTUX as validated but NOT onboarding-complete.
+	// The ChatOnboardingManager handles the conversational flow and marks complete.
+	await updateOnboardingState('welcome', inviteCode ? { invite_code: inviteCode } : undefined);
 }
 
 // ============================================================================

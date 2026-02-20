@@ -16,7 +16,7 @@ Last updated: 2026-02-20T12:00:00Z
 Total: 320 tools (311 in-repo + 9 mesh MCP)
 
 ## Known Issues
-- tarx-observer-mcp-server: MISSING FROM DISK — directory does not exist (2026-02-20)
+- tarx-observer-mcp-server: DELETED (commit 0a85116). 8 tools retired. All doc references cleaned up (2026-02-20)
 - @sentry/browser: NEVER import in renderer — bare specifiers fail in ESM. Use globalThis.Sentry stubs (2026-02-20)
 - Embedding server: llama-server (NOT Ollama) — auto-managed as sidecar by tarxEmbeddingSidecarService.ts (2026-02-20)
 

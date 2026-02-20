@@ -95,6 +95,10 @@
           {
             "name": "tests",
             "description": "Generate unit tests"
+          },
+          {
+            "name": "welcome",
+            "description": "Show welcome and get set up"
           }
         ]
       }

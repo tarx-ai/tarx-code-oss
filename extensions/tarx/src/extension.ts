@@ -69,7 +69,6 @@ import { registerConversationalTestCommands } from './test/conversational-test-h
 import { AuthManager, registerAuthCommands, AuthStateManager } from './auth';
 import { closeMCPDatabase, searchMCPKnowledge, getMCPKnowledgeCount, storeMCPEmbeddings } from './mcpKnowledge';
 import { TarxSidebarProvider as TarxSidebarWebviewProvider } from './webview/TarxSidebarProvider';
-import { AgentHubWebviewProvider } from './webview/AgentHubWebviewProvider';
 import { registerClaudeSessionsProvider, ClaudeSessionsProvider } from './claudeSessionsProvider';
 // project-creation import removed  - conversational-first
 import { registerSectionsSidebar, TarxSectionsSidebarProvider } from './sidebar-sections';
@@ -107,6 +106,7 @@ import {
 	handleProjectIntent,
 	registerConversationalCommands
 } from './chat/conversationalFlows.js';
+import { ChatOnboardingManager } from './onboarding/chat-onboarding.js';
 // TARX Model Router - Feb 2026
 import {
 	routeMessage,
@@ -800,28 +800,6 @@ export async function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
-	// ===============================================================
-	// AGENT HUB WEBVIEW PROVIDER - Agent marketplace & management
-	// ===============================================================
-	try {
-		console.log('[TARX] Registering Agent Hub webview provider...');
-		const agentHubProvider = new AgentHubWebviewProvider(context.extensionUri);
-		context.subscriptions.push(
-			vscode.window.registerWebviewViewProvider(
-				AgentHubWebviewProvider.viewType,
-				agentHubProvider,
-				{
-					webviewOptions: {
-						retainContextWhenHidden: true
-					}
-				}
-			)
-		);
-		console.log('[TARX] Agent Hub webview provider registered');
-	} catch (err) {
-		const errMsg = err instanceof Error ? err.stack || err.message : String(err);
-		console.error('[TARX CRASH-GUARD] Failed to register Agent Hub provider:', errMsg);
-	}
 
 	// Sync project tree provider with active project when it changes
 	if (projectTreeProvider) {
@@ -1231,6 +1209,9 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Track context files
 	const contextFiles: vscode.Uri[] = [];
 
+	// Conversational onboarding manager
+	const chatOnboarding = new ChatOnboardingManager(context);
+
 	// ========================================
 	// 1. Register Chat Participant (@tarx)
 	// ========================================
@@ -1436,6 +1417,15 @@ export async function activate(context: vscode.ExtensionContext) {
 			if (handled) {
 				return { metadata: { command: 'ftux_greeting' } };
 			}
+		}
+
+		// Onboarding intercept — conversational flow for new users
+		if (chatOnboarding.needsOnboarding() || command === 'welcome') {
+			const result = await chatOnboarding.handleMessage(request, response);
+			if (result !== null) {
+				return result; // Still onboarding — don't process as normal chat
+			}
+			// Onboarding complete — fall through to normal handler
 		}
 
 		// Conversational-First: detect settings/auth/project intents
@@ -2085,6 +2075,12 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Followup provider  - contextual suggestion chips after each response
 	chatParticipant.followupProvider = {
 		provideFollowups(result: vscode.ChatResult, _context: vscode.ChatContext, _token: vscode.CancellationToken): vscode.ChatFollowup[] {
+			// Delegate to onboarding manager when onboarding is active
+			const onboardingFollowups = chatOnboarding.getFollowups(result);
+			if (onboardingFollowups.length > 0) {
+				return onboardingFollowups;
+			}
+
 			const hasWorkspace = (vscode.workspace.workspaceFolders?.length ?? 0) > 0;
 			const isFirstMessage = _context.history.length <= 2;
 

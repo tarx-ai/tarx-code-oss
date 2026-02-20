@@ -124,7 +124,7 @@ SELECT id FROM sessions WHERE id = '${sanitizeSQL(sessionId)}'
 ### Phase 4: MCP Servers
 11. tarx-ops/src/server.ts
 12. tarx-orchestration-mcp/src/server.ts
-13. tarx-observer-mcp-server/src/storage.ts
+13. ~~tarx-observer-mcp-server/src/storage.ts~~ (REMOVED - server deleted)
 
 ### Phase 5: Test Code
 14. overnight-test.ts

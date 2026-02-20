@@ -25,9 +25,9 @@
 | tarx-core | `extensions/tarx-core/` | 51 | tsc | 1.0.0 |
 | tarx-ops | `extensions/tarx-ops/` | 50 | esbuild (ESM) | 1.0.0 |
 | tarx-ui-mcp-server | `extensions/tarx-ui-mcp-server/` | 168 | esbuild (ESM) | 2.0.0 |
-| tarx-observer | `extensions/tarx-observer-mcp-server/` | 8 | tsc | 1.0.0 |
+**Total: 269 tools across 3 active servers**
 
-**Total: 277 tools across 4 active servers**
+*Note: tarx-observer (8 tools) was deleted in commit 0a85116 (Feb 2026). See TARX_SYSTEM_KNOWLEDGE.md.*
 
 ---
 
@@ -345,26 +345,11 @@ End-to-end UI automation and testing server. Modular tool registry across 18 cat
 
 ---
 
-## Server 4: tarx-observer-mcp-server — 8 tools
-
-Passive intelligence layer for user preference learning and cognitive growth tracking.
-
-| # | Tool Name | Description |
-|---|-----------|-------------|
-| 1 | `observer_status` | Observer status: interactions, preferences, domains, gaps, queue |
-| 2 | `observer_insights` | User insights by category: preferences, domain, gaps, growth |
-| 3 | `observer_preferences` | View/update/delete learned preferences |
-| 4 | `observer_correct` | Correct a model belief, creates training pair |
-| 5 | `observer_forget` | Remove preference/domain/gap/interaction from memory |
-| 6 | `observer_growth` | Cognitive growth dashboard: self-sufficiency, domain depth, trends |
-| 7 | `observer_train` | Trigger training run (dry run or real) |
-| 8 | `observer_export` | Export curated training data as JSONL/JSON |
-
 ---
 
 ## Extension Inventory
 
-### Active Extensions (10)
+### Active Extensions (9)
 
 | Extension | Type | Directory | Version | Purpose |
 |-----------|------|-----------|---------|---------|
@@ -372,7 +357,6 @@ Passive intelligence layer for user preference learning and cognitive growth tra
 | tarx-core | MCP Server | `extensions/tarx-core/` | 1.0.0 | Inference, memory, sessions, files/RAG, sidebar (51 tools) |
 | tarx-ops | MCP Server | `extensions/tarx-ops/` | 1.0.0 | Admin, Sentry, orchestration, daemon (50 tools) |
 | tarx-ui-mcp-server | MCP Server | `extensions/tarx-ui-mcp-server/` | 2.0.0 | UI automation, testing, screenshot/OCR (168 tools) |
-| tarx-observer | MCP Server | `extensions/tarx-observer-mcp-server/` | 1.0.0 | Passive intelligence, training curation (8 tools) |
 | tarx-local | VS Code Extension | `extensions/tarx-local/` | 1.0.0 | Local llama-server + embedding server management |
 | tarx-shared | Shared Library | `extensions/tarx-shared/` | 1.0.0 | @tarx/shared-db — centralized SQLite module |
 | tarx-skills-provider | VS Code Extension | `extensions/tarx-skills-provider/` | 1.0.0 | Skills registry, intent classification |
@@ -493,7 +477,7 @@ Passive intelligence layer for user preference learning and cognitive growth tra
 - tarx-core: 51 (merged mcp-server + claude-memory, added smart endpoints + file org + training)
 - tarx-ops: 50 (merged admin + orchestration, added daemon + work dispatch)
 - tarx-ui-mcp-server: 168 (expanded from 9 legacy to full UI automation suite)
-- tarx-observer: 8 (standalone, unchanged)
+- tarx-observer: REMOVED (deleted in 0a85116, 8 tools retired)
 
 ### Key Changes
 - Voice tools (9) dropped from core — deferred to future tarx-voice server
