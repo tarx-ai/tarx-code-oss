@@ -93,8 +93,6 @@ import { registerBridgeTestCommands } from './test-bridge';
 import { checkSkillsFirst } from './skillsBridge';
 // TARX Agent Hub - Conversational agent management
 import { detectAgentIntent, handleListAgents, handleRunAgent, handleAgentStatus, handleCreateAgent, handleToggleAgent } from './agents/agentHub';
-// TARX Autonomic Daemon - Feb 2026
-import { startDaemon, stopDaemon, getDaemon } from './daemon';
 // TARX QA Test Harness - Feb 2026
 import { runQATests, runStartupChecks } from './test/qa-harness';
 // TARX Context Protocol — Phase 1 (Feb 2026)
@@ -5242,40 +5240,6 @@ async function initAutonomicDaemon(context: vscode.ExtensionContext): Promise<vo
 		return;
 	}
 
-	try {
-		console.log('[TARX Autonomic] Starting daemon...');
-		await startDaemon();
-		console.log('[TARX Autonomic] Daemon started successfully');
-
-		// Register daemon commands
-		context.subscriptions.push(
-			vscode.commands.registerCommand('tarx.autonomic.status', async () => {
-				const daemon = getDaemon();
-				const state = daemon.getState();
-				const uptimeMin = Math.floor((Date.now() - state.startedAt) / 60000);
-				vscode.window.showInformationMessage(
-					`TARX Autonomic: ${state.mode} | ` +
-					`Node: ${state.nodeId.substring(0, 8)}... | ` +
-					`Uptime: ${uptimeMin}m | ` +
-					`Healed: ${state.errorsHealed}/${state.errorsAnalyzed} | ` +
-					`Rep: ${state.reputation.toFixed(2)}`
-				);
-			}),
-			vscode.commands.registerCommand('tarx.autonomic.stop', async () => {
-				const daemon = getDaemon();
-				daemon.emergencyStop();
-				vscode.window.showWarningMessage('TARX Autonomic: Emergency stop activated - observe only mode');
-			}),
-			vscode.commands.registerCommand('tarx.autonomic.dashboard', async () => {
-				// Open the admin dashboard in browser
-				const dashboardUrl = 'http://localhost:11439';
-				vscode.env.openExternal(vscode.Uri.parse(dashboardUrl));
-			})
-		);
-	} catch (e) {
-		console.error('[TARX Autonomic] Failed to start daemon:', e);
-	}
-
 	// ================================================================
 	// GROK DISPATCH  - Background orchestration hook
 	// Spawns scripts/grok-dispatch.js, registers session, watches inbox.
@@ -5494,10 +5458,6 @@ export function deactivate() {
 	proactiveSystem?.dispose();
 	creditBridge?.dispose();
 
-	// Stop Autonomic Daemon
-	stopDaemon().catch(e => {
-		console.error('[TARX Autonomic] Failed to stop daemon:', e);
-	});
 
 	// Stop Grok Dispatch
 	if (grokDispatchProcess) {
