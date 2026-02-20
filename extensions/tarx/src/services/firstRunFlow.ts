@@ -2,8 +2,8 @@
  *  Copyright (c) TARX AI. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *
- *  TARX First-Run Orchestration Flow
- *  - FTUX webview panel (invite code → profile → ready)
+ *  TARX First-Run Orchestration Flow (Conversational-First)
+ *  - Opens @tarx chat with greeting (no webview panel)
  *  - Hardware detection → Model selection → Download → Ready
  *  - Non-blocking toast notifications
  *--------------------------------------------------------------------------------------------*/
@@ -13,7 +13,7 @@ import { FirstRunManager } from './firstRunManager';
 import { detectHardware, selectModel, getModelSize } from './hardwareDetection';
 import { trackModelDownload, checkModelExists } from './modelDownload';
 import { toastManager } from './toastManager';
-import { TarxFTUXPanel } from '../onboarding/ftux-panel.js';
+import { runConversationalFTUX } from '../chat/conversationalFlows.js';
 
 const INVITE_VALIDATED_KEY = 'tarx.inviteValidated';
 
@@ -36,21 +36,13 @@ export async function executeFirstRunFlow(
 		return;
 	}
 
-	console.log('[TARX] First run detected — launching FTUX');
+	console.log('[TARX] First run detected - launching conversational onboarding');
 
 	try {
-		// Step 1: Show the branded FTUX webview panel
-		const ftux = new TarxFTUXPanel(context);
-		const result = await ftux.show();
+		// Step 1: Open @tarx chat with greeting (conversational-first)
+		await runConversationalFTUX(context);
 
-		if (!result.completed) {
-			console.log('[TARX] FTUX dismissed without completion');
-			return;
-		}
-
-		console.log(`[TARX] FTUX completed (skipped: ${result.skipped})`);
-
-		// Step 2: Hardware detection + model setup (runs after FTUX)
+		// Step 2: Hardware detection + model setup (runs in background)
 		const hardware = await detectHardware();
 
 		await toastManager.show('model-select', {
@@ -71,18 +63,9 @@ export async function executeFirstRunFlow(
 			console.log(`[TARX] Model ${model} already exists, skipping download`);
 		}
 
-		// Step 4: Model loading notification
-		await toastManager.show('loading', {
-			message: 'Loading model into memory...',
-			duration: 3000,
-			type: 'info'
-		});
-
-		await new Promise(resolve => setTimeout(resolve, 2000));
-
-		// Step 5: Ready notification
+		// Step 4: Ready notification
 		await toastManager.show('ready', {
-			message: 'TARX is ready! Press Cmd+Shift+T to start chatting.',
+			message: 'TARX is ready! Chat with @tarx to get started.',
 			duration: 5000,
 			type: 'info'
 		});

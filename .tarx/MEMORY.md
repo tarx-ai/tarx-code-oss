@@ -26,6 +26,9 @@ Total: 320 tools (311 in-repo + 9 mesh MCP)
 - MCP consolidation complete: 5 servers, zero name collisions (2026-02-20)
 - Sentry: @sentry/node in main+exthost, no-op stubs in renderer (2026-02-20)
 - Persistence: SQLite via tarx-core MCP is database of record (2026-02-20)
+- Agent Hub: conversational-only via @tarx participant, JSON defs in .tarx/agents/*.json, no webview (2026-02-20)
+- Project context: read from .tarx/context.md (preferred) or .tarx/instructions.md (fallback) (2026-02-20)
+- FTUX handoff: tarx.chat.send → workbench.action.chat.open with @tarx prefix (2026-02-20)
 
 ## Build Pipeline Reminder
 1. Webview bundle FIRST: `cd extensions/tarx && node esbuild.webview.js --production`

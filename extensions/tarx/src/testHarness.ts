@@ -38,6 +38,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as http from 'http';
+import * as path from 'path';
+import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { HealthService, HealthStatus } from './healthService';
 import { TarxClient } from './tarxClient';
@@ -53,7 +55,8 @@ import {
 	MCPSpace,
 	MCPSession
 } from './mcpKnowledge';
-import { ProjectContextPanel } from './projectContextPanel';
+// ProjectContextPanel REMOVED -conversational-first (Feb 2026)
+const ProjectContextPanel = { currentPanel: undefined as any, viewType: 'tarx.projectContext' };
 import { detectActionIntent, handleActionIntent } from './claude-bridge';
 import { TARX_SYSTEM_PROMPT_V2 } from './systemPrompt';
 
@@ -137,7 +140,7 @@ export class TestHarnessService implements vscode.Disposable {
 			// Register error handler BEFORE calling listen() to catch EADDRINUSE immediately
 			this.server.on('error', (err: NodeJS.ErrnoException) => {
 				if (err.code === 'EADDRINUSE') {
-					// Port already in use — likely another instance. Silent fallback.
+					// Port already in use -likely another instance. Silent fallback.
 					console.warn(`[TARX Harness] Port ${HARNESS_PORT} in use, skipping harness startup`);
 					return;
 				}
@@ -795,7 +798,7 @@ export class TestHarnessService implements vscode.Disposable {
 					});
 					return;
 				}
-				// Action detected but failed or unknown — fall through to LLM
+				// Action detected but failed or unknown -fall through to LLM
 			}
 
 			// Send through VS Code chat command
@@ -1683,7 +1686,7 @@ export class TestHarnessService implements vscode.Disposable {
 	}
 
 	/**
-	 * POST /ui/panel/save-instructions - Save instructions via panel
+	 * POST /ui/panel/save-instructions - Save project context to .tarx/context.md
 	 */
 	private async handleUIPanelSaveInstructions(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
 		try {
@@ -1695,24 +1698,29 @@ export class TestHarnessService implements vscode.Disposable {
 				return;
 			}
 
-			const panel = ProjectContextPanel.currentPanel;
-			if (!panel) {
-				this.sendError(res, 400, 'Panel not open. Open panel first via /ui/panel/open');
+			const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+			if (!workspaceFolder) {
+				this.sendError(res, 400, 'No workspace folder open');
 				return;
 			}
 
-			// Save instructions using public method
-			const saved = await panel.saveInstructions(content);
+			const tarxDir = path.join(workspaceFolder.uri.fsPath, '.tarx');
+			const contextPath = path.join(tarxDir, 'context.md');
 
-			console.log(`[TARX Harness] Instructions saved: ${saved}, length: ${content.length}`);
+			if (!fs.existsSync(tarxDir)) {
+				fs.mkdirSync(tarxDir, { recursive: true });
+			}
+			fs.writeFileSync(contextPath, content, 'utf-8');
+
+			console.log(`[TARX Harness] Context saved to ${contextPath}, length: ${content.length}`);
 
 			this.sendJson(res, {
-				success: saved,
+				success: true,
 				contentLength: content.length,
 				timestamp: Date.now()
 			});
 		} catch (error) {
-			const errorMsg = error instanceof Error ? error.message : 'Failed to save instructions';
+			const errorMsg = error instanceof Error ? error.message : 'Failed to save context';
 			this.sendJson(res, { success: false, error: errorMsg });
 		}
 	}
@@ -2626,7 +2634,7 @@ export class TestHarnessService implements vscode.Disposable {
 	}
 
 	private async handleScreenshotCaptureRegion(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-		// For now, capture full screen — region cropping can be added later
+		// For now, capture full screen -region cropping can be added later
 		await this.handleScreenshotCapture(res, 'region');
 	}
 
@@ -2812,7 +2820,7 @@ export class TestHarnessService implements vscode.Disposable {
 	}
 
 	// =============================================
-	// v3 HANDLERS — Sidebar Extended
+	// v3 HANDLERS -Sidebar Extended
 	// =============================================
 
 	private async handleSidebarSearchHistory(url: URL, res: http.ServerResponse): Promise<void> {
@@ -2857,7 +2865,7 @@ export class TestHarnessService implements vscode.Disposable {
 	}
 
 	// =============================================
-	// v3 HANDLERS — Chat Extended
+	// v3 HANDLERS -Chat Extended
 	// =============================================
 
 	private async handleChatSelectParticipant(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -2903,7 +2911,7 @@ export class TestHarnessService implements vscode.Disposable {
 	}
 
 	// =============================================
-	// v3 HANDLERS — Command & QuickOpen Extended
+	// v3 HANDLERS -Command & QuickOpen Extended
 	// =============================================
 
 	private async handleCommandSearch(url: URL, res: http.ServerResponse): Promise<void> {
@@ -2952,7 +2960,7 @@ export class TestHarnessService implements vscode.Disposable {
 	}
 
 	// =============================================
-	// v3 HANDLERS — Editor Decorations
+	// v3 HANDLERS -Editor Decorations
 	// =============================================
 
 	private _decorationType: vscode.TextEditorDecorationType | null = null;
@@ -2985,7 +2993,7 @@ export class TestHarnessService implements vscode.Disposable {
 	}
 
 	// =============================================
-	// v3 HANDLERS — Terminal Extended
+	// v3 HANDLERS -Terminal Extended
 	// =============================================
 
 	private async handleTerminalState(url: URL, res: http.ServerResponse): Promise<void> {
@@ -3043,7 +3051,7 @@ export class TestHarnessService implements vscode.Disposable {
 	}
 
 	// =============================================
-	// v3 HANDLERS — Explorer Extended
+	// v3 HANDLERS -Explorer Extended
 	// =============================================
 
 	private async handleExplorerExpand(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -3087,7 +3095,7 @@ export class TestHarnessService implements vscode.Disposable {
 	}
 
 	// =============================================
-	// v3 HANDLERS — SCM Extended
+	// v3 HANDLERS -SCM Extended
 	// =============================================
 
 	private async handleScmUnstage(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -3119,7 +3127,7 @@ export class TestHarnessService implements vscode.Disposable {
 	}
 
 	// =============================================
-	// v3 HANDLERS — Debug Extended
+	// v3 HANDLERS -Debug Extended
 	// =============================================
 
 	private async handleDebugPause(res: http.ServerResponse): Promise<void> {
@@ -3151,7 +3159,7 @@ export class TestHarnessService implements vscode.Disposable {
 	}
 
 	// =============================================
-	// v3 HANDLERS — Extensions Extended
+	// v3 HANDLERS -Extensions Extended
 	// =============================================
 
 	private async handleExtensionsSearch(url: URL, res: http.ServerResponse): Promise<void> {
@@ -3191,7 +3199,7 @@ export class TestHarnessService implements vscode.Disposable {
 	}
 
 	// =============================================
-	// v3 HANDLERS — Settings & Keybindings
+	// v3 HANDLERS -Settings & Keybindings
 	// =============================================
 
 	private async handleSettingsSearch(url: URL, res: http.ServerResponse): Promise<void> {
@@ -3218,7 +3226,7 @@ export class TestHarnessService implements vscode.Disposable {
 	}
 
 	// =============================================
-	// v3 HANDLERS — Layout & Notifications
+	// v3 HANDLERS -Layout & Notifications
 	// =============================================
 
 	private async handleLayoutGet(res: http.ServerResponse): Promise<void> {
@@ -3239,7 +3247,7 @@ export class TestHarnessService implements vscode.Disposable {
 	}
 
 	// =============================================
-	// v3 HANDLERS — View Extended
+	// v3 HANDLERS -View Extended
 	// =============================================
 
 	private async handleViewClose(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -3267,7 +3275,7 @@ export class TestHarnessService implements vscode.Disposable {
 	}
 
 	// =============================================
-	// v3 HANDLERS — Window Extended
+	// v3 HANDLERS -Window Extended
 	// =============================================
 
 	private async handleWindowWorkspaceOpen(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -3294,7 +3302,7 @@ export class TestHarnessService implements vscode.Disposable {
 	}
 
 	// =============================================
-	// v3 HANDLERS — StatusBar
+	// v3 HANDLERS -StatusBar
 	// =============================================
 
 	private async handleStatusBarClick(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -3326,7 +3334,7 @@ export class TestHarnessService implements vscode.Disposable {
 	}
 
 	// =============================================
-	// v3 HANDLERS — Theme Extended
+	// v3 HANDLERS -Theme Extended
 	// =============================================
 
 	private async handleThemeIconSet(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -3343,7 +3351,7 @@ export class TestHarnessService implements vscode.Disposable {
 	}
 
 	// =============================================
-	// v3 HANDLERS — Screenshot Extended
+	// v3 HANDLERS -Screenshot Extended
 	// =============================================
 
 	private async handleScreenshotCompare(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -3405,7 +3413,7 @@ export class TestHarnessService implements vscode.Disposable {
 	}
 
 	// =============================================
-	// v3 HANDLERS — Test Runner
+	// v3 HANDLERS -Test Runner
 	// =============================================
 
 	private testResults: Map<string, any> = new Map();

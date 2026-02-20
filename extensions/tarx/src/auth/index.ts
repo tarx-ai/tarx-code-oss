@@ -18,4 +18,4 @@ export { SmsAuth, SmsAuthState } from './smsAuth';
 export { AuthManager, AuthState, registerAuthCommands } from './authManager';
 export { AuthStateManager } from './authState';
 export type { AuthState as AuthFlowState } from './authState';
-export { AuthChatView } from './authChatView';
+// AuthChatView REMOVED - conversational-first (Feb 2026), auth uses showInputBox
