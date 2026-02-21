@@ -30,3 +30,8 @@ finetune-env/
 
 # Large model adapters
 training/tarx-adapters/*.safetensors
+
+# Environment secrets
+.env
+.env.local
+.env.*.local

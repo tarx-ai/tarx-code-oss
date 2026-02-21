@@ -1,2 +1,18 @@
 #!/usr/bin/env node
-require('../dist/cli.js');
+
+// Route: if first arg matches a dispatch-layer command, use index.ts
+// Otherwise fall through to the original commander-based CLI
+const dispatchCommands = ['dispatch', 'heal', 'notify', 'taxonomy', 'strategy'];
+const arg = process.argv[2];
+
+if (arg && dispatchCommands.includes(arg)) {
+  require('../dist/index.js');
+} else if (arg === 'status') {
+  // Enhanced status with circuit breaker info
+  require('../dist/index.js');
+} else if (arg === 'log') {
+  require('../dist/index.js');
+} else {
+  // Original CLI (chat, doctor, health, one-shot, REPL)
+  require('../dist/cli.js');
+}
