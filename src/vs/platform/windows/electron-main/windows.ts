@@ -182,6 +182,9 @@ export function defaultBrowserWindowOptions(accessor: ServicesAccessor, windowSt
 
 	if (isMacintosh) {
 		options.acceptFirstMouse = true; // enabled by default
+		options.transparent = true; // allow CSS border-radius to define visible corners (26px)
+		options.hasShadow = true; // keep native macOS drop shadow
+		options.backgroundColor = '#00000000'; // fully transparent behind CSS-rounded content
 
 		if (windowSettings?.clickThroughInactive === false) {
 			options.acceptFirstMouse = false;

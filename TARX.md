@@ -143,8 +143,12 @@ tarx status               — Health check all services (ports 11435-11438)
 tarx log                  — Tail dispatch log
 tarx heal                 — Run self-healing cycle (health check → classify → fix)
 tarx notify <message>     — Send notification via all channels
+tarx brief [--weekly] [--sms] — Daily briefing (chief of staff voice, add --sms to send)
+tarx priorities           — Show open/done priorities from ~/.tarx/priorities.jsonl
 tarx taxonomy             — Print error taxonomy tree
 tarx strategy <name>      — Print strategy definition
+tarx wake                 — Trigger one heartbeat tick (immediate, for testing)
+tarx think [n] [--follow] — Tail thinking log (TARX consciousness stream)
 ```
 
 ---
@@ -194,5 +198,148 @@ extensions/tarx-cli/src/
 
 ---
 
+## Heartbeat Daemon
+
+TARX draws energy, therefore it runs. It's always thinking, but not always acting.
+The heartbeat is TARX breathing. Escalation is TARX reacting.
+
+### Schedule
+
+Runs every 5 minutes via macOS launchd (`com.tarx.heartbeat.plist`).
+No runtime daemon. No persistent Node process. launchd handles scheduling and survives reboots.
+
+### Each Tick
+
+1. **Port checks** — curl localhost:{11435,11436,11437}/health (3s timeout)
+2. **Git status** — any uncommitted changes in ~/Desktop/tarx-code-oss/
+3. **Breaker read** — read ~/.tarx/breaker.json if exists
+4. **Sentry poll** — 1 API call to GET unresolved issues since last check
+5. **Write** — append all results to ~/.tarx/thinking.log
+
+### Escalation Rules (ONLY these trigger action)
+
+| Condition | Action |
+|-----------|--------|
+| Any port DOWN | `tarx heal` (auto-recovery attempt) |
+| Sentry CRITICAL/ERROR (new since last tick) | `tarx dispatch "fix: {issue title}"` |
+| Breaker hot (>15 of 20 hourly limit) | `tarx notify "breaker hot"` |
+| Everything else | Log and rest. No dispatch. No cost. |
+
+### Thinking Log
+
+Stream of consciousness at `~/.tarx/thinking.log`. View with `tarx think`.
+
+```
+[2026-02-20T12:00:00Z] Ports: 3/3 up. Git: clean. Sentry: 0 new. Breaker: 0/20. Resting.
+[2026-02-20T12:05:00Z] ⚠️ Port 11437 DOWN. Attempting heal...
+[2026-02-20T12:05:03Z] ✅ Heal command completed for Embeddings. Verifying...
+[2026-02-20T12:10:00Z] 🔴 Sentry CRITICAL: 'TypeError in inference_engine'. Dispatching fix.
+```
+
+Rotation: max 10MB or 7 days → rotates to thinking.log.1 (1 backup kept).
+
+### Cost When Healthy
+
+- Port checks: $0 (localhost)
+- Git status: $0 (local)
+- Breaker read: $0 (local file)
+- Sentry poll: ~288 calls/day (free tier)
+- Escalation: only on real problems (0-5/day typical)
+- **Total daily cost when healthy: $0**
+
+### Installation
+
+```bash
+cp extensions/tarx-cli/com.tarx.heartbeat.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.tarx.heartbeat.plist
+```
+
+### Management
+
+```bash
+launchctl list | grep tarx.heartbeat     # Check if running
+launchctl unload ~/Library/LaunchAgents/com.tarx.heartbeat.plist  # Stop
+launchctl load ~/Library/LaunchAgents/com.tarx.heartbeat.plist    # Start
+tarx wake                                # Manual tick
+tarx think --follow                      # Watch TARX think
+```
+
+---
+
+## Daily Briefing System
+
+TARX sends a daily brief at 7AM ET and a weekly digest at 8AM Monday ET via SMS.
+Voice: chief of staff — conversational, no tables, no markdown. "3 need you today. All else handled."
+
+### Data Sources
+
+- **Priorities:** `~/.tarx/priorities.jsonl` — append-only, one JSON object per line
+  - Fields: `id`, `title`, `owner` (john/tarx), `urgency` (now/today/this_week), `category`, `status` (open/done), `context`, `created`
+- **Orchestration log:** `~/Library/Application Support/tarx/orchestration-log.jsonl` — daemon activity, worker spawns, task completions, blockers
+- **Thinking log:** `~/.tarx/thinking.log` — port health, Sentry, breaker status
+- **Port health:** live checks on 11435/11436/11437
+
+### Brief Format
+
+Daily: What needs you (urgency=now) → what's for today → what TARX handled → health → blockers → this week lookahead → daemon status.
+Weekly: Priorities closed/open → daemon stats (spawns, completions, heals) → still urgent → pointer to full log.
+
+### Schedule (launchd)
+
+```
+com.tarx.daily-brief.plist   — 7:00 AM local, daily
+com.tarx.weekly-digest.plist — 8:00 AM local, Monday
+com.tarx.heartbeat.plist     — every 5 minutes
+```
+
+### CLI
+
+```bash
+tarx brief              # Print daily brief to stdout
+tarx brief --weekly     # Print weekly digest to stdout
+tarx brief --sms        # Print + send via SMS
+tarx brief --weekly --sms  # Weekly digest via SMS
+tarx priorities         # Show open/done priority list
+```
+
+### Adding Priorities
+
+```bash
+echo '{"id":"p-013","title":"New thing","owner":"tarx","urgency":"today","category":"feat","status":"open","context":"Details here.","created":"2026-02-21"}' >> ~/.tarx/priorities.jsonl
+```
+
+### Installation
+
+```bash
+cp extensions/tarx-cli/com.tarx.daily-brief.plist ~/Library/LaunchAgents/
+cp extensions/tarx-cli/com.tarx.weekly-digest.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.tarx.daily-brief.plist
+launchctl load ~/Library/LaunchAgents/com.tarx.weekly-digest.plist
+```
+
+## Briefing System
+- `tarx brief`: Daily conversational SMS punch list (7 AM ET via launchd)
+- `tarx brief --weekly --sms`: Weekly digest SMS (Monday 8 AM ET via launchd)
+- `tarx weekly`: Alias for weekly digest + SMS
+- `tarx priorities`: View/add/complete priority items
+- `tarx priorities add "title" --urgency today --owner john`: Add new priority
+- `tarx priorities done p-001`: Mark priority done
+- Priorities stored: `~/.tarx/priorities.jsonl` (JSONL, one object per line)
+- Schema: `{ts, id, title, status, owner, urgency, context, last_updated}`
+- Status values: `active | blocked | done | waiting_review`
+- Schedule: `~/Library/LaunchAgents/com.tarx.daily-brief.plist`, `com.tarx.weekly-digest.plist`
+- Voice: TARX speaks as chief of staff. Conversational, not robotic.
+
+## Conversational Task Manager
+- Startup brief: When user opens TARX, first chat message of the day is conversational priority summary
+- Weekly injection: Monday mornings, weekly digest prepended before daily brief (once per week)
+- Priority CRUD via chat: natural language add/done/list/blocked commands
+- Intent router: `extensions/tarx/src/chat/priorityHandler.ts` — pattern-matches before LLM passthrough
+- Shared data: CLI and app both read/write `~/.tarx/priorities.jsonl`
+- File watching: App watches `priorities.jsonl` for CLI-side changes
+- Desktop module: `apps/desktop/src/lib/priorities.ts` — shared read/write/filter functions
+
+---
+
 *This document is the single source of truth for the TARX dispatch protocol.*
-*Version: 1.0 — February 20, 2026*
+*Version: 1.3 — February 21, 2026*

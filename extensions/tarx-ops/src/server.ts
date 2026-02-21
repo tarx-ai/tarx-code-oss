@@ -139,6 +139,46 @@ function creator_only<T>(toolName: string, handler: ToolHandler<T>): ToolHandler
 }
 
 // =============================================================================
+// MCP PROFILE FILTERING
+// =============================================================================
+
+const TOOL_PROFILES: Record<string, string[] | null> = {
+  synthesis: [
+    'memory_store_observation', 'memory_search_index', 'memory_get',
+    'tarx_session_context', 'tarx_search_knowledge',
+  ],
+  orchestration: [
+    'tarx_orchestrate_register_session', 'tarx_orchestrate_assign_task',
+    'tarx_orchestrate_task_update', 'tarx_orchestrate_task_list',
+    'tarx_orchestrate_status_report', 'tarx_orchestrate_push_context',
+    'tarx_daemon_start', 'tarx_daemon_stop', 'tarx_daemon_status',
+    'tarx_admin_start_code_session', 'tarx_admin_list_code_sessions',
+    'tarx_admin_list_active_tools',
+  ],
+  admin: [
+    'tarx_admin_status', 'tarx_admin_performance_metrics',
+    'tarx_admin_sentry_projects', 'tarx_admin_sentry_events',
+    'tarx_admin_sentry_issues', 'tarx_admin_sentry_search',
+    'tarx_admin_sentry_event_details', 'tarx_admin_sentry_issue_events',
+    'tarx_admin_sentry_trace',
+    'tarx_admin_read_console', 'tarx_admin_tail_console',
+    'tarx_admin_datadog_status', 'tarx_admin_datadog_flush',
+    'tarx_admin_datadog_record_inference',
+    'tarx_admin_list_active_tools',
+  ],
+  full: null, // register everything — default
+};
+
+const ACTIVE_PROFILE = process.env.MCP_PROFILE || 'full';
+const activeProfileList = TOOL_PROFILES[ACTIVE_PROFILE] ?? null;
+const registeredTools: string[] = [];
+
+function shouldRegisterTool(name: string): boolean {
+  if (activeProfileList === null) return true; // full profile
+  return activeProfileList.includes(name);
+}
+
+// =============================================================================
 // MCP SERVER
 // =============================================================================
 
@@ -147,9 +187,14 @@ const server = new McpServer({
   version: "1.0.0",
 });
 
-// Auto-wrap ALL tool handlers with creator_only + audit logging
+// Auto-wrap ALL tool handlers with creator_only + audit logging.
+// When a profile is active, skip registration for non-matching tools.
 const _originalTool = server.tool.bind(server);
 server.tool = function (name: string, ...rest: unknown[]) {
+  if (!shouldRegisterTool(name) && name !== 'tarx_admin_list_active_tools') {
+    return; // silently skip — tool not in active profile
+  }
+  registeredTools.push(name);
   const handler = rest[rest.length - 1] as ToolHandler<unknown>;
   rest[rest.length - 1] = creator_only(name, handler);
   return (_originalTool as Function).call(server, name, ...rest);
@@ -3250,6 +3295,28 @@ server.tool(
 );
 
 // =============================================================================
+// 53. tarx_admin_list_active_tools — debug tool for profile verification
+// =============================================================================
+
+server.tool(
+  "tarx_admin_list_active_tools",
+  "List all currently registered tool names for this server instance (useful for verifying MCP_PROFILE filtering)",
+  {},
+  async () => {
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          profile: ACTIVE_PROFILE,
+          tool_count: registeredTools.length,
+          tools: registeredTools,
+        }, null, 2),
+      }],
+    };
+  }
+);
+
+// =============================================================================
 // SERVER STARTUP
 // =============================================================================
 
@@ -3260,8 +3327,8 @@ async function main() {
   // Start Datadog metrics flush timer
   Datadog.start();
 
-  console.error("TARX Ops MCP Server v1.2.0 started");
-  console.error(`  - 55 tools available (44 ops + 3 daemon + 2 gtm + 3 datadog + 3 tether)`);
+  console.error(`TARX Ops MCP Server v1.2.0 started (profile: ${ACTIVE_PROFILE})`);
+  console.error(`  - ${registeredTools.length} tools registered${ACTIVE_PROFILE !== 'full' ? ` (filtered from 55)` : ''}`);
   console.error(`  - Sentry: ${SENTRY_TOKEN ? `${SENTRY_ORG} (${ALL_PROJECTS.join(", ")})` : "NOT CONFIGURED"}`);
   console.error(`  - Datadog: ${process.env.DD_API_KEY ? `${process.env.DD_SITE || "datadoghq.com"}` : "NOT CONFIGURED (set DD_API_KEY)"}`);
   console.error(`  - Database: ${DB_PATH}`);

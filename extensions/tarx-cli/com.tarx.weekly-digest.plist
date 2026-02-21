@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.tarx.weekly-digest</string>
+
+	<key>ProgramArguments</key>
+	<array>
+		<string>/opt/homebrew/bin/node</string>
+		<string>/Users/master/Desktop/tarx-code-oss/extensions/tarx-cli/dist/index.js</string>
+		<string>brief</string>
+		<string>--weekly</string>
+		<string>--sms</string>
+	</array>
+
+	<key>StartCalendarInterval</key>
+	<dict>
+		<key>Weekday</key>
+		<integer>1</integer>
+		<key>Hour</key>
+		<integer>8</integer>
+		<key>Minute</key>
+		<integer>0</integer>
+	</dict>
+
+	<key>StandardErrorPath</key>
+	<string>/Users/master/.tarx/digest-error.log</string>
+
+	<key>StandardOutPath</key>
+	<string>/Users/master/.tarx/digest-output.log</string>
+
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+		<key>HOME</key>
+		<string>/Users/master</string>
+	</dict>
+
+	<key>Nice</key>
+	<integer>10</integer>
+
+	<key>ProcessType</key>
+	<string>Background</string>
+</dict>
+</plist>

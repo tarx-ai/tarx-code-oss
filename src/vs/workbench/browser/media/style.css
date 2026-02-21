@@ -43,6 +43,7 @@ body {
 	font-size: 11px;
 	user-select: none;
 	-webkit-user-select: none;
+	background: transparent;
 }
 
 .monaco-workbench {

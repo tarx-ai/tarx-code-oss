@@ -93,6 +93,12 @@ import { registerBridgeTestCommands } from './test-bridge';
 import { checkSkillsFirst } from './skillsBridge';
 // TARX Agent Hub - Conversational agent management
 import { detectAgentIntent, handleListAgents, handleRunAgent, handleAgentStatus, handleCreateAgent, handleToggleAgent } from './agents/agentHub';
+// TARX Priority Handler - Conversational task management
+import {
+	detectPriorityIntent, handleShowBrief, handleAddPriority,
+	handleMarkDone, handleShowBlocked, handleShowThinking,
+	handleWeeklyDigest, isFirstMessageToday, generateStartupBrief
+} from './chat/priorityHandler.js';
 // TARX QA Test Harness - Feb 2026
 import { runQATests, runStartupChecks } from './test/qa-harness';
 // TARX Context Protocol — Phase 1 (Feb 2026)
@@ -1488,6 +1494,34 @@ export async function activate(context: vscode.ExtensionContext) {
 			// Onboarding complete — fall through to normal handler
 		}
 
+		// Startup brief — prepend on first message of the day (skip if priority intent)
+		if (!command) {
+			const lastBriefDate = context.globalState.get<string>('tarx.lastBriefDate');
+			const priorityIntent = detectPriorityIntent(normalizedPrompt);
+			if (isFirstMessageToday(lastBriefDate) && !priorityIntent) {
+				try {
+					// Monday weekly injection — once per week
+					const today = new Date();
+					if (today.getDay() === 1) {
+						const lastWeeklyDate = context.globalState.get<string>('tarx.lastWeeklyDate');
+						const thisWeek = today.toISOString().slice(0, 10);
+						if (lastWeeklyDate !== thisWeek) {
+							const weekly = await handleWeeklyDigest();
+							response.markdown(weekly + '\n\n---\n\n');
+							await context.globalState.update('tarx.lastWeeklyDate', thisWeek);
+						}
+					}
+
+					// Daily brief
+					const brief = await generateStartupBrief();
+					response.markdown(brief + '\n\n---\n\n');
+					await context.globalState.update('tarx.lastBriefDate', new Date().toISOString().slice(0, 10));
+				} catch (e) {
+					console.warn('[TARX] Startup brief failed:', e);
+				}
+			}
+		}
+
 		// Conversational-First: detect settings/auth/project intents
 		const convIntent = detectConversationalIntent(normalizedPrompt);
 		if (convIntent) {
@@ -1510,6 +1544,50 @@ export async function activate(context: vscode.ExtensionContext) {
 			if (convIntent.type.startsWith('project_')) {
 				await handleProjectIntent(convIntent, response, context, db);
 				return { metadata: { command: `conv_${convIntent.type}` } };
+			}
+		}
+
+		// TARX Priority Handler - Check for priority/task management intents
+		{
+			const priorityIntent = detectPriorityIntent(normalizedPrompt);
+			if (priorityIntent) {
+				console.log(`[TARX] Priority intent: ${priorityIntent.type}`);
+				let priorityResult: string;
+
+				switch (priorityIntent.type) {
+					case 'show_brief':
+						priorityResult = await handleShowBrief();
+						break;
+					case 'add':
+						priorityResult = handleAddPriority(priorityIntent.title, priorityIntent.urgency);
+						break;
+					case 'mark_done':
+						priorityResult = handleMarkDone(priorityIntent.title);
+						break;
+					case 'show_blocked':
+						priorityResult = handleShowBlocked();
+						break;
+					case 'show_thinking':
+						priorityResult = handleShowThinking();
+						break;
+					case 'weekly_digest':
+						priorityResult = await handleWeeklyDigest();
+						break;
+				}
+
+				response.markdown(priorityResult);
+
+				// Persist to conversation history
+				if (db && activeConversation) {
+					try {
+						await db.addConversationTurn({ conversationId: activeConversation.id, role: 'user', content: normalizedPrompt, fileRefs: [], artifacts: null });
+						await db.addConversationTurn({ conversationId: activeConversation.id, role: 'assistant', content: priorityResult, fileRefs: [], artifacts: null });
+					} catch (e) {
+						console.warn('[TARX] Failed to store priority interaction:', e);
+					}
+				}
+
+				return { metadata: { command: `priority_${priorityIntent.type}` } };
 			}
 		}
 
@@ -2280,6 +2358,22 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(chatParticipant);
 	console.log('[TARX] Chat participant @tarx registered');
+
+	// File watcher: sync priorities.jsonl changes from CLI
+	try {
+		const fs = require('fs');
+		const path = require('path');
+		const priPath = path.resolve(require('os').homedir(), '.tarx/priorities.jsonl');
+		if (fs.existsSync(priPath)) {
+			const watcher = fs.watch(priPath, { persistent: false }, () => {
+				console.log('[TARX] priorities.jsonl changed (external), sidebar will pick up on next read');
+			});
+			context.subscriptions.push({ dispose: () => watcher.close() });
+			console.log('[TARX] Watching ~/.tarx/priorities.jsonl for external changes');
+		}
+	} catch (e) {
+		console.warn('[TARX] Failed to watch priorities.jsonl:', e);
+	}
 
 	// ========================================
 	// 1b. Register Language Model Provider
