@@ -12,6 +12,8 @@ import { existsSync } from 'fs';
 import { dispatch } from './dispatch';
 import { tick } from './heartbeat';
 import { generateDailyBrief, generateWeeklyDigest } from './briefing';
+import { postTweet, getUserTimeline, searchTweets, verifyConnection } from './x-api';
+import { callXAI, verifyXAI } from './xai-api';
 
 // Load .env from repo root
 const envPath = resolve(__dirname, '../../../.env');
@@ -320,6 +322,88 @@ async function main(): Promise<void> {
       break;
     }
 
+    case 'tweet': {
+      const text = args.join(' ');
+      if (!text) {
+        console.error('Usage: tarx tweet <message>');
+        process.exit(1);
+      }
+      const tweetId = await postTweet(text);
+      console.log(`Tweet posted: https://x.com/i/status/${tweetId}`);
+      break;
+    }
+
+    case 'timeline': {
+      let username = args[0] || '';
+      if (!username) {
+        console.error('Usage: tarx timeline <@username> [limit]');
+        process.exit(1);
+      }
+      username = username.replace(/^@/, '');
+      const tlLimit = parseInt(args[1], 10) || 10;
+      const tweets = await getUserTimeline(username, tlLimit);
+      if (tweets.length === 0) {
+        console.log(`No recent tweets from @${username}`);
+      } else {
+        for (const t of tweets) {
+          const date = t.created_at ? new Date(t.created_at).toLocaleDateString() : '';
+          const likes = t.public_metrics?.like_count ?? 0;
+          const rts = t.public_metrics?.retweet_count ?? 0;
+          console.log(`[${date}] ${t.text}`);
+          console.log(`  ${likes} likes, ${rts} RTs | id:${t.id}\n`);
+        }
+      }
+      break;
+    }
+
+    case 'xsearch': {
+      const query = args.join(' ');
+      if (!query) {
+        console.error('Usage: tarx xsearch <query> — search recent tweets');
+        process.exit(1);
+      }
+      const results = await searchTweets(query);
+      if (results.length === 0) {
+        console.log('No results.');
+      } else {
+        for (const t of results) {
+          const date = t.created_at ? new Date(t.created_at).toLocaleDateString() : '';
+          console.log(`[${date}] @${t.author_id}: ${t.text}`);
+          console.log(`  id:${t.id}\n`);
+        }
+      }
+      break;
+    }
+
+    case 'xstatus': {
+      console.log('Verifying X API connection...');
+      const status = await verifyConnection();
+      console.log(`  Bearer token (read):  ${status.bearer ? 'OK' : 'MISSING/INVALID'}`);
+      console.log(`  User token (write):   ${status.user ? 'OK' : 'MISSING/INVALID'}`);
+      const xaiOk = await verifyXAI();
+      console.log(`  xAI API key:          ${xaiOk ? 'OK' : 'MISSING/INVALID'}`);
+      break;
+    }
+
+    case 'xai': {
+      const xaiPrompt = args.join(' ');
+      if (!xaiPrompt) {
+        console.error('Usage: tarx xai <prompt>');
+        console.error('       tarx xai --model grok-3 "prompt here"');
+        process.exit(1);
+      }
+      // Parse optional --model flag
+      let xaiModel = 'grok-3';
+      const promptParts: string[] = [];
+      for (let i = 0; i < args.length; i++) {
+        if (args[i] === '--model' && args[i + 1]) { xaiModel = args[++i]; continue; }
+        promptParts.push(args[i]);
+      }
+      const response = await callXAI(promptParts.join(' '), { model: xaiModel });
+      console.log(response);
+      break;
+    }
+
     default: {
       console.log(`TARX CLI v1.2.0 — Dispatch Layer
 
@@ -340,6 +424,11 @@ Commands:
   strategy [name]      Print strategy definition(s)
   wake                 Trigger one heartbeat tick (immediate)
   think [n] [--follow] Tail thinking log (TARX consciousness stream)
+  tweet <message>      Post a tweet via X API v2
+  timeline <@user> [n] Read user's recent tweets (default 10)
+  xsearch <query>      Search recent tweets (last 7 days)
+  xstatus              Verify X API + xAI credentials
+  xai <prompt>         Call xAI (Grok) chat completions [--model grok-3]
 
 Environment:
   .env at ${envPath}

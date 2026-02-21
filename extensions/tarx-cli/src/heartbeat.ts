@@ -19,6 +19,8 @@ import { resolve } from 'path';
 import { homedir } from 'os';
 import { config } from 'dotenv';
 import { daemonTick } from './daemon/tick';
+import { getLatestMentions, processMentions } from './x-api';
+import { callXAI } from './xai-api';
 
 // Load .env from repo root
 config({ path: resolve(__dirname, '../../../.env') });
@@ -376,6 +378,163 @@ export async function tick(): Promise<void> {
 		await daemonTick();
 	} catch (e: any) {
 		think(`DAEMON: tick failed: ${e.message?.substring(0, 200)}`);
+	}
+
+	// 8. X polling: if "x-poll" priority is active, fetch mentions
+	try {
+		await pollXMentions();
+	} catch (e: any) {
+		think(`X-POLL: failed: ${e.message?.substring(0, 200)}`);
+	}
+
+	// 9. Inference tasks: process "inference-task:" priorities via xAI
+	try {
+		await processInferenceTasks();
+	} catch (e: any) {
+		think(`INFERENCE: tick failed: ${e.message?.substring(0, 200)}`);
+	}
+}
+
+// --- X Mentions Polling ---
+
+const ORCH_LOG = resolve(TARX_DIR, 'orchestration-log.jsonl');
+const X_POLL_CURSOR = resolve(TARX_DIR, 'x-poll-cursor.json');
+
+async function pollXMentions(): Promise<void> {
+	// Check if "x-poll" priority exists and is active
+	const priPath = resolve(homedir(), '.tarx/priorities.jsonl');
+	if (!existsSync(priPath)) return;
+
+	const raw = readFileSync(priPath, 'utf-8').trim();
+	if (!raw) return;
+
+	const items = raw.split('\n').map(line => {
+		try { return JSON.parse(line); } catch { return null; }
+	}).filter(Boolean);
+
+	const xPoll = items.find(
+		(p: any) => p.status === 'active' && p.title && p.title.toLowerCase().includes('x-poll')
+	);
+	if (!xPoll) return;
+
+	// Load cursor (last seen mention ID)
+	let sinceId: string | undefined;
+	if (existsSync(X_POLL_CURSOR)) {
+		try {
+			const cursor = JSON.parse(readFileSync(X_POLL_CURSOR, 'utf-8'));
+			sinceId = cursor.sinceId;
+		} catch { /* fresh start */ }
+	}
+
+	// Fetch mentions
+	const mentions = await getLatestMentions(sinceId, 5);
+	const count = mentions.length;
+
+	if (count > 0) {
+		// Update cursor to newest mention
+		const newestId = mentions[0].id;
+		ensureDir();
+		writeFileSync(X_POLL_CURSOR, JSON.stringify({
+			sinceId: newestId,
+			lastPolled: new Date().toISOString(),
+		}));
+
+		// Log to thinking
+		const processed = processMentions(mentions);
+		think(`X-POLL: ${count} new mention(s):`);
+		for (const line of processed) {
+			think(`  ${line.substring(0, 200)}`);
+		}
+	} else {
+		think(`X-POLL: 0 new mentions.`);
+	}
+
+	// Append to orchestration log
+	appendFileSync(ORCH_LOG, JSON.stringify({
+		ts: new Date().toISOString(),
+		type: 'x_poll',
+		mentions: count,
+	}) + '\n');
+}
+
+// --- Inference Tasks ---
+
+const INFERENCE_PREFIX = 'inference-task:';
+
+async function processInferenceTasks(): Promise<void> {
+	const priPath = resolve(homedir(), '.tarx/priorities.jsonl');
+	if (!existsSync(priPath)) return;
+
+	const raw = readFileSync(priPath, 'utf-8').trim();
+	if (!raw) return;
+
+	const lines = raw.split('\n');
+	const items = lines.map(line => {
+		try { return JSON.parse(line); } catch { return null; }
+	}).filter(Boolean);
+
+	const tasks = items.filter(
+		(p: any) => p.status === 'active' && p.title && p.title.toLowerCase().startsWith(INFERENCE_PREFIX)
+	);
+
+	if (tasks.length === 0) {
+		think('INFERENCE: 0 active inference tasks.');
+		return;
+	}
+
+	think(`INFERENCE: ${tasks.length} active inference task(s). Processing...`);
+
+	for (const task of tasks) {
+		const prompt = task.title.substring(INFERENCE_PREFIX.length).trim();
+		if (!prompt) {
+			think(`INFERENCE: Skipping empty prompt for ${task.id}`);
+			continue;
+		}
+
+		try {
+			const response = await callXAI(prompt, {
+				systemPrompt: 'You are TARX, an autonomous developer agent. Answer concisely.',
+				maxTokens: 512,
+				temperature: 0.3,
+			});
+
+			think(`INFERENCE [${task.id}]: prompt="${prompt.substring(0, 100)}"`);
+			think(`INFERENCE [${task.id}]: response="${response.substring(0, 500)}"`);
+
+			// Mark task done in priorities.jsonl
+			const updated = lines.map(line => {
+				try {
+					const parsed = JSON.parse(line);
+					if (parsed.id === task.id) {
+						parsed.status = 'done';
+						parsed.last_updated = new Date().toISOString();
+						return JSON.stringify(parsed);
+					}
+				} catch { /* keep original */ }
+				return line;
+			});
+			writeFileSync(priPath, updated.join('\n') + '\n');
+
+			// Append to orchestration log
+			appendFileSync(ORCH_LOG, JSON.stringify({
+				ts: new Date().toISOString(),
+				type: 'inference_task',
+				taskId: task.id,
+				prompt: prompt.substring(0, 200),
+				responsePreview: response.substring(0, 200),
+				status: 'done',
+			}) + '\n');
+		} catch (e: any) {
+			think(`INFERENCE [${task.id}]: FAILED: ${e.message?.substring(0, 200)}`);
+			appendFileSync(ORCH_LOG, JSON.stringify({
+				ts: new Date().toISOString(),
+				type: 'inference_task',
+				taskId: task.id,
+				prompt: prompt.substring(0, 200),
+				status: 'error',
+				error: e.message?.substring(0, 200),
+			}) + '\n');
+		}
 	}
 }
 
