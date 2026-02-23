@@ -1,0 +1,862 @@
+#!/bin/sh
+# TARX CLI -- local AI engine control plane
+# Usage: tarx <command> [options]
+
+set -e
+
+TARX_VERSION="1.0.0"
+
+# -- Platform paths --
+
+_os="$(uname -s)"
+_arch="$(uname -m)"
+
+case "$_os" in
+	Darwin) TARX_DATA="${HOME}/Library/Application Support/tarx" ;;
+	*)      TARX_DATA="${HOME}/.tarx" ;;
+esac
+
+case "$_arch" in
+	x86_64|amd64)  TARX_ARCH="x64" ;;
+	arm64|aarch64) TARX_ARCH="arm64" ;;
+	*)             TARX_ARCH="x64" ;;
+esac
+
+case "$_os" in
+	Darwin) TARX_PLATFORM="macos" ;;
+	*)      TARX_PLATFORM="ubuntu" ;;
+esac
+
+TARX_BIN_DIR="${HOME}/.tarx/bin"
+TARX_LOGS="${TARX_DATA}/logs"
+TARX_PID_DIR="${TARX_DATA}/pids"
+
+INFERENCE_PORT=11435
+MESH_PORT=11436
+EMBED_PORT=11437
+
+# HuggingFace model repos
+HF_INFERENCE_REPO="Tarxxxxxx/tarx-qwen2.5-7b-deep"
+HF_INFERENCE_QUANT="Q4_K_M"
+HF_EMBED_REPO="nomic-ai/nomic-embed-text-v1.5-GGUF"
+HF_EMBED_FILE="nomic-embed-text-v1.5.f32.gguf"
+
+# -- Helpers --
+
+log() { printf '%s\n' "$*"; }
+warn() { printf 'WARNING: %s\n' "$*" >&2; }
+err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+ensure_dirs() {
+	mkdir -p "$TARX_LOGS" "$TARX_PID_DIR" "$TARX_BIN_DIR" 2>/dev/null || true
+}
+
+check_port() {
+	curl -sf "http://127.0.0.1:${1}/health" >/dev/null 2>&1
+}
+
+pid_file() {
+	echo "${TARX_PID_DIR}/${1}.pid"
+}
+
+is_running() {
+	_pf="$(pid_file "$1")"
+	if [ -f "$_pf" ]; then
+		_pid=$(cat "$_pf")
+		if kill -0 "$_pid" 2>/dev/null; then
+			return 0
+		fi
+		rm -f "$_pf"
+	fi
+	return 1
+}
+
+wait_for_port() {
+	_port="$1"
+	_timeout="$2"
+	_label="$3"
+	_elapsed=0
+	while [ $_elapsed -lt "$_timeout" ]; do
+		if check_port "$_port"; then
+			return 0
+		fi
+		sleep 2
+		_elapsed=$((_elapsed + 2))
+		# Check if the process is still alive
+		if [ -n "$4" ] && ! kill -0 "$4" 2>/dev/null; then
+			return 1
+		fi
+	done
+	return 1
+}
+
+# -- Find or download llama-server --
+
+find_llama_server() {
+	# Check locations in order
+	for _path in \
+		"${TARX_BIN_DIR}/llama-server" \
+		/opt/homebrew/bin/llama-server \
+		/usr/local/bin/llama-server \
+		"${HOME}/.local/bin/llama-server"; do
+		if [ -x "$_path" ]; then
+			echo "$_path"
+			return 0
+		fi
+	done
+	# Check PATH
+	_which="$(command -v llama-server 2>/dev/null || true)"
+	if [ -n "$_which" ] && [ -x "$_which" ]; then
+		echo "$_which"
+		return 0
+	fi
+	return 1
+}
+
+download_llama_server() {
+	log "llama-server not found. Downloading from llama.cpp releases..."
+
+	# Get latest release tag
+	_release_json="$(curl -sfL "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest" 2>/dev/null)" || true
+	if [ -z "$_release_json" ]; then
+		err "Could not fetch llama.cpp releases. Check network."
+	fi
+
+	_tag="$(printf '%s' "$_release_json" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+	if [ -z "$_tag" ]; then
+		err "Could not determine latest llama.cpp version."
+	fi
+
+	log "  Latest: ${_tag}"
+
+	# Build asset URL based on platform
+	_asset="llama-${_tag}-bin-${TARX_PLATFORM}-${TARX_ARCH}.tar.gz"
+	_url="https://github.com/ggml-org/llama.cpp/releases/download/${_tag}/${_asset}"
+
+	log "  Downloading ${_asset}..."
+	_tmpdir="$(mktemp -d)"
+
+	if ! curl -fSL --progress-bar -o "${_tmpdir}/${_asset}" "$_url"; then
+		rm -rf "$_tmpdir"
+		err "Download failed: ${_url}"
+	fi
+
+	# Extract llama-server binary
+	log "  Extracting llama-server..."
+	tar -xzf "${_tmpdir}/${_asset}" -C "$_tmpdir" 2>/dev/null || {
+		rm -rf "$_tmpdir"
+		err "Failed to extract ${_asset}"
+	}
+
+	# Find the binary in the extracted directory
+	_extracted="$(find "$_tmpdir" -name "llama-server" -type f | head -1)"
+	if [ -z "$_extracted" ]; then
+		rm -rf "$_tmpdir"
+		err "llama-server not found in ${_asset}"
+	fi
+
+	mkdir -p "$TARX_BIN_DIR" 2>/dev/null || true
+	cp "$_extracted" "${TARX_BIN_DIR}/llama-server"
+	chmod +x "${TARX_BIN_DIR}/llama-server"
+	rm -rf "$_tmpdir"
+
+	log "  Installed: ${TARX_BIN_DIR}/llama-server"
+	echo "${TARX_BIN_DIR}/llama-server"
+}
+
+find_mesh_binary() {
+	for _path in \
+		"${TARX_BIN_DIR}/tarx-mesh" \
+		"${HOME}/Desktop/tarx-mesh/target/release/tarx-mesh" \
+		/usr/local/bin/tarx-mesh; do
+		if [ -x "$_path" ]; then
+			echo "$_path"
+			return 0
+		fi
+	done
+	_which="$(command -v tarx-mesh 2>/dev/null || true)"
+	if [ -n "$_which" ] && [ -x "$_which" ]; then
+		echo "$_which"
+		return 0
+	fi
+	return 1
+}
+
+# -- start --
+
+cmd_start() {
+	ensure_dirs
+	log ""
+	log "TARX Engine"
+	log "==========="
+	log ""
+
+	_started=0
+	_first_run=false
+
+	# Find or download llama-server
+	_llama="$(find_llama_server)" || true
+	if [ -z "$_llama" ]; then
+		_llama="$(download_llama_server)"
+	fi
+
+	if [ -z "$_llama" ]; then
+		err "Could not find or download llama-server."
+	fi
+
+	log "  llama-server: ${_llama}"
+	log ""
+
+	# 1. Inference server (port 11435)
+	if check_port $INFERENCE_PORT; then
+		log "  Inference  (${INFERENCE_PORT}): already running"
+	else
+		# Check if model is already cached
+		if [ ! -d "${HOME}/.cache/huggingface" ] || \
+			! find "${HOME}/.cache/huggingface" -name "*.gguf" -path "*tarx-qwen*" -print -quit 2>/dev/null | grep -q .; then
+			_first_run=true
+			log "  Inference model will download on first start (~4.4 GB)"
+			log "  This may take several minutes..."
+		fi
+		log "  Starting inference (${INFERENCE_PORT})..."
+		"$_llama" \
+			--hf-repo "${HF_INFERENCE_REPO}:${HF_INFERENCE_QUANT}" \
+			--host 127.0.0.1 \
+			--port $INFERENCE_PORT \
+			--ctx-size 4096 \
+			--parallel 1 \
+			--n-gpu-layers 99 \
+			--flash-attn on \
+			--no-warmup \
+			> "${TARX_LOGS}/inference.log" 2>&1 &
+		_inf_pid=$!
+		echo $_inf_pid > "$(pid_file inference)"
+		_started=$(( _started + 1 ))
+	fi
+
+	# 2. Embedding server (port 11437)
+	if check_port $EMBED_PORT; then
+		log "  Embeddings (${EMBED_PORT}): already running"
+	else
+		log "  Starting embeddings (${EMBED_PORT})..."
+		"$_llama" \
+			--hf-repo "$HF_EMBED_REPO" \
+			--hf-file "$HF_EMBED_FILE" \
+			--host 127.0.0.1 \
+			--port $EMBED_PORT \
+			--ctx-size 8192 \
+			--embeddings \
+			--pooling mean \
+			--parallel 1 \
+			--no-warmup \
+			> "${TARX_LOGS}/embeddings.log" 2>&1 &
+		_emb_pid=$!
+		echo $_emb_pid > "$(pid_file embeddings)"
+		_started=$(( _started + 1 ))
+	fi
+
+	# 3. Mesh server (port 11436) -- optional
+	if check_port $MESH_PORT; then
+		log "  Mesh       (${MESH_PORT}): already running"
+	else
+		_mesh="$(find_mesh_binary)" || true
+		if [ -z "$_mesh" ]; then
+			log "  Mesh       (${MESH_PORT}): not installed (optional)"
+		else
+			log "  Starting mesh (${MESH_PORT})..."
+			TARX_MESH_BIND="127.0.0.1:${MESH_PORT}" "$_mesh" \
+				> "${TARX_LOGS}/mesh.log" 2>&1 &
+			echo $! > "$(pid_file mesh)"
+			_started=$(( _started + 1 ))
+		fi
+	fi
+
+	if [ $_started -eq 0 ]; then
+		log ""
+		log "All services already running."
+		cmd_status
+		return
+	fi
+
+	# Wait for services with appropriate timeouts
+	log ""
+	if [ "$_first_run" = true ]; then
+		log "Downloading models + starting services..."
+		log "(First run -- model downloads may take 5-15 minutes)"
+		_inf_timeout=900
+	else
+		log "Waiting for services..."
+		_inf_timeout=60
+	fi
+
+	_ok=true
+
+	# Wait for inference
+	if [ -n "${_inf_pid:-}" ]; then
+		if wait_for_port $INFERENCE_PORT "$_inf_timeout" "inference" "$_inf_pid"; then
+			log "  Inference:  ready"
+		else
+			if kill -0 "$_inf_pid" 2>/dev/null; then
+				log "  Inference:  still loading (check: tail -f '${TARX_LOGS}/inference.log')"
+			else
+				warn "Inference server exited. Check: cat '${TARX_LOGS}/inference.log'"
+				_ok=false
+			fi
+		fi
+	fi
+
+	# Wait for embeddings (shorter timeout)
+	if [ -n "${_emb_pid:-}" ]; then
+		if wait_for_port $EMBED_PORT 120 "embeddings" "$_emb_pid"; then
+			log "  Embeddings: ready"
+		else
+			if kill -0 "$_emb_pid" 2>/dev/null; then
+				log "  Embeddings: still loading (check: tail -f '${TARX_LOGS}/embeddings.log')"
+			else
+				warn "Embedding server exited. Check: cat '${TARX_LOGS}/embeddings.log'"
+				_ok=false
+			fi
+		fi
+	fi
+
+	log ""
+	if [ "$_ok" = true ]; then
+		cmd_status
+	else
+		log "Some services failed to start. Run 'tarx doctor' to diagnose."
+	fi
+}
+
+# -- stop --
+
+cmd_stop() {
+	log "Stopping TARX services..."
+
+	for _svc in inference embeddings mesh; do
+		_pf="$(pid_file "$_svc")"
+		if [ -f "$_pf" ]; then
+			_pid=$(cat "$_pf")
+			if kill -0 "$_pid" 2>/dev/null; then
+				kill "$_pid" 2>/dev/null || true
+				# Wait up to 5s for graceful shutdown
+				_w=0
+				while [ $_w -lt 5 ] && kill -0 "$_pid" 2>/dev/null; do
+					sleep 1
+					_w=$((_w + 1))
+				done
+				if kill -0 "$_pid" 2>/dev/null; then
+					kill -9 "$_pid" 2>/dev/null || true
+					log "  Force-stopped ${_svc} (pid ${_pid})"
+				else
+					log "  Stopped ${_svc} (pid ${_pid})"
+				fi
+			fi
+			rm -f "$_pf"
+		else
+			# Try to find by port
+			case "$_svc" in
+				inference)  _port=$INFERENCE_PORT ;;
+				embeddings) _port=$EMBED_PORT ;;
+				mesh)       _port=$MESH_PORT ;;
+			esac
+			_pid=$(lsof -ti ":${_port}" 2>/dev/null | head -1) || true
+			if [ -n "$_pid" ]; then
+				kill "$_pid" 2>/dev/null || true
+				log "  Stopped ${_svc} (pid ${_pid})"
+			else
+				log "  ${_svc}: not running"
+			fi
+		fi
+	done
+
+	log "Done."
+}
+
+# -- status --
+
+cmd_status() {
+	log "TARX Service Status"
+	log "==================="
+	log ""
+	printf '  %-14s %-8s %s\n' "SERVICE" "PORT" "STATUS"
+	printf '  %-14s %-8s %s\n' "----------" "-----" "------"
+
+	for _svc_info in "Inference:${INFERENCE_PORT}" "Mesh:${MESH_PORT}" "Embeddings:${EMBED_PORT}"; do
+		_name="${_svc_info%%:*}"
+		_port="${_svc_info##*:}"
+
+		if check_port "$_port"; then
+			_status="running"
+		elif is_running "$(echo "$_name" | tr '[:upper:]' '[:lower:]')"; then
+			_status="starting"
+		else
+			_status="stopped"
+		fi
+
+		printf '  %-14s %-8s %s\n' "$_name" "$_port" "$_status"
+	done
+
+	log ""
+}
+
+# -- chat --
+
+cmd_chat() {
+	if [ -z "$1" ]; then
+		err "Usage: tarx chat \"your prompt here\""
+	fi
+
+	if ! check_port $INFERENCE_PORT; then
+		err "Inference server not running on port ${INFERENCE_PORT}. Run: tarx start"
+	fi
+
+	_prompt="$*"
+	# Escape for JSON
+	_escaped=$(printf '%s' "$_prompt" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g')
+
+	_payload="{\"model\":\"local\",\"messages\":[{\"role\":\"user\",\"content\":\"${_escaped}\"}],\"stream\":false,\"max_tokens\":2048}"
+
+	_response=$(curl -sf -X POST "http://127.0.0.1:${INFERENCE_PORT}/v1/chat/completions" \
+		-H "Content-Type: application/json" \
+		-d "$_payload" 2>/dev/null) || err "Request failed. Is the inference server running?"
+
+	# Extract content
+	_content=$(printf '%s' "$_response" | sed -n 's/.*"content"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+
+	if [ -z "$_content" ]; then
+		# Try Python if available for proper JSON parsing
+		if command -v python3 >/dev/null 2>&1; then
+			_content=$(printf '%s' "$_response" | python3 -c "
+import sys, json
+r = json.load(sys.stdin)
+print(r['choices'][0]['message']['content'])
+" 2>/dev/null) || true
+		fi
+	fi
+
+	if [ -z "$_content" ]; then
+		log "$_response"
+	else
+		printf '%s\n' "$_content"
+	fi
+}
+
+# -- embed --
+
+cmd_embed() {
+	if [ -z "$1" ]; then
+		err "Usage: tarx embed <file>"
+	fi
+
+	_file="$1"
+	if [ ! -f "$_file" ]; then
+		err "File not found: $_file"
+	fi
+
+	if ! check_port $EMBED_PORT; then
+		err "Embedding server not running on port ${EMBED_PORT}. Run: tarx start"
+	fi
+
+	_size=$(wc -c < "$_file" | tr -d ' ')
+	log "Embedding ${_file} (${_size} bytes)..."
+
+	# Read and chunk (512 char chunks, 128 overlap)
+	_content=$(cat "$_file")
+	_len=${#_content}
+	_chunk_size=512
+	_overlap=128
+	_offset=0
+	_chunks=0
+
+	while [ $_offset -lt "$_len" ]; do
+		_chunk=$(printf '%s' "$_content" | cut -c$((_offset + 1))-$((_offset + _chunk_size)))
+		_escaped=$(printf '%s' "$_chunk" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | tr '\n' ' ')
+
+		curl -sf -X POST "http://127.0.0.1:${EMBED_PORT}/embedding" \
+			-H "Content-Type: application/json" \
+			-d "{\"content\":\"${_escaped}\"}" >/dev/null 2>&1 || warn "Failed to embed chunk at offset $_offset"
+
+		_chunks=$((_chunks + 1))
+		_offset=$((_offset + _chunk_size - _overlap))
+	done
+
+	log "Done: ${_chunks} chunks embedded."
+}
+
+# -- search --
+
+cmd_search() {
+	if [ -z "$1" ]; then
+		err "Usage: tarx search \"query\""
+	fi
+
+	if ! check_port $EMBED_PORT; then
+		err "Embedding server not running on port ${EMBED_PORT}. Run: tarx start"
+	fi
+
+	_query="$*"
+	_escaped=$(printf '%s' "$_query" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g')
+
+	log "Searching: ${_query}"
+	log ""
+
+	_result=$(curl -sf -X POST "http://127.0.0.1:${EMBED_PORT}/v1/embeddings" \
+		-H "Content-Type: application/json" \
+		-d "{\"input\":\"${_escaped}\",\"model\":\"local\"}" 2>/dev/null) || err "Search failed. Is the embedding server running?"
+
+	log "$_result"
+}
+
+# -- mesh --
+
+cmd_mesh() {
+	_subcmd="${1:-status}"
+	shift 2>/dev/null || true
+
+	case "$_subcmd" in
+		status)
+			if ! check_port $MESH_PORT; then
+				err "Mesh server not running on port ${MESH_PORT}. Run: tarx start"
+			fi
+			_resp=$(curl -sf "http://127.0.0.1:${MESH_PORT}/api/v1/status" 2>/dev/null) || err "Mesh status request failed"
+			log "$_resp"
+			;;
+		join)
+			if ! check_port $MESH_PORT; then
+				err "Mesh server not running on port ${MESH_PORT}. Run: tarx start"
+			fi
+			_resp=$(curl -sf -X POST "http://127.0.0.1:${MESH_PORT}/api/v1/mesh/join" 2>/dev/null) || err "Mesh join failed"
+			log "Joined mesh network."
+			log "$_resp"
+			;;
+		*)
+			err "Unknown mesh command: $_subcmd (available: status, join)"
+			;;
+	esac
+}
+
+# -- spaces --
+
+cmd_spaces() {
+	_subcmd="${1:-list}"
+	shift 2>/dev/null || true
+
+	_spaces_dir="${TARX_DATA}/spaces"
+	mkdir -p "$_spaces_dir" 2>/dev/null || true
+
+	case "$_subcmd" in
+		list)
+			log "Project Spaces"
+			log "=============="
+			if [ -d "$_spaces_dir" ]; then
+				_count=0
+				for _space in "${_spaces_dir}"/*; do
+					if [ -d "$_space" ]; then
+						_name=$(basename "$_space")
+						_files=$(find "$_space" -type f 2>/dev/null | wc -l | tr -d ' ')
+						printf '  %s (%s files)\n' "$_name" "$_files"
+						_count=$((_count + 1))
+					fi
+				done
+				if [ $_count -eq 0 ]; then
+					log "  No spaces yet. Create one: tarx spaces create \"my-project\""
+				fi
+			fi
+			;;
+		create)
+			if [ -z "$1" ]; then
+				err "Usage: tarx spaces create \"name\""
+			fi
+			_name="$1"
+			_path="${_spaces_dir}/${_name}"
+			if [ -d "$_path" ]; then
+				err "Space '${_name}' already exists."
+			fi
+			mkdir -p "$_path"
+			log "Created space: ${_name}"
+			log "Path: ${_path}"
+			;;
+		*)
+			err "Unknown spaces command: $_subcmd (available: list, create)"
+			;;
+	esac
+}
+
+# -- update --
+
+cmd_update() {
+	log "Checking for updates..."
+
+	_latest=$(curl -fsSL "https://tarx.com/api/cli/latest?format=version" 2>/dev/null | tr -d '[:space:]') || true
+
+	if [ -z "$_latest" ]; then
+		err "Could not check for updates. Check network."
+	fi
+
+	if [ "$TARX_VERSION" = "$_latest" ] || [ "v${TARX_VERSION}" = "$_latest" ]; then
+		log "Already on latest version: ${TARX_VERSION}"
+	else
+		log "Update available: ${TARX_VERSION} -> ${_latest}"
+		log "Run: curl -fsSL https://tarx.com/install | sh --force"
+	fi
+}
+
+# -- uninstall --
+
+cmd_uninstall() {
+	log "TARX Uninstaller"
+	log ""
+
+	# Stop services first
+	cmd_stop 2>/dev/null || true
+
+	# Remove binary
+	_bin_path="$(command -v tarx 2>/dev/null || true)"
+	if [ -n "$_bin_path" ]; then
+		log "Remove binary: ${_bin_path}"
+		if [ -w "$(dirname "$_bin_path")" ]; then
+			rm -f "$_bin_path"
+		else
+			sudo rm -f "$_bin_path"
+		fi
+		log "  Removed."
+	fi
+
+	# Remove llama-server if in tarx bin dir
+	if [ -f "${TARX_BIN_DIR}/llama-server" ]; then
+		rm -f "${TARX_BIN_DIR}/llama-server"
+		log "  Removed llama-server from ${TARX_BIN_DIR}"
+	fi
+
+	# Ask about data
+	log ""
+	log "Data directory: ${TARX_DATA}"
+	if [ -d "$TARX_DATA" ]; then
+		_size=$(du -sh "$TARX_DATA" 2>/dev/null | awk '{print $1}')
+		log "Size: ${_size}"
+		log ""
+		printf 'Delete all TARX data including models? [y/N] '
+		read -r _confirm
+		case "$_confirm" in
+			[yY]|[yY][eE][sS])
+				rm -rf "$TARX_DATA"
+				log "Data deleted."
+				;;
+			*)
+				log "Data preserved at ${TARX_DATA}"
+				;;
+		esac
+	fi
+
+	# Clean HF cache
+	if [ -d "${HOME}/.cache/huggingface" ]; then
+		log ""
+		log "HuggingFace model cache may also exist at ~/.cache/huggingface/"
+		log "Remove manually if needed: rm -rf ~/.cache/huggingface/"
+	fi
+
+	log ""
+	log "TARX uninstalled."
+}
+
+# -- doctor --
+
+cmd_doctor() {
+	log "TARX Doctor"
+	log "==========="
+	log ""
+
+	_issues=0
+
+	# Check ports
+	log "Services:"
+	for _svc_info in "Inference:${INFERENCE_PORT}" "Mesh:${MESH_PORT}" "Embeddings:${EMBED_PORT}"; do
+		_name="${_svc_info%%:*}"
+		_port="${_svc_info##*:}"
+		if check_port "$_port"; then
+			printf '  [OK] %-14s port %s\n' "$_name" "$_port"
+		else
+			# Check if port is taken by something else
+			_occupant=$(lsof -ti ":${_port}" 2>/dev/null | head -1) || true
+			if [ -n "$_occupant" ]; then
+				_proc=$(ps -p "$_occupant" -o comm= 2>/dev/null) || _proc="unknown"
+				printf '  [!!] %-14s port %s occupied by %s (pid %s)\n' "$_name" "$_port" "$_proc" "$_occupant"
+				_issues=$((_issues + 1))
+			else
+				printf '  [--] %-14s port %s not running\n' "$_name" "$_port"
+			fi
+		fi
+	done
+
+	# Check disk space
+	log ""
+	log "Disk:"
+	_avail=$(df -h "${HOME}" 2>/dev/null | awk 'NR==2{print $4}')
+	log "  Available: ${_avail}"
+	_avail_bytes=$(df "${HOME}" 2>/dev/null | awk 'NR==2{print $4}')
+	if [ -n "$_avail_bytes" ] && [ "$_avail_bytes" -lt 6000000 ] 2>/dev/null; then
+		log "  [!!] Less than 6 GB free -- models need ~4.5 GB"
+		_issues=$((_issues + 1))
+	else
+		log "  [OK] Sufficient space"
+	fi
+
+	# Check llama-server
+	log ""
+	log "Dependencies:"
+	_llama="$(find_llama_server)" || true
+	if [ -n "$_llama" ]; then
+		printf '  [OK] llama-server: %s\n' "$_llama"
+	else
+		log "  [!!] llama-server not found -- run 'tarx start' to auto-install"
+		_issues=$((_issues + 1))
+	fi
+
+	_mesh="$(find_mesh_binary)" || true
+	if [ -n "$_mesh" ]; then
+		printf '  [OK] tarx-mesh: %s\n' "$_mesh"
+	else
+		log "  [--] tarx-mesh: not installed (optional)"
+	fi
+
+	# Check HF model cache
+	log ""
+	log "Models:"
+	_hf_cache="${HOME}/.cache/huggingface"
+	if [ -d "$_hf_cache" ]; then
+		_inf_cached=$(find "$_hf_cache" -name "*.gguf" -path "*tarx-qwen*" 2>/dev/null | head -1)
+		if [ -n "$_inf_cached" ]; then
+			_sz=$(wc -c < "$_inf_cached" | tr -d ' ')
+			printf '  [OK] Inference: cached (%s MB)\n' "$((_sz / 1048576))"
+		else
+			log "  [--] Inference: not cached (will download on first 'tarx start')"
+		fi
+
+		_emb_cached=$(find "$_hf_cache" -name "*.gguf" -path "*nomic*" 2>/dev/null | head -1)
+		if [ -n "$_emb_cached" ]; then
+			_sz=$(wc -c < "$_emb_cached" | tr -d ' ')
+			printf '  [OK] Embedding: cached (%s MB)\n' "$((_sz / 1048576))"
+		else
+			log "  [--] Embedding: not cached (will download on first 'tarx start')"
+		fi
+	else
+		log "  [--] HF cache not found -- models will download on first 'tarx start'"
+	fi
+
+	# Check RAM
+	log ""
+	log "System:"
+	if [ "$_os" = "Darwin" ]; then
+		_ram_bytes=$(sysctl -n hw.memsize 2>/dev/null) || _ram_bytes=0
+		_ram_gb=$((_ram_bytes / 1073741824))
+	else
+		_ram_kb=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}') || _ram_kb=0
+		_ram_gb=$((_ram_kb / 1048576))
+	fi
+
+	if [ "$_ram_gb" -ge 8 ]; then
+		printf '  [OK] RAM: %s GB\n' "$_ram_gb"
+	else
+		printf '  [!!] RAM: %s GB (need 8 GB+)\n' "$_ram_gb"
+		_issues=$((_issues + 1))
+	fi
+
+	# GPU detection
+	if [ "$_os" = "Darwin" ]; then
+		_gpu=$(system_profiler SPDisplaysDataType 2>/dev/null | grep "Chipset Model" | sed 's/.*: //' | head -1) || true
+		if [ -z "$_gpu" ]; then
+			_gpu=$(sysctl -n machdep.cpu.brand_string 2>/dev/null | head -1) || _gpu="unknown"
+		fi
+		printf '  [OK] GPU: %s (Metal)\n' "$_gpu"
+	else
+		if command -v nvidia-smi >/dev/null 2>&1; then
+			_gpu=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1) || _gpu="NVIDIA (detected)"
+			printf '  [OK] GPU: %s (CUDA)\n' "$_gpu"
+		else
+			log "  [--] GPU: no NVIDIA GPU detected (CPU inference only)"
+		fi
+	fi
+
+	# Check for Ollama conflicts
+	log ""
+	log "Conflicts:"
+	if pgrep -x ollama >/dev/null 2>&1; then
+		log "  [!!] Ollama is running -- may conflict with ports 11434-11437"
+		_issues=$((_issues + 1))
+	else
+		log "  [OK] No Ollama process detected"
+	fi
+
+	log ""
+	if [ $_issues -eq 0 ]; then
+		log "All checks passed."
+	else
+		log "${_issues} issue(s) found."
+	fi
+}
+
+# -- version --
+
+cmd_version() {
+	log "${TARX_VERSION}"
+}
+
+# -- help --
+
+cmd_help() {
+	cat <<'USAGE'
+TARX -- Local AI Engine
+
+Usage: tarx <command> [options]
+
+Commands:
+  start             Start all services (downloads models on first run)
+  stop              Graceful shutdown of all services
+  status            Health check all services
+  chat "prompt"     Quick inference via local model
+  embed <file>      Chunk and embed file into RAG store
+  search "query"    Semantic search across embedded files
+  mesh status       Mesh network info
+  mesh join         Opt into mesh network
+  spaces list       List project spaces
+  spaces create     Create a new project space
+  update            Check for CLI updates
+  uninstall         Remove TARX (asks before deleting data)
+  version           Print version
+  doctor            Diagnose issues (ports, disk, RAM, GPU, models)
+  help              Show this help
+
+Ports:
+  11435  Inference (Qwen 7B)
+  11436  Mesh network
+  11437  Embeddings (nomic-embed)
+
+Docs: https://tarx.com/docs
+USAGE
+}
+
+# -- Main dispatch --
+
+_cmd="${1:-help}"
+shift 2>/dev/null || true
+
+case "$_cmd" in
+	start)     cmd_start ;;
+	stop)      cmd_stop ;;
+	status)    cmd_status ;;
+	chat)      cmd_chat "$@" ;;
+	embed)     cmd_embed "$@" ;;
+	search)    cmd_search "$@" ;;
+	mesh)      cmd_mesh "$@" ;;
+	spaces)    cmd_spaces "$@" ;;
+	update)    cmd_update "$@" ;;
+	uninstall) cmd_uninstall ;;
+	version)   cmd_version ;;
+	doctor)    cmd_doctor ;;
+	help|--help|-h) cmd_help ;;
+	*)
+		printf 'Unknown command: %s\n\n' "$_cmd" >&2
+		cmd_help >&2
+		exit 1
+		;;
+esac
