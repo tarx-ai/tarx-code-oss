@@ -344,3 +344,30 @@ Orchestration: tarx_admin_file_lock/unlock, tarx_orchestrate_assign_task/task_up
 - Updated by: Any CC session that discovers a new rule or anti-pattern
 - Never deleted. Only appended or refined.
 - Version: 3.0 — February 20, 2026
+
+---
+
+## Grok Daemon Communication Protocol
+
+This session communicates with the TARX Grok daemon via priority queue.
+At every significant checkpoint, run:
+
+  tarx priorities add "<prefix>: <message>" --urgency <low|now> --owner tarx
+
+Prefixes:
+- cc-status: — Progress updates (urgency: low)
+- cc-decision: — Architectural decisions made (urgency: low)
+- cc-blocked: — Something failed, needs intervention (urgency: now, also run tarx wake)
+- augment: — Request Grok to review/validate work (urgency: now, also run tarx wake)
+
+Required checkpoints:
+1. Session start: cc-status: session started — scope: ...
+2. After each major step: cc-status: [step] complete — [one-line result]
+3. Decisions: cc-decision: [what] — [why] — [impact]
+4. Failures: cc-blocked: [what] — [error] — [what's needed]
+5. Ready for review: augment: review [what] — [where files are]
+6. Session end: cc-status: session complete — [summary] — [remaining work]
+
+After cc-blocked or session end, always run: tarx wake
+
+This is mandatory. The Grok daemon needs real-time visibility into CC work.

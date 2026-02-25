@@ -5,7 +5,7 @@
 const dispatchCommands = [
   'dispatch', 'heal', 'notify', 'taxonomy', 'strategy',
   'wake', 'think', 'status', 'log',
-  'brief', 'priorities',
+  'brief', 'priorities', 'stream',
 ];
 const arg = process.argv[2];
 

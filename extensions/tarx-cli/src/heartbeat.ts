@@ -393,6 +393,320 @@ export async function tick(): Promise<void> {
 	} catch (e: any) {
 		think(`INFERENCE: tick failed: ${e.message?.substring(0, 200)}`);
 	}
+
+	// 10. Grok augmentation: "grok-augment:" priorities → Grok + Qwen consolidation
+	try {
+		await processAugmentTasks();
+	} catch (e: any) {
+		think(`AUGMENT: tick failed: ${e.message?.substring(0, 200)}`);
+	}
+
+	// 11. Inference-augment: "inference-augment:" → xAI + Qwen RAG consolidation
+	try {
+		await processInferenceAugmentTasks();
+	} catch (e: any) {
+		think(`INF-AUG: tick failed: ${e.message?.substring(0, 200)}`);
+	}
+
+	// 12. Task exec: "task-exec:" → whitelisted shell commands
+	try {
+		await processTaskExec();
+	} catch (e: any) {
+		think(`TASK-EXEC: tick failed: ${e.message?.substring(0, 200)}`);
+	}
+
+	// 13. UI test loop: "ui-test:" → exercise conversational intents, audit output
+	try {
+		await processUITestLoop();
+	} catch (e: any) {
+		think(`UI-TEST: tick failed: ${e.message?.substring(0, 200)}`);
+	}
+}
+
+// --- UI Test Loop (perpetual conversational audit) ---
+
+const UI_TEST_PREFIX = 'ui-test:';
+
+interface UITestCase {
+	name: string;
+	cmd: string;
+	expect: RegExp[];  // patterns that MUST appear in output
+	antiExpect?: RegExp[];  // patterns that must NOT appear
+}
+
+const UI_TEST_SUITE: UITestCase[] = [
+	{
+		name: 'brief',
+		cmd: 'tarx brief',
+		expect: [/need you|active|priorities|blocked|resting/i, /port|service|sentry|breaker/i],
+		antiExpect: [/undefined|null|NaN|ENOENT/i],
+	},
+	{
+		name: 'priorities',
+		cmd: 'tarx priorities',
+		expect: [/p-\d{3}/],
+		antiExpect: [/undefined|SyntaxError/i],
+	},
+	{
+		name: 'think',
+		cmd: 'tarx think 5',
+		expect: [/\[\d{4}-\d{2}-\d{2}/],  // timestamp format
+		antiExpect: [/ENOENT|Permission denied/i],
+	},
+	{
+		name: 'priorities_add_remove',
+		cmd: 'tarx priorities add "ui-test-canary: smoke" --urgency today --owner tarx',
+		expect: [/added|p-\d{3}/i],
+		antiExpect: [/Error|ENOENT/i],
+	},
+	{
+		name: 'status',
+		cmd: 'tarx status',
+		expect: [/inference|mesh|embed/i],
+	},
+];
+
+async function processUITestLoop(): Promise<void> {
+	const priPath = resolve(homedir(), '.tarx/priorities.jsonl');
+	if (!existsSync(priPath)) return;
+
+	const raw = readFileSync(priPath, 'utf-8').trim();
+	if (!raw) return;
+
+	const lines = raw.split('\n');
+	const items = lines.map(line => {
+		try { return JSON.parse(line); } catch { return null; }
+	}).filter(Boolean);
+
+	const tasks = items.filter(
+		(p: any) => p.status === 'active' && p.title && p.title.toLowerCase().startsWith(UI_TEST_PREFIX)
+	);
+
+	if (tasks.length === 0) return;
+
+	think(`UI-TEST: ${tasks.length} active ui-test task(s). Running suite...`);
+
+	for (const task of tasks) {
+		const scope = task.title.substring(UI_TEST_PREFIX.length).trim().toLowerCase();
+		// scope = "all" or freeform runs full suite; exact test name runs just that test
+		const scoped = UI_TEST_SUITE.filter(t => scope.includes(t.name) || t.name.includes(scope));
+		const suite = scope === 'all' || !scope || scoped.length === 0
+			? UI_TEST_SUITE
+			: scoped;
+
+		let passed = 0;
+		let failed = 0;
+		const failures: string[] = [];
+
+		for (const tc of suite) {
+			try {
+				const output = execSync(
+					`node ${resolve(__dirname, 'index.js')} ${tc.cmd.replace(/^tarx\s+/, '')}`,
+					{ cwd: TARX_ROOT, encoding: 'utf-8', timeout: 15000, stdio: 'pipe' }
+				).trim();
+
+				// Check expected patterns
+				let pass = true;
+				for (const pat of tc.expect) {
+					if (!pat.test(output)) {
+						pass = false;
+						failures.push(`${tc.name}: missing expected /${pat.source}/`);
+						break;
+					}
+				}
+
+				// Check anti-patterns
+				if (pass && tc.antiExpect) {
+					for (const pat of tc.antiExpect) {
+						if (pat.test(output)) {
+							pass = false;
+							failures.push(`${tc.name}: found forbidden /${pat.source}/ in output`);
+							break;
+						}
+					}
+				}
+
+				if (pass) {
+					passed++;
+				} else {
+					failed++;
+					think(`UI-TEST [${tc.name}]: FAIL — output="${output.substring(0, 200)}"`);
+				}
+			} catch (e: any) {
+				failed++;
+				failures.push(`${tc.name}: exec error: ${e.message?.substring(0, 100)}`);
+				think(`UI-TEST [${tc.name}]: ERROR — ${e.message?.substring(0, 150)}`);
+			}
+		}
+
+		// Clean up canary priority if created
+		try {
+			const freshRaw = readFileSync(priPath, 'utf-8').trim();
+			const cleaned = freshRaw.split('\n').filter(line => {
+				try { const p = JSON.parse(line); return !p.title?.includes('ui-test-canary:'); } catch { return true; }
+			});
+			writeFileSync(priPath, cleaned.join('\n') + '\n');
+		} catch { /* best-effort cleanup */ }
+
+		think(`UI-TEST: ${passed}/${passed + failed} passed. ${failed > 0 ? 'Failures: ' + failures.join('; ') : 'All clear.'}`);
+
+		// Mark done
+		const updated = lines.map(line => {
+			try {
+				const p = JSON.parse(line);
+				if (p.id === task.id) {
+					p.status = 'done';
+					p.last_updated = new Date().toISOString();
+					return JSON.stringify(p);
+				}
+			} catch { /* keep */ }
+			return line;
+		});
+		writeFileSync(priPath, updated.join('\n') + '\n');
+
+		appendFileSync(ORCH_LOG, JSON.stringify({
+			ts: new Date().toISOString(),
+			type: 'ui_test',
+			taskId: task.id,
+			passed,
+			failed,
+			failures: failures.slice(0, 5),
+			status: failed === 0 ? 'pass' : 'fail',
+		}) + '\n');
+
+		// SMS on failure
+		if (failed > 0) {
+			try {
+				execSync(
+					`node ${resolve(__dirname, 'index.js')} notify --level=warning "UI test: ${failed} fail — ${failures[0]?.substring(0, 80)}"`,
+					{ cwd: TARX_ROOT, encoding: 'utf-8', timeout: 15000, stdio: 'pipe' }
+				);
+			} catch { /* best-effort */ }
+		}
+	}
+}
+
+// --- Task Exec (whitelisted shell) ---
+
+const TASK_EXEC_PREFIX = 'task-exec:';
+const BLOCKED_PATTERNS = /\b(sudo|rm\s|rm$|rmdir|mkfs|dd\s|chmod\s|chown\s|kill\s|killall|shutdown|reboot|passwd|eval\s|>\s*\/|&&\s*rm|;\s*rm|\|\s*rm|`|\$\()/i;
+
+function isCommandAllowed(cmd: string): boolean {
+	const trimmed = cmd.trim();
+	if (/^tarx\s+/.test(trimmed)) return true;
+	if (/^curl\s+-fsSL\s+/.test(trimmed)) return true;
+	if (/^echo(\s+|$)/.test(trimmed)) return true;
+	if (/^vercel\s+--prod\s*$/.test(trimmed)) return true;
+	return false;
+}
+
+async function processTaskExec(): Promise<void> {
+	const priPath = resolve(homedir(), '.tarx/priorities.jsonl');
+	if (!existsSync(priPath)) return;
+
+	const raw = readFileSync(priPath, 'utf-8').trim();
+	if (!raw) return;
+
+	const lines = raw.split('\n');
+	const items = lines.map(line => {
+		try { return JSON.parse(line); } catch { return null; }
+	}).filter(Boolean);
+
+	const tasks = items.filter(
+		(p: any) => p.status === 'active' && p.title && p.title.toLowerCase().startsWith(TASK_EXEC_PREFIX)
+	);
+
+	if (tasks.length === 0) return;
+
+	think(`TASK-EXEC: ${tasks.length} active task-exec task(s). Processing...`);
+
+	for (const task of tasks) {
+		const cmd = task.title.substring(TASK_EXEC_PREFIX.length).trim();
+		if (!cmd) continue;
+
+		// Block dangerous commands
+		if (BLOCKED_PATTERNS.test(cmd)) {
+			think(`TASK-EXEC [${task.id}]: BLOCKED dangerous: "${cmd.substring(0, 100)}"`);
+			try {
+				execSync(
+					`node ${resolve(__dirname, 'index.js')} notify --level=warning "Task blocked: ${cmd.substring(0, 100).replace(/"/g, '\\"')}"`,
+					{ cwd: TARX_ROOT, encoding: 'utf-8', timeout: 15000, stdio: 'pipe' }
+				);
+			} catch { /* best-effort */ }
+			appendFileSync(ORCH_LOG, JSON.stringify({
+				ts: new Date().toISOString(), type: 'task_exec', taskId: task.id,
+				cmd: cmd.substring(0, 200), status: 'blocked',
+			}) + '\n');
+			const updated = lines.map(line => {
+				try { const p = JSON.parse(line); if (p.id === task.id) { p.status = 'done'; p.last_updated = new Date().toISOString(); return JSON.stringify(p); } } catch { /* keep */ }
+				return line;
+			});
+			writeFileSync(priPath, updated.join('\n') + '\n');
+			continue;
+		}
+
+		// Whitelist check
+		if (!isCommandAllowed(cmd)) {
+			think(`TASK-EXEC [${task.id}]: REJECTED not whitelisted: "${cmd.substring(0, 100)}"`);
+			try {
+				execSync(
+					`node ${resolve(__dirname, 'index.js')} notify --level=warning "Task blocked: ${cmd.substring(0, 100).replace(/"/g, '\\"')}"`,
+					{ cwd: TARX_ROOT, encoding: 'utf-8', timeout: 15000, stdio: 'pipe' }
+				);
+			} catch { /* best-effort */ }
+			appendFileSync(ORCH_LOG, JSON.stringify({
+				ts: new Date().toISOString(), type: 'task_exec', taskId: task.id,
+				cmd: cmd.substring(0, 200), status: 'rejected_not_whitelisted',
+			}) + '\n');
+			const updated = lines.map(line => {
+				try { const p = JSON.parse(line); if (p.id === task.id) { p.status = 'done'; p.last_updated = new Date().toISOString(); return JSON.stringify(p); } } catch { /* keep */ }
+				return line;
+			});
+			writeFileSync(priPath, updated.join('\n') + '\n');
+			continue;
+		}
+
+		// Execute whitelisted command
+		try {
+			think(`TASK-EXEC [${task.id}]: running "${cmd.substring(0, 100)}"`);
+			const output = execSync(cmd, {
+				cwd: TARX_ROOT, encoding: 'utf-8', timeout: 30000, stdio: 'pipe',
+			}).trim();
+
+			think(`TASK-EXEC [${task.id}]: output="${output.substring(0, 500)}"`);
+
+			const updated = lines.map(line => {
+				try { const p = JSON.parse(line); if (p.id === task.id) { p.status = 'done'; p.last_updated = new Date().toISOString(); return JSON.stringify(p); } } catch { /* keep */ }
+				return line;
+			});
+			writeFileSync(priPath, updated.join('\n') + '\n');
+
+			appendFileSync(ORCH_LOG, JSON.stringify({
+				ts: new Date().toISOString(), type: 'task_exec', taskId: task.id,
+				cmd: cmd.substring(0, 200), outputPreview: output.substring(0, 200), status: 'done',
+			}) + '\n');
+
+			if (task.urgency === 'now') {
+				try {
+					execSync(
+						`node ${resolve(__dirname, 'index.js')} notify --level=info "Exec done: ${cmd.substring(0, 80).replace(/"/g, '\\"')}"`,
+						{ cwd: TARX_ROOT, encoding: 'utf-8', timeout: 15000, stdio: 'pipe' }
+					);
+				} catch { /* best-effort */ }
+			}
+		} catch (e: any) {
+			think(`TASK-EXEC [${task.id}]: FAILED: ${e.message?.substring(0, 200)}`);
+			appendFileSync(ORCH_LOG, JSON.stringify({
+				ts: new Date().toISOString(), type: 'task_exec', taskId: task.id,
+				cmd: cmd.substring(0, 200), status: 'error', error: e.message?.substring(0, 200),
+			}) + '\n');
+			const updated = lines.map(line => {
+				try { const p = JSON.parse(line); if (p.id === task.id) { p.status = 'done'; p.last_updated = new Date().toISOString(); return JSON.stringify(p); } } catch { /* keep */ }
+				return line;
+			});
+			writeFileSync(priPath, updated.join('\n') + '\n');
+		}
+	}
 }
 
 // --- X Mentions Polling ---
@@ -501,6 +815,20 @@ async function processInferenceTasks(): Promise<void> {
 			think(`INFERENCE [${task.id}]: prompt="${prompt.substring(0, 100)}"`);
 			think(`INFERENCE [${task.id}]: response="${response.substring(0, 500)}"`);
 
+			// SMS notify for urgent inference tasks
+			if (task.urgency === 'now') {
+				try {
+					const smsBody = `Grok says: ${response.substring(0, 200)}`;
+					execSync(
+						`node ${resolve(__dirname, 'index.js')} notify --level=info "${smsBody.replace(/"/g, '\\"')}"`,
+						{ cwd: TARX_ROOT, encoding: 'utf-8', timeout: 15000, stdio: 'pipe' }
+					);
+					think(`INFERENCE [${task.id}]: SMS sent (urgency=now)`);
+				} catch {
+					think(`INFERENCE [${task.id}]: SMS failed (best-effort)`);
+				}
+			}
+
 			// Mark task done in priorities.jsonl
 			const updated = lines.map(line => {
 				try {
@@ -531,6 +859,256 @@ async function processInferenceTasks(): Promise<void> {
 				type: 'inference_task',
 				taskId: task.id,
 				prompt: prompt.substring(0, 200),
+				status: 'error',
+				error: e.message?.substring(0, 200),
+			}) + '\n');
+		}
+	}
+}
+
+// --- Inference Augmentation Tasks ---
+
+const INF_AUG_PREFIX = 'inference-augment:';
+
+async function processInferenceAugmentTasks(): Promise<void> {
+	const priPath = resolve(homedir(), '.tarx/priorities.jsonl');
+	if (!existsSync(priPath)) return;
+
+	const raw = readFileSync(priPath, 'utf-8').trim();
+	if (!raw) return;
+
+	const lines = raw.split('\n');
+	const items = lines.map(line => {
+		try { return JSON.parse(line); } catch { return null; }
+	}).filter(Boolean);
+
+	const tasks = items.filter(
+		(p: any) => p.status === 'active' && p.title && p.title.toLowerCase().startsWith(INF_AUG_PREFIX)
+	);
+
+	if (tasks.length === 0) return;
+
+	think(`INF-AUG: ${tasks.length} active inference-augment task(s). Processing...`);
+
+	for (const task of tasks) {
+		const prompt = task.title.substring(INF_AUG_PREFIX.length).trim();
+		if (!prompt) continue;
+
+		try {
+			// Step 1: xAI inference
+			const xaiResponse = await callXAI(prompt, {
+				systemPrompt: 'You are TARX, an autonomous developer agent. Provide detailed, structured analysis.',
+				maxTokens: 1024,
+				temperature: 0.4,
+			});
+
+			think(`INF-AUG [${task.id}]: xAI="${xaiResponse.substring(0, 300)}"`);
+
+			// Step 2: Qwen local consolidation for RAG/taxonomy
+			let consolidated = '';
+			try {
+				const qwenBody = JSON.stringify({
+					model: 'qwen',
+					messages: [
+						{ role: 'system', content: 'Consolidate response for RAG/taxonomy. Output JSON: {"category":"","tags":[],"summary":"","facts":[]}' },
+						{ role: 'user', content: xaiResponse },
+					],
+					temperature: 0.1,
+					max_tokens: 512,
+				});
+				consolidated = await new Promise<string>((res, rej) => {
+					const timer = setTimeout(() => rej(new Error('qwen timeout')), 15000);
+					const req = http.request('http://127.0.0.1:11435/v1/chat/completions', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(qwenBody) },
+					}, (resp) => {
+						let data = '';
+						resp.on('data', (c: Buffer) => { data += c.toString(); });
+						resp.on('end', () => {
+							clearTimeout(timer);
+							try {
+								const parsed = JSON.parse(data);
+								res(parsed?.choices?.[0]?.message?.content || '');
+							} catch { res(''); }
+						});
+					});
+					req.on('error', (e) => { clearTimeout(timer); rej(e); });
+					req.write(qwenBody);
+					req.end();
+				});
+				think(`INF-AUG [${task.id}]: consolidated="${consolidated.substring(0, 300)}"`);
+			} catch (e: any) {
+				think(`INF-AUG [${task.id}]: Qwen failed: ${e.message?.substring(0, 100)}. Using raw xAI.`);
+				consolidated = xaiResponse;
+			}
+
+			// Mark done
+			const updated = lines.map(line => {
+				try {
+					const parsed = JSON.parse(line);
+					if (parsed.id === task.id) {
+						parsed.status = 'done';
+						parsed.last_updated = new Date().toISOString();
+						return JSON.stringify(parsed);
+					}
+				} catch { /* keep */ }
+				return line;
+			});
+			writeFileSync(priPath, updated.join('\n') + '\n');
+
+			// Orch log
+			appendFileSync(ORCH_LOG, JSON.stringify({
+				ts: new Date().toISOString(),
+				type: 'inference_augment',
+				taskId: task.id,
+				prompt: prompt.substring(0, 200),
+				xaiPreview: xaiResponse.substring(0, 200),
+				consolidatedPreview: consolidated.substring(0, 200),
+				status: 'done',
+			}) + '\n');
+
+			// SMS if urgent
+			if (task.urgency === 'now') {
+				try {
+					const smsBody = `Grok says: ${xaiResponse.substring(0, 200).replace(/"/g, '\\"')}`;
+					execSync(
+						`node ${resolve(__dirname, 'index.js')} notify --level=info "${smsBody}"`,
+						{ cwd: TARX_ROOT, encoding: 'utf-8', timeout: 15000, stdio: 'pipe' }
+					);
+					think(`INF-AUG [${task.id}]: SMS sent (urgency=now)`);
+				} catch {
+					think(`INF-AUG [${task.id}]: SMS failed (best-effort)`);
+				}
+			}
+		} catch (e: any) {
+			think(`INF-AUG [${task.id}]: FAILED: ${e.message?.substring(0, 200)}`);
+			appendFileSync(ORCH_LOG, JSON.stringify({
+				ts: new Date().toISOString(),
+				type: 'inference_augment',
+				taskId: task.id,
+				status: 'error',
+				error: e.message?.substring(0, 200),
+			}) + '\n');
+		}
+	}
+}
+
+// --- Grok Augmentation Tasks ---
+
+const AUGMENT_PREFIX = 'grok-augment:';
+
+async function processAugmentTasks(): Promise<void> {
+	const priPath = resolve(homedir(), '.tarx/priorities.jsonl');
+	if (!existsSync(priPath)) return;
+
+	const raw = readFileSync(priPath, 'utf-8').trim();
+	if (!raw) return;
+
+	const lines = raw.split('\n');
+	const items = lines.map(line => {
+		try { return JSON.parse(line); } catch { return null; }
+	}).filter(Boolean);
+
+	const tasks = items.filter(
+		(p: any) => p.status === 'active' && p.title && p.title.toLowerCase().startsWith(AUGMENT_PREFIX)
+	);
+
+	if (tasks.length === 0) return;
+
+	think(`AUGMENT: ${tasks.length} active grok-augment task(s). Processing...`);
+
+	for (const task of tasks) {
+		const prompt = task.title.substring(AUGMENT_PREFIX.length).trim();
+		if (!prompt) continue;
+
+		try {
+			// Step 1: Grok generates rich response
+			const grokResponse = await callXAI(prompt, {
+				systemPrompt: 'You are TARX, an autonomous developer agent. Provide detailed, structured analysis.',
+				maxTokens: 1024,
+				temperature: 0.4,
+			});
+
+			think(`AUGMENT [${task.id}]: grok="${grokResponse.substring(0, 300)}"`);
+
+			// Step 2: Local Qwen consolidates for RAG/taxonomy
+			let consolidated = '';
+			try {
+				const qwenRes = await new Promise<string>((res, rej) => {
+					const timer = setTimeout(() => rej(new Error('qwen timeout')), 10000);
+					const body = JSON.stringify({
+						model: 'qwen',
+						messages: [
+							{ role: 'system', content: 'Consolidate the following into structured knowledge for a RAG system. Output: category, tags (comma-separated), one-paragraph summary, key facts as bullet points.' },
+							{ role: 'user', content: grokResponse },
+						],
+						temperature: 0.2,
+						max_tokens: 512,
+					});
+					const req = http.request('http://127.0.0.1:11435/v1/chat/completions', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+					}, (resp) => {
+						let data = '';
+						resp.on('data', (c: Buffer) => { data += c.toString(); });
+						resp.on('end', () => {
+							clearTimeout(timer);
+							try {
+								const parsed = JSON.parse(data);
+								res(parsed?.choices?.[0]?.message?.content || '');
+							} catch { res(''); }
+						});
+					});
+					req.on('error', (e) => { clearTimeout(timer); rej(e); });
+					req.write(body);
+					req.end();
+				});
+				consolidated = qwenRes;
+				think(`AUGMENT [${task.id}]: consolidated="${consolidated.substring(0, 300)}"`);
+			} catch (e: any) {
+				think(`AUGMENT [${task.id}]: Qwen consolidation failed: ${e.message?.substring(0, 100)}. Using raw Grok response.`);
+				consolidated = grokResponse;
+			}
+
+			// Mark done
+			const updated = lines.map(line => {
+				try {
+					const parsed = JSON.parse(line);
+					if (parsed.id === task.id) {
+						parsed.status = 'done';
+						parsed.last_updated = new Date().toISOString();
+						return JSON.stringify(parsed);
+					}
+				} catch { /* keep */ }
+				return line;
+			});
+			writeFileSync(priPath, updated.join('\n') + '\n');
+
+			appendFileSync(ORCH_LOG, JSON.stringify({
+				ts: new Date().toISOString(),
+				type: 'grok_augment',
+				taskId: task.id,
+				prompt: prompt.substring(0, 200),
+				grokPreview: grokResponse.substring(0, 200),
+				consolidatedPreview: consolidated.substring(0, 200),
+				status: 'done',
+			}) + '\n');
+
+			// SMS for urgent
+			if (task.urgency === 'now') {
+				try {
+					execSync(
+						`node ${resolve(__dirname, 'index.js')} notify --level=info "Augment done: ${prompt.substring(0, 100).replace(/"/g, '\\"')}"`,
+						{ cwd: TARX_ROOT, encoding: 'utf-8', timeout: 15000, stdio: 'pipe' }
+					);
+				} catch { /* best-effort */ }
+			}
+		} catch (e: any) {
+			think(`AUGMENT [${task.id}]: FAILED: ${e.message?.substring(0, 200)}`);
+			appendFileSync(ORCH_LOG, JSON.stringify({
+				ts: new Date().toISOString(),
+				type: 'grok_augment',
+				taskId: task.id,
 				status: 'error',
 				error: e.message?.substring(0, 200),
 			}) + '\n');

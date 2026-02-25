@@ -8,12 +8,15 @@ import { config } from 'dotenv';
 import { resolve } from 'path';
 import { spawn } from 'child_process';
 import { homedir } from 'os';
-import { existsSync } from 'fs';
+import { existsSync, appendFileSync, mkdirSync } from 'fs';
 import { dispatch } from './dispatch';
 import { tick } from './heartbeat';
 import { generateDailyBrief, generateWeeklyDigest } from './briefing';
 import { postTweet, getUserTimeline, searchTweets, verifyConnection } from './x-api';
 import { callXAI, verifyXAI } from './xai-api';
+import { greet } from './greeting';
+import { withSpinner, printRecovery, suggestNext } from './feedback';
+import { stream as runStream } from './stream';
 
 // Load .env from repo root
 const envPath = resolve(__dirname, '../../../.env');
@@ -38,6 +41,12 @@ function loadService(name: string): any {
 const [,, command, ...args] = process.argv;
 
 async function main(): Promise<void> {
+  // Sentient greeting: show on bare invocation or before any command
+  if (!command) {
+    await greet();
+    return;
+  }
+
   switch (command) {
     case 'dispatch': {
       const prompt = args.join(' ');
@@ -45,8 +54,9 @@ async function main(): Promise<void> {
         console.error('Usage: tarx dispatch <prompt>');
         process.exit(1);
       }
-      const result = await dispatch(prompt);
+      const result = await withSpinner('Dispatching to Claude Code', () => dispatch(prompt));
       console.log(`\n--- Dispatch ${result.success ? 'OK' : 'FAILED'} (${result.duration_ms}ms) ---`);
+      suggestNext('dispatch');
       process.exit(result.success ? 0 : 1);
     }
 
@@ -84,6 +94,7 @@ async function main(): Promise<void> {
       } catch {
         // Services not compiled yet, skip
       }
+      suggestNext('status');
       break;
     }
 
@@ -106,15 +117,13 @@ async function main(): Promise<void> {
       const engine = new SelfHealEngine(dispatch);
 
       if (args.length > 0) {
-        // Heal a specific error
         const errorMessage = args.join(' ');
-        console.log(`Healing: ${errorMessage}\n`);
-        const result = await engine.handleError(errorMessage);
+        const result = await withSpinner(`Healing: ${errorMessage}`, () => engine.handleError(errorMessage));
         console.log('\nResult:', JSON.stringify(result, null, 2));
       } else {
-        // Health check cycle
-        await engine.healthCheck();
+        await withSpinner('Running health check cycle', () => engine.healthCheck());
       }
+      suggestNext('heal');
       break;
     }
 
@@ -171,9 +180,10 @@ async function main(): Promise<void> {
     case 'brief': {
       const weekly = args.includes('--weekly') || args.includes('-w');
       const sms = args.includes('--sms');
-      const brief = weekly
-        ? await generateWeeklyDigest()
-        : await generateDailyBrief();
+      const brief = await withSpinner(
+        weekly ? 'Generating weekly digest' : 'Generating daily brief',
+        () => weekly ? generateWeeklyDigest() : generateDailyBrief()
+      );
       console.log(brief);
       if (sms) {
         try {
@@ -184,6 +194,7 @@ async function main(): Promise<void> {
           console.error(`SMS failed: ${e.message}`);
         }
       }
+      suggestNext('brief');
       break;
     }
 
@@ -292,6 +303,13 @@ async function main(): Promise<void> {
       console.log('Triggering heartbeat tick...');
       await tick();
       console.log('Tick complete.');
+      break;
+    }
+
+    case 'stream': {
+      runStream();
+      // Keep process alive for polling
+      await new Promise(() => {});
       break;
     }
 
@@ -437,6 +455,7 @@ Environment:
 `);
       if (command) {
         console.error(`Unknown command: ${command}`);
+        console.log('\n  Run \x1b[1mtarx\x1b[0m with no args for a live status greeting.\n');
         process.exit(1);
       }
     }
@@ -444,6 +463,6 @@ Environment:
 }
 
 main().catch((e) => {
-  console.error(`Fatal: ${e.message}`);
+  printRecovery(e);
   process.exit(1);
 });

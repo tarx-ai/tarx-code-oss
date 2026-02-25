@@ -25,8 +25,8 @@ const LOG_FILE = resolve(LOG_DIR, 'dispatch.log');
 // ── Configuration ──────────────────────────────────────────────────
 
 const MAX_SMS_PER_HOUR = 10;
-const MAX_RETRIES = 2;
-const BASE_DELAY_MS = 1000;
+const MAX_RETRIES = 3;
+const BASE_DELAY_MS = 2000;
 const MAX_DELAY_MS = 10000;
 const JITTER_MS = 500;
 
@@ -350,9 +350,11 @@ export async function notify(level: NotifyLevel, message: string): Promise<void>
 	const prefix = LEVEL_EMOJI[level] || level;
 	console.log(`[TARX ${prefix}] ${message}`);
 
-	// SMS for actionable levels
-	if (level === 'success' || level === 'warning' || level === 'blocked') {
-		await sendSMS(level, message);
+	// SMS for actionable levels (info included — daemon uses info for urgent notifications)
+	if (level === 'info' || level === 'success' || level === 'warning' || level === 'blocked') {
+		logToFile('debug', `SMS trigger: level=${level} to=${process.env.TARX_NOTIFY_PHONE} via=${process.env.TWILIO_MESSAGING_SERVICE_SID ? 'MsgSvc' : 'direct'}`);
+		const smsResult = await sendSMS(level, message);
+		logToFile('debug', `SMS result: sent=${smsResult.sent} sid=${smsResult.sid || 'n/a'} attempts=${smsResult.attempts} error=${smsResult.error || 'none'}`);
 	}
 
 	// Blocked: schedule repeat in 5 minutes (best-effort, in-process only)
