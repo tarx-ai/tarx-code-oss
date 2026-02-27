@@ -114,10 +114,167 @@ program
     }
   });
 
+// ── Daemon subcommand group ──
+const daemonCmd = program.command('daemon').description('Manage the always-on AI engine');
+
+daemonCmd
+  .command('start')
+  .description('Start the daemon (inference + embeddings)')
+  .option('--foreground', 'Run in foreground (don\'t fork)')
+  .action(async (options) => {
+    const { isDaemonRunning } = await import('./daemon-client');
+    if (isDaemonRunning()) {
+      console.log('Daemon already running');
+      process.exit(0);
+    }
+
+    if (options.foreground) {
+      // Run daemon in-process (blocking)
+      await import('./daemon');
+      return;
+    }
+
+    // Fork daemon as detached child
+    const { spawn: spawnChild } = await import('child_process');
+    const daemonScript = require.resolve('./daemon');
+    const logFile = require('path').join(require('os').homedir(), '.tarx', 'logs', 'daemon-launchd.log');
+    const fs = await import('fs');
+    fs.mkdirSync(require('path').dirname(logFile), { recursive: true });
+    const out = fs.openSync(logFile, 'a');
+    const child = spawnChild(process.execPath, [daemonScript, '--foreground'], {
+      detached: true,
+      stdio: ['ignore', out, out]
+    });
+    child.unref();
+    console.log(`Daemon forked (PID ${child.pid})`);
+
+    // Wait for socket to appear
+    const sockPath = require('path').join(require('os').homedir(), '.tarx', 'daemon.sock');
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 500));
+      if (fs.existsSync(sockPath)) {
+        console.log('Daemon ready');
+        process.exit(0);
+      }
+    }
+    console.error('Daemon started but socket not found after 30s');
+    process.exit(1);
+  });
+
+daemonCmd
+  .command('stop')
+  .description('Stop the daemon and all managed services')
+  .action(async () => {
+    const { isDaemonRunning, stopDaemon } = await import('./daemon-client');
+    if (!isDaemonRunning()) {
+      console.log('Daemon not running');
+      process.exit(0);
+    }
+    try {
+      await stopDaemon();
+      console.log('Daemon stopped');
+    } catch (e: any) {
+      console.error(`Failed: ${e.message}`);
+      process.exit(1);
+    }
+  });
+
+daemonCmd
+  .command('status')
+  .description('Show daemon and service status')
+  .action(async () => {
+    const { isDaemonRunning, getDaemonStatus } = await import('./daemon-client');
+    if (!isDaemonRunning()) {
+      console.log('Daemon: not running');
+      process.exit(1);
+    }
+    try {
+      const s = await getDaemonStatus();
+      const uptime = Math.round(s.daemon.uptime / 1000);
+      console.log(`Daemon:     PID ${s.daemon.pid} (uptime ${uptime}s)`);
+      const ic = s.inference.healthy ? '✓' : '✗';
+      console.log(`Inference:  ${ic} :${s.inference.port}${s.inference.pid ? ` PID ${s.inference.pid}` : ''}${s.inference.latencyMs ? ` (${s.inference.latencyMs}ms)` : ''}`);
+      const ec = s.embeddings.healthy ? '✓' : '✗';
+      console.log(`Embeddings: ${ec} :${s.embeddings.port}${s.embeddings.pid ? ` PID ${s.embeddings.pid}` : ''}${s.embeddings.latencyMs ? ` (${s.embeddings.latencyMs}ms)` : ''}`);
+    } catch (e: any) {
+      console.error(`Failed: ${e.message}`);
+      process.exit(1);
+    }
+  });
+
+daemonCmd
+  .command('restart')
+  .description('Restart all managed services')
+  .action(async () => {
+    const { isDaemonRunning, restartDaemon } = await import('./daemon-client');
+    if (!isDaemonRunning()) {
+      console.log('Daemon not running. Use: tarx daemon start');
+      process.exit(1);
+    }
+    try {
+      await restartDaemon();
+      console.log('Services restarted');
+    } catch (e: any) {
+      console.error(`Failed: ${e.message}`);
+      process.exit(1);
+    }
+  });
+
+daemonCmd
+  .command('install')
+  .description('Install launchd plist for boot persistence')
+  .action(async () => {
+    const pathMod = await import('path');
+    const fsMod = await import('fs');
+    const { execSync } = await import('child_process');
+    const plistSrc = pathMod.join(__dirname, '..', 'com.tarx.daemon.plist');
+    const plistDst = pathMod.join(require('os').homedir(), 'Library', 'LaunchAgents', 'com.tarx.daemon.plist');
+
+    if (!fsMod.existsSync(plistSrc)) {
+      console.error(`Plist not found: ${plistSrc}`);
+      process.exit(1);
+    }
+
+    fsMod.mkdirSync(pathMod.dirname(plistDst), { recursive: true });
+    fsMod.copyFileSync(plistSrc, plistDst);
+    try {
+      execSync(`launchctl load ${plistDst}`);
+      console.log('Daemon installed and loaded');
+    } catch {
+      console.log('Plist copied. Run: launchctl load ' + plistDst);
+    }
+  });
+
+daemonCmd
+  .command('uninstall')
+  .description('Remove launchd plist')
+  .action(async () => {
+    const pathMod = await import('path');
+    const fsMod = await import('fs');
+    const { execSync } = await import('child_process');
+    const plistDst = pathMod.join(require('os').homedir(), 'Library', 'LaunchAgents', 'com.tarx.daemon.plist');
+
+    if (fsMod.existsSync(plistDst)) {
+      try { execSync(`launchctl unload ${plistDst}`); } catch {}
+      fsMod.unlinkSync(plistDst);
+      console.log('Daemon uninstalled');
+    } else {
+      console.log('Plist not found — already uninstalled');
+    }
+  });
+
+// ── Backward-compat aliases ──
 program
   .command('start')
-  .description('Start the local AI engine')
+  .description('Start AI engine (alias: daemon start)')
   .action(async () => {
+    const { isDaemonRunning } = await import('./daemon-client');
+    if (isDaemonRunning()) {
+      console.log('Daemon already running');
+      process.exit(0);
+    }
+    // Delegate to daemon start (foreground=false)
     const { ensureInferenceRunning } = await import('./services/engine');
     console.log('Starting inference engine...');
     const result = await ensureInferenceRunning();
@@ -130,8 +287,16 @@ program
 
 program
   .command('stop')
-  .description('Stop the local AI engine')
+  .description('Stop AI engine (alias: daemon stop)')
   .action(async () => {
+    const { isDaemonRunning, stopDaemon } = await import('./daemon-client');
+    if (isDaemonRunning()) {
+      try {
+        await stopDaemon();
+        console.log('Daemon stopped');
+        return;
+      } catch {}
+    }
     const { stopInference } = await import('./services/engine');
     await stopInference();
     console.log('Inference engine stopped');

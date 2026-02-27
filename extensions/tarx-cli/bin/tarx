@@ -12,7 +12,7 @@ const dispatchCommands = [
   'update', 'search', 'mesh',
   'build', 'refactor', 'fix', 'test', 'document', 'plan',
   'tweet', 'timeline', 'xsearch', 'xstatus', 'xai', 'weekly',
-  'vs',
+  'vs', 'daemon',
 ];
 const arg = process.argv[2];
 

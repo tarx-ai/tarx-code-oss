@@ -95,8 +95,10 @@ export const COMMANDS: CommandDef[] = [
 		examples: ['tarx xai "explain quantum computing"', 'tarx xai --model grok-3 "hello"'] },
 
 	// ── System ──
-	{ name: 'start',      desc: 'Start the local AI engine',                               section: 'system' },
-	{ name: 'stop',       desc: 'Stop the local AI engine',                                section: 'system' },
+	{ name: 'daemon',     args: '<start|stop|status|restart|install|uninstall>',
+	                      desc: 'Manage the always-on AI engine',                           section: 'system' },
+	{ name: 'start',      desc: 'Start AI engine (alias: daemon start)',                    section: 'system' },
+	{ name: 'stop',       desc: 'Stop AI engine (alias: daemon stop)',                      section: 'system' },
 	{ name: 'dispatch',   args: '<prompt>',  desc: 'Send prompt to Claude Code',          section: 'system' },
 	{ name: 'heal',       args: '[error]',   desc: 'Self-healing / health check cycle',   section: 'system' },
 	{ name: 'doctor',     desc: 'Diagnose service issues',                                section: 'system' },

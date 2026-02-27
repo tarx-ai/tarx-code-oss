@@ -28,6 +28,14 @@ export async function startRepl(): Promise<void> {
     }
   }
 
+  if (!health.embeddings.healthy) {
+    const { ensureEmbeddingsRunning } = await import('./services/engine');
+    const embResult = await ensureEmbeddingsRunning();
+    if (embResult.started) {
+      console.log('\x1b[32mEmbeddings ready.\x1b[0m');
+    }
+  }
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,

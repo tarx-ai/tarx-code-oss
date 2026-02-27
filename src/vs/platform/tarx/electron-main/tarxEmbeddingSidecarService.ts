@@ -1,5 +1,5 @@
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) TARX AI. All rights reserved.
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
@@ -76,7 +76,7 @@ export class TarxEmbeddingSidecarService extends Disposable implements ITarxEmbe
 		this._starting = true;
 
 		try {
-			// Check if already running
+			// Check if already running (our own process)
 			if (this._process) {
 				const healthResult = await this.checkHealth();
 				if (healthResult.healthy) {
@@ -93,138 +93,156 @@ export class TarxEmbeddingSidecarService extends Disposable implements ITarxEmbe
 				await this.stopEmbeddings();
 			}
 
+			// Detect external server (daemon, CLI-started, manual)
+			if (!this._process) {
+				const externalHealth = await this.checkHealth();
+				if (externalHealth.healthy) {
+					this.logService.info(`[TARX Embeddings] External server detected on :${this.port} (${externalHealth.latencyMs}ms) - adopting`);
+					this._status = { ...this._status, running: true, modelLoaded: true, healthState: TarxHealthState.Healthy };
+					this._onDidChangeStatus.fire(this._status);
+					this.startHealthMonitoring();
+					return {
+						success: true,
+						attempt: 0,
+						elapsedMs: Date.now() - startTime,
+						meshFallbackTriggered: false,
+						healthCheckLatencyMs: externalHealth.latencyMs
+					};
+				}
+			}
+
 			// Retry loop with backoff
-		for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-			this.logService.info(`[TARX Embeddings] Starting... (attempt ${attempt}/${maxAttempts})`);
+			for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+				this.logService.info(`[TARX Embeddings] Starting... (attempt ${attempt}/${maxAttempts})`);
 
-			// Kill orphaned processes on port
-			await this.killOrphanedProcesses();
+				// Kill orphaned processes on port
+				await this.killOrphanedProcesses();
 
-			// Find embedding model
-			const modelPath = await this.findEmbeddingModel();
-			if (!modelPath) {
-				this.logService.error('[TARX Embeddings] No nomic embedding model found');
-				return {
-					success: false,
-					attempt,
-					elapsedMs: Date.now() - startTime,
-					error: 'Embedding model not found (looking for sha256-970aa74c in ~/.ollama/models/blobs/)',
-					meshFallbackTriggered: false
-				};
-			}
-
-			// Get llama-server binary
-			const binaryPath = this.getLlamaServerPath();
-			if (!fs.existsSync(binaryPath)) {
-				this.logService.error(`[TARX Embeddings] llama-server binary not found: ${binaryPath}`);
-				return {
-					success: false,
-					attempt,
-					elapsedMs: Date.now() - startTime,
-					error: 'llama-server binary not found',
-					meshFallbackTriggered: false
-				};
-			}
-
-			// Build args for embedding server
-			const args = [
-				'--host', '127.0.0.1',
-				'--port', String(this.port),
-				'--model', modelPath,
-				'--ctx-size', '8192',
-				'--embeddings',
-				'--pooling', 'mean',
-				'--parallel', '1',
-				'--no-warmup'
-			];
-
-			const binariesDir = path.dirname(binaryPath);
-
-			this.logService.info(`[TARX Embeddings] Spawning embedding server: ${binaryPath}`);
-			this.logService.info(`[TARX Embeddings] Model: ${modelPath}`);
-			this.logService.info(`[TARX Embeddings] Args: ${args.join(' ')}`);
-
-			// Spawn process
-			const env = {
-				...process.env,
-				DYLD_LIBRARY_PATH: binariesDir
-			};
-
-			this._process = spawn(binaryPath, args, {
-				env,
-				stdio: ['ignore', 'pipe', 'pipe'],
-				detached: false
-			});
-
-			// Handle stdout/stderr with INFO level logging
-			this._process.stdout?.on('data', (data: Buffer) => {
-				const line = data.toString().trim();
-				if (line) {
-					this.logService.info(`[llama-embed stdout] ${line}`);
-				}
-			});
-
-			this._process.stderr?.on('data', (data: Buffer) => {
-				const line = data.toString().trim();
-				if (line) {
-					this.logService.info(`[llama-embed stderr] ${line}`);
-				}
-			});
-
-			// Handle exit
-			this._process.on('exit', (code, signal) => {
-				this.logService.info(`[TARX Embeddings] Server exited with code ${code}, signal ${signal}`);
-				this._process = null;
-				this._status = { ...this._status, running: false, healthState: TarxHealthState.Critical };
-				this._onDidChangeStatus.fire(this._status);
-			});
-
-			this._process.on('error', (err) => {
-				this.logService.error(`[TARX Embeddings] Server error: ${err.message}`);
-			});
-
-			this.logService.info(`[TARX Embeddings] Server spawned on port ${this.port} (PID: ${this._process.pid})`);
-
-			// Wait for health
-			try {
-				await this.waitForHealth(15000);
-
-				this._status = { ...this._status, running: true, modelLoaded: true, healthState: TarxHealthState.Healthy };
-				this._onDidChangeStatus.fire(this._status);
-
-				// Start health monitoring
-				this.startHealthMonitoring();
-
-				this.logService.info(`[TARX Embeddings] Ready (${Date.now() - startTime}ms)`);
-
-				return {
-					success: true,
-					attempt,
-					elapsedMs: Date.now() - startTime,
-					meshFallbackTriggered: false,
-					pid: this._process?.pid
-				};
-			} catch (e) {
-				const errorMsg = e instanceof Error ? e.message : String(e);
-				this.logService.error(`[TARX Embeddings] Attempt ${attempt} failed: ${errorMsg}`);
-				await this.stopEmbeddings();
-
-				// Retry with backoff
-				if (attempt < maxAttempts) {
-					this.logService.info(`[TARX Embeddings] Retrying in ${retryDelayMs}ms...`);
-					await this.delay(retryDelayMs);
-				} else {
-					this.logService.error(`[TARX Embeddings] FAILED after ${maxAttempts} attempts: ${errorMsg}`);
+				// Find embedding model
+				const modelPath = await this.findEmbeddingModel();
+				if (!modelPath) {
+					this.logService.error('[TARX Embeddings] No nomic embedding model found');
 					return {
 						success: false,
 						attempt,
 						elapsedMs: Date.now() - startTime,
-						error: errorMsg,
+						error: 'Embedding model not found (looking for sha256-970aa74c in ~/.ollama/models/blobs/)',
 						meshFallbackTriggered: false
 					};
 				}
+
+				// Get llama-server binary
+				const binaryPath = this.getLlamaServerPath();
+				if (!fs.existsSync(binaryPath)) {
+					this.logService.error(`[TARX Embeddings] llama-server binary not found: ${binaryPath}`);
+					return {
+						success: false,
+						attempt,
+						elapsedMs: Date.now() - startTime,
+						error: 'llama-server binary not found',
+						meshFallbackTriggered: false
+					};
+				}
+
+				// Build args for embedding server
+				const args = [
+					'--host', '127.0.0.1',
+					'--port', String(this.port),
+					'--model', modelPath,
+					'--ctx-size', '8192',
+					'--embeddings',
+					'--pooling', 'mean',
+					'--parallel', '1',
+					'--no-warmup'
+				];
+
+				const binariesDir = path.dirname(binaryPath);
+
+				this.logService.info(`[TARX Embeddings] Spawning embedding server: ${binaryPath}`);
+				this.logService.info(`[TARX Embeddings] Model: ${modelPath}`);
+				this.logService.info(`[TARX Embeddings] Args: ${args.join(' ')}`);
+
+				// Spawn process
+				const env = {
+					...process.env,
+					DYLD_LIBRARY_PATH: binariesDir
+				};
+
+				this._process = spawn(binaryPath, args, {
+					env,
+					stdio: ['ignore', 'pipe', 'pipe'],
+					detached: false
+				});
+
+				// Handle stdout/stderr with INFO level logging
+				this._process.stdout?.on('data', (data: Buffer) => {
+					const line = data.toString().trim();
+					if (line) {
+						this.logService.info(`[llama-embed stdout] ${line}`);
+					}
+				});
+
+				this._process.stderr?.on('data', (data: Buffer) => {
+					const line = data.toString().trim();
+					if (line) {
+						this.logService.info(`[llama-embed stderr] ${line}`);
+					}
+				});
+
+				// Handle exit
+				this._process.on('exit', (code, signal) => {
+					this.logService.info(`[TARX Embeddings] Server exited with code ${code}, signal ${signal}`);
+					this._process = null;
+					this._status = { ...this._status, running: false, healthState: TarxHealthState.Critical };
+					this._onDidChangeStatus.fire(this._status);
+				});
+
+				this._process.on('error', (err) => {
+					this.logService.error(`[TARX Embeddings] Server error: ${err.message}`);
+				});
+
+				this.logService.info(`[TARX Embeddings] Server spawned on port ${this.port} (PID: ${this._process.pid})`);
+
+				// Wait for health
+				try {
+					await this.waitForHealth(15000);
+
+					this._status = { ...this._status, running: true, modelLoaded: true, healthState: TarxHealthState.Healthy };
+					this._onDidChangeStatus.fire(this._status);
+
+					// Start health monitoring
+					this.startHealthMonitoring();
+
+					this.logService.info(`[TARX Embeddings] Ready (${Date.now() - startTime}ms)`);
+
+					return {
+						success: true,
+						attempt,
+						elapsedMs: Date.now() - startTime,
+						meshFallbackTriggered: false,
+						pid: this._process?.pid
+					};
+				} catch (e) {
+					const errorMsg = e instanceof Error ? e.message : String(e);
+					this.logService.error(`[TARX Embeddings] Attempt ${attempt} failed: ${errorMsg}`);
+					await this.stopEmbeddings();
+
+					// Retry with backoff
+					if (attempt < maxAttempts) {
+						this.logService.info(`[TARX Embeddings] Retrying in ${retryDelayMs}ms...`);
+						await this.delay(retryDelayMs);
+					} else {
+						this.logService.error(`[TARX Embeddings] FAILED after ${maxAttempts} attempts: ${errorMsg}`);
+						return {
+							success: false,
+							attempt,
+							elapsedMs: Date.now() - startTime,
+							error: errorMsg,
+							meshFallbackTriggered: false
+						};
+					}
+				}
 			}
-		}
 
 			return {
 				success: false,
@@ -361,6 +379,19 @@ export class TarxEmbeddingSidecarService extends Disposable implements ITarxEmbe
 	private async killOrphanedProcesses(): Promise<void> {
 		if (process.platform !== 'darwin' && process.platform !== 'linux') {
 			return;
+		}
+
+		// If daemon is running, it owns the servers - don't kill them
+		const daemonPidFile = path.join(process.env.HOME || '', '.tarx', 'daemon.pid');
+		if (fs.existsSync(daemonPidFile)) {
+			try {
+				const daemonPid = parseInt(fs.readFileSync(daemonPidFile, 'utf8').trim(), 10);
+				process.kill(daemonPid, 0); // throws if dead
+				this.logService.info('[TARX Embeddings] Daemon running, skipping orphan cleanup');
+				return;
+			} catch {
+				// stale PID - proceed with cleanup
+			}
 		}
 
 		const { exec } = await import('child_process');

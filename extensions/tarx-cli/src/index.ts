@@ -767,6 +767,146 @@ async function main(): Promise<void> {
       break;
     }
 
+    case 'daemon': {
+      const sub = args[0];
+      const { isDaemonRunning, getDaemonStatus, stopDaemon, restartDaemon } = await import('./daemon-client');
+
+      if (!sub || sub === '--help' || sub === '-h') {
+        console.log('Usage: tarx daemon <start|stop|status|restart|install|uninstall>');
+        break;
+      }
+
+      switch (sub) {
+        case 'start': {
+          if (isDaemonRunning()) {
+            console.log('Daemon already running');
+            break;
+          }
+
+          const foreground = args.includes('--foreground');
+          if (foreground) {
+            await import('./daemon');
+            await new Promise(() => {}); // block
+            break;
+          }
+
+          // Fork daemon as detached child
+          const logFile = resolve(homedir(), '.tarx/logs/daemon-launchd.log');
+          mkdirSync(resolve(homedir(), '.tarx/logs'), { recursive: true });
+          const { openSync } = require('fs');
+          const out = openSync(logFile, 'a');
+          const daemonScript = resolve(__dirname, 'daemon.js');
+          const child = spawn(process.execPath, [daemonScript, '--foreground'], {
+            detached: true,
+            stdio: ['ignore', out, out]
+          });
+          child.unref();
+          console.log(`Daemon forked (PID ${child.pid})`);
+
+          // Wait for socket
+          const sockPath = resolve(homedir(), '.tarx/daemon.sock');
+          const deadline = Date.now() + 30_000;
+          while (Date.now() < deadline) {
+            await new Promise(r => setTimeout(r, 500));
+            if (existsSync(sockPath)) {
+              console.log('Daemon ready');
+              process.exit(0);
+            }
+          }
+          console.error('Daemon started but socket not found after 30s');
+          process.exit(1);
+        }
+
+        case 'stop': {
+          if (!isDaemonRunning()) {
+            console.log('Daemon not running');
+            break;
+          }
+          try {
+            await stopDaemon();
+            console.log('Daemon stopped');
+          } catch (e: any) {
+            console.error(`Failed: ${e.message}`);
+            process.exit(1);
+          }
+          break;
+        }
+
+        case 'status': {
+          if (!isDaemonRunning()) {
+            console.log('Daemon: not running');
+            process.exit(1);
+          }
+          try {
+            const s = await getDaemonStatus();
+            const uptime = Math.round(s.daemon.uptime / 1000);
+            console.log(`Daemon:     PID ${s.daemon.pid} (uptime ${uptime}s)`);
+            const ic = s.inference.healthy ? '\u2713' : '\u2717';
+            console.log(`Inference:  ${ic} :${s.inference.port}${s.inference.pid ? ` PID ${s.inference.pid}` : ''}${s.inference.latencyMs ? ` (${s.inference.latencyMs}ms)` : ''}`);
+            const ec = s.embeddings.healthy ? '\u2713' : '\u2717';
+            console.log(`Embeddings: ${ec} :${s.embeddings.port}${s.embeddings.pid ? ` PID ${s.embeddings.pid}` : ''}${s.embeddings.latencyMs ? ` (${s.embeddings.latencyMs}ms)` : ''}`);
+          } catch (e: any) {
+            console.error(`Failed: ${e.message}`);
+            process.exit(1);
+          }
+          break;
+        }
+
+        case 'restart': {
+          if (!isDaemonRunning()) {
+            console.log('Daemon not running. Use: tarx daemon start');
+            process.exit(1);
+          }
+          try {
+            await restartDaemon();
+            console.log('Services restarted');
+          } catch (e: any) {
+            console.error(`Failed: ${e.message}`);
+            process.exit(1);
+          }
+          break;
+        }
+
+        case 'install': {
+          const plistSrc = resolve(__dirname, '..', 'com.tarx.daemon.plist');
+          const plistDst = resolve(homedir(), 'Library/LaunchAgents/com.tarx.daemon.plist');
+          if (!existsSync(plistSrc)) {
+            console.error(`Plist not found: ${plistSrc}`);
+            process.exit(1);
+          }
+          mkdirSync(resolve(homedir(), 'Library/LaunchAgents'), { recursive: true });
+          const { copyFileSync } = require('fs');
+          copyFileSync(plistSrc, plistDst);
+          try {
+            execSync(`launchctl load ${plistDst}`);
+            console.log('Daemon installed and loaded');
+          } catch {
+            console.log('Plist copied. Run: launchctl load ' + plistDst);
+          }
+          break;
+        }
+
+        case 'uninstall': {
+          const plistPath = resolve(homedir(), 'Library/LaunchAgents/com.tarx.daemon.plist');
+          if (existsSync(plistPath)) {
+            try { execSync(`launchctl unload ${plistPath}`); } catch {}
+            const { unlinkSync } = require('fs');
+            unlinkSync(plistPath);
+            console.log('Daemon uninstalled');
+          } else {
+            console.log('Plist not found — already uninstalled');
+          }
+          break;
+        }
+
+        default:
+          console.error(`Unknown daemon subcommand: ${sub}`);
+          console.log('Usage: tarx daemon <start|stop|status|restart|install|uninstall>');
+          process.exit(1);
+      }
+      break;
+    }
+
     default: {
       console.error(`\n  Unknown command: ${command}`);
       console.log('  Run \x1b[1mtarx --help\x1b[0m for usage.\n');
