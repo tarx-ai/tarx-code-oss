@@ -172,24 +172,10 @@ export interface HierarchyConversation {
 	spaceId?: string;
 }
 
-export interface HierarchySession {
-	id: string;
-	title: string;
-	spaceName?: string;
-}
-
 export interface HierarchyContextFile {
 	id: string;
 	filename: string;
 	path: string;
-}
-
-export interface HierarchyAgent {
-	id: string;
-	name: string;
-	description?: string;
-	enabled?: boolean;
-	toolCount?: number;
 }
 
 export interface RAGSearchResult {
@@ -200,37 +186,18 @@ export interface RAGSearchResult {
 	score: number;
 }
 
-export interface HierarchySkill {
-	id: string;
-	name: string;
-	description?: string;
-	category?: string;
-	installed?: boolean;
-	utilityScore?: number;
-}
-
 interface HierarchyNavProps {
 	projects: HierarchyProject[];
 	conversations: HierarchyConversation[];
-	claudeSessions: HierarchySession[];
 	contextFiles: HierarchyContextFile[];
-	agents: HierarchyAgent[];
-	skills?: HierarchySkill[];
 	selectedProjectId?: string | null;
 	onOpenProject: (projectId: string) => void;
 	onCreateProject: () => void;
 	onOpenConversation: (conversationId: string) => void;
 	onNewConversation: () => void;
-	onOpenClaudeSession: (sessionId: string, spaceId?: string) => void;
-	onRefreshClaudeSessions: () => void;
 	onOpenContextFile: (fileId: string) => void;
 	onClearContext: () => void;
 	onBrowseFiles: () => void;
-	onToggleAgent: (agentId: string) => void;
-	onConfigureAgent: (agentId: string) => void;
-	onOpenAgentsMarketplace: () => void;
-	onInstallSkill?: (skillId: string) => void;
-	onOpenSkillsMarketplace?: () => void;
 	onRAGSearch?: (query: string) => void;
 	ragResults?: RAGSearchResult[];
 	ragLoading?: boolean;
@@ -243,25 +210,15 @@ interface HierarchyNavProps {
 export const HierarchyNav: React.FC<HierarchyNavProps> = ({
 	projects,
 	conversations,
-	claudeSessions,
 	contextFiles,
-	agents,
-	skills = [],
 	selectedProjectId,
 	onOpenProject,
 	onCreateProject,
 	onOpenConversation,
 	onNewConversation,
-	onOpenClaudeSession,
-	onRefreshClaudeSessions,
 	onOpenContextFile,
 	onClearContext,
 	onBrowseFiles,
-	onToggleAgent,
-	onConfigureAgent,
-	onOpenAgentsMarketplace,
-	onInstallSkill,
-	onOpenSkillsMarketplace,
 	onRAGSearch,
 	ragResults = [],
 	ragLoading = false,
@@ -273,26 +230,13 @@ export const HierarchyNav: React.FC<HierarchyNavProps> = ({
 		conversations: true,
 		files: false,
 		contextFiles: false,
-		agents: true,
-		claudeSessions: false,
-		skills: false,
 	});
 
-	const [ragQuery, setRagQuery] = useState('');
-	const [skillsQuery, setSkillsQuery] = useState('');
-	// Agents search removed - agents list now shows all agents directly
 	const [showAllProjects, setShowAllProjects] = useState(false);
 
 	const toggleSection = useCallback((section: string) => {
 		setExpanded(prev => ({ ...prev, [section]: !prev[section] }));
 	}, []);
-
-	const handleRAGSearch = useCallback((query: string) => {
-		console.log('[TARX HierarchyNav] RAG search:', query);
-		onRAGSearch?.(query);
-	}, [onRAGSearch]);
-
-	console.log('[TARX HierarchyNav] Render - projects:', projects.length, 'conversations:', conversations.length, 'agents:', agents.length);
 
 	// Sort projects by priority/activity
 	const sortedProjects = [...projects].sort((a, b) => {
@@ -300,9 +244,6 @@ export const HierarchyNav: React.FC<HierarchyNavProps> = ({
 		if (!a.isActive && b.isActive) return 1;
 		return (b.priority || 0) - (a.priority || 0);
 	});
-
-	// Count enabled agents
-	const enabledAgentCount = agents.filter(a => a.enabled).length;
 
 	return (
 		<div className="tarx-hierarchy-nav" style={{ paddingBottom: 20 }}>
@@ -368,171 +309,6 @@ export const HierarchyNav: React.FC<HierarchyNavProps> = ({
 				hasChildren={false}
 				onClick={onBrowseFiles}
 			/>
-
-			{/* ─── Agents (with Claude Sessions nested) ─── */}
-			<NavItem
-				id="agents"
-				icon="robot"
-				label="Agents"
-				badge={enabledAgentCount > 0 ? `${enabledAgentCount} active` : undefined}
-				badgeVariant="success"
-				hasChildren={true}
-				isExpanded={expanded.agents}
-				onToggle={() => toggleSection('agents')}
-			>
-				{/* Claude Sessions - nested under Agents */}
-				<NavItem
-					id="claudeSessions"
-					icon="sparkle"
-					label="Claude Sessions"
-					badge={claudeSessions.length || undefined}
-					badgeVariant="purple"
-					depth={1}
-					hasChildren={true}
-					isExpanded={expanded.claudeSessions}
-					onToggle={() => toggleSection('claudeSessions')}
-				>
-					<div style={{ padding: '4px 12px 4px 20px' }}>
-						<Button
-							size="sm"
-							variant="ghost"
-							onClick={onRefreshClaudeSessions}
-							icon={<i className="codicon codicon-refresh" />}
-						>
-							Refresh
-						</Button>
-					</div>
-					{claudeSessions.length === 0 ? (
-						<div style={{ padding: '8px 12px 8px 20px' }}>
-							<span style={{ color: VS.fgMuted, fontSize: 11 }}>No Claude sessions synced</span>
-						</div>
-					) : (
-						claudeSessions.slice(0, 10).map(session => (
-							<NavItem
-								key={session.id}
-								id={`session-${session.id}`}
-								icon="sparkle"
-								label={session.title || session.spaceName || 'Untitled'}
-								depth={2}
-								onClick={() => onOpenClaudeSession(session.id)}
-							/>
-						))
-					)}
-				</NavItem>
-
-				{/* Agent List - clicking opens agent config */}
-				{agents.map(agent => (
-						<div
-							key={agent.id}
-							onClick={() => onConfigureAgent(agent.id)}
-							style={{
-								padding: '8px 12px',
-								borderBottom: `1px solid ${VS.border}`,
-								display: 'flex',
-								alignItems: 'center',
-								gap: 8,
-								cursor: 'pointer',
-							}}
-						>
-							<i className={`codicon codicon-${agent.enabled ? 'check' : 'robot'}`}
-							   style={{ color: agent.enabled ? VS.success : VS.fgMuted, fontSize: 14 }} />
-							<div style={{ flex: 1, minWidth: 0 }}>
-								<div style={{ fontSize: 12, fontWeight: 500, color: VS.fg }}>{agent.name}</div>
-								{agent.description && (
-									<div style={{ fontSize: 11, color: VS.fgMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-										{agent.description}
-									</div>
-								)}
-							</div>
-							{agent.toolCount && (
-								<span style={{ fontSize: 10, color: VS.fgMuted }}>{agent.toolCount} tools</span>
-							)}
-						</div>
-					))}
-
-			</NavItem>
-
-			{/* ─── Skills Marketplace ─── */}
-			<NavItem
-				id="skills"
-				icon="extensions"
-				label="Skills"
-				badge={skills.filter(s => s.installed).length > 0 ? `${skills.filter(s => s.installed).length} installed` : undefined}
-				badgeVariant="purple"
-				hasChildren={true}
-				isExpanded={expanded.skills}
-				onToggle={() => toggleSection('skills')}
-			>
-				{/* Skills Search */}
-				<div style={{ padding: '8px 12px' }}>
-					<SearchInput
-						placeholder="Search skills..."
-						value={skillsQuery}
-						onChange={(e) => setSkillsQuery(e.target.value)}
-						onSearch={() => {}}
-					/>
-				</div>
-
-				{/* Skills List */}
-				{skills.length > 0 && (
-					skills
-						.filter(skill =>
-							!skillsQuery ||
-							skill.name.toLowerCase().includes(skillsQuery.toLowerCase()) ||
-							skill.description?.toLowerCase().includes(skillsQuery.toLowerCase())
-						)
-						.map(skill => (
-							<div
-								key={skill.id}
-								style={{
-									padding: '8px 12px',
-									borderBottom: `1px solid ${VS.border}`,
-									display: 'flex',
-									alignItems: 'center',
-									gap: 8,
-								}}
-							>
-								<i className={`codicon codicon-${skill.category === 'git' ? 'git-commit' : skill.category === 'testing' ? 'beaker' : 'code'}`}
-								   style={{ color: VS.fgMuted, fontSize: 14 }} />
-								<div style={{ flex: 1, minWidth: 0 }}>
-									<div style={{ fontSize: 12, fontWeight: 500, color: VS.fg }}>{skill.name}</div>
-									{skill.description && (
-										<div style={{ fontSize: 11, color: VS.fgMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-											{skill.description}
-										</div>
-									)}
-								</div>
-								<Button
-									size="sm"
-									variant={skill.installed ? 'ghost' : 'secondary'}
-									onClick={() => onInstallSkill?.(skill.id)}
-									icon={<i className={`codicon codicon-${skill.installed ? 'check' : 'cloud-download'}`} />}
-									style={{
-										minWidth: 70,
-										backgroundColor: skill.installed ? 'transparent' : VS.buttonBg,
-										color: skill.installed ? VS.success : VS.buttonFg,
-									}}
-								>
-									{skill.installed ? 'Installed' : 'Install'}
-								</Button>
-							</div>
-						))
-				)}
-
-				{/* Skills Marketplace CTA */}
-				<Card variant="outline" style={{ margin: '8px 12px', padding: 12 }}>
-					<div style={{ textAlign: 'center' }}>
-						<span style={{ color: VS.fgMuted, fontSize: 12, display: 'block', marginBottom: 8 }}>Skills Marketplace</span>
-						<Button
-							size="sm"
-							onClick={onOpenSkillsMarketplace}
-							icon={<i className="codicon codicon-extensions" />}
-						>
-							Browse Skills
-						</Button>
-					</div>
-				</Card>
-			</NavItem>
 
 			{/* ─── Conversations ─── */}
 			<NavItem

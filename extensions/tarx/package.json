@@ -331,20 +331,6 @@
         "title": "View Server Tools"
       },
       {
-        "command": "tarx.refreshClaudeSessions",
-        "title": "TARX: Refresh Claude Sessions",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "tarx.openClaudeSession",
-        "title": "TARX: Open Claude Session"
-      },
-      {
-        "command": "tarx.continueInClaude",
-        "title": "TARX: Continue in Claude.ai",
-        "icon": "$(link-external)"
-      },
-      {
         "command": "tarx.spawnClaudeCode",
         "title": "TARX: Open Claude Code",
         "icon": "$(hubot)"
@@ -407,21 +393,6 @@
           "group": "navigation"
         },
         {
-          "command": "tarx.refreshMcpSettings",
-          "when": "view == tarx.mcpSettings",
-          "group": "navigation"
-        },
-        {
-          "command": "tarx.openMcpConfig",
-          "when": "view == tarx.mcpSettings",
-          "group": "navigation"
-        },
-        {
-          "command": "tarx.refreshClaudeSessions",
-          "when": "view == tarx.claudeSessions",
-          "group": "navigation"
-        },
-        {
           "command": "tarx.context.refresh",
           "when": "view == tarx.contextFiles",
           "group": "navigation"
@@ -441,16 +412,6 @@
         {
           "command": "tarx.projects.remove",
           "when": "view == tarx.projects && viewItem == project",
-          "group": "navigation"
-        },
-        {
-          "command": "tarx.toggleMcpServer",
-          "when": "view == tarx.mcpSettings && viewItem == mcpServer",
-          "group": "inline"
-        },
-        {
-          "command": "tarx.viewMcpServerTools",
-          "when": "view == tarx.mcpSettings && viewItem == mcpServer",
           "group": "navigation"
         },
         {
@@ -640,20 +601,8 @@
           "visibility": "hidden"
         },
         {
-          "id": "tarx.claudeSessions",
-          "name": "Claude.ai Sessions",
-          "type": "tree",
-          "visibility": "hidden"
-        },
-        {
           "id": "tarx.contextFiles",
           "name": "Context Files",
-          "type": "tree",
-          "visibility": "hidden"
-        },
-        {
-          "id": "tarx.mcpSettings",
-          "name": "Agents",
           "type": "tree",
           "visibility": "hidden"
         }
@@ -667,15 +616,6 @@
       {
         "view": "tarx.sidebar",
         "contents": "Welcome to Workbench!\n\n**Local. Private. Proactive.**\n\n[Start Conversation](command:workbench.action.chat.open)\n\nYour AI-powered development environment that runs entirely on your machine."
-      },
-      {
-        "view": "tarx.claudeSessions",
-        "contents": "Browse your Claude.ai conversations.\n\nSessions are synced from ~/.tarx/memory.db\n\n[Refresh Sessions](command:tarx.refreshClaudeSessions)"
-      },
-      {
-        "view": "tarx.mcpSettings",
-        "contents": "No agents configured.\n\n[Open Agent Config](command:tarx.openMcpConfig)\n\nConfigure agents to extend your workflow with local tools.",
-        "when": "tarx.noMcpServers"
       },
       {
         "view": "tarx.contextFiles",

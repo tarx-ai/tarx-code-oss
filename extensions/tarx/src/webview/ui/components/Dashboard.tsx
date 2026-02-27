@@ -612,28 +612,6 @@ export default function TARXDashboard({ onOpenChat }: DashboardProps) {
           ))}
         </div>
 
-        {/* ─── Skills ─── */}
-        <SectionHeader title="Skills" count={skills.length} action="Browse all" />
-        <div style={{
-          background: VS.cardBg, borderRadius: 4,
-          border: `1px solid ${VS.border}`, padding: "2px 0",
-        }}>
-          {skills.map(s => (
-            <ItemRow key={s.name} {...s} isInstalled={installedSkills.has(s.name)} onToggle={() => toggleSkill(s.name)} />
-          ))}
-        </div>
-
-        {/* ─── Agents ─── */}
-        <SectionHeader title="Agents" count={agents.length} action="Browse all" />
-        <div style={{
-          background: VS.cardBg, borderRadius: 4,
-          border: `1px solid ${VS.border}`, padding: "2px 0",
-        }}>
-          {agents.map(a => (
-            <ItemRow key={a.name} {...a} isInstalled={installedAgents.has(a.name)} onToggle={() => toggleAgent(a.name)} />
-          ))}
-        </div>
-
       </div>
     </div>
   );

@@ -581,25 +581,15 @@ export const App: React.FC<AppProps> = ({ mode, logoUri, eyesUri }) => {
 									source: h.source,
 									spaceId: h.spaceId
 								}))}
-								claudeSessions={claudeSessions}
 								contextFiles={contextFiles}
-								agents={agents}
 								selectedProjectId={selectedProjectId}
 								onOpenProject={handleOpenProject}
 								onCreateProject={handleCreateProject}
 								onOpenConversation={handleOpenConversation}
 								onNewConversation={handleNewChat}
-								onOpenClaudeSession={(sessionId, spaceId) => handleOpenSession(sessionId, spaceId)}
-								onRefreshClaudeSessions={handleRefreshClaudeSessions}
 								onOpenContextFile={handleOpenContextFile}
 								onClearContext={handleClearContext}
 								onBrowseFiles={handleBrowseFiles}
-								onToggleAgent={handleToggleAgent}
-								onConfigureAgent={handleConfigureAgent}
-								onOpenAgentsMarketplace={handleOpenAgentsMarketplace}
-								onInstallSkill={handleInstallSkill}
-								onOpenSkillsMarketplace={handleOpenSkillsMarketplace}
-								skills={skills}
 								onRAGSearch={handleRAGSearch}
 								ragResults={ragResults}
 								ragLoading={ragLoading}

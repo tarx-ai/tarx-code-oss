@@ -69,7 +69,6 @@ import { registerConversationalTestCommands } from './test/conversational-test-h
 import { AuthManager, registerAuthCommands, AuthStateManager } from './auth';
 import { closeMCPDatabase, searchMCPKnowledge, getMCPKnowledgeCount, storeMCPEmbeddings } from './mcpKnowledge';
 import { TarxSidebarProvider as TarxSidebarWebviewProvider } from './webview/TarxSidebarProvider';
-import { registerClaudeSessionsProvider, ClaudeSessionsProvider } from './claudeSessionsProvider';
 // project-creation import removed  - conversational-first
 import { registerSectionsSidebar, TarxSectionsSidebarProvider } from './sidebar-sections';
 import { registerContextFilesProvider, ContextFilesProvider } from './contextFilesProvider';
@@ -763,10 +762,6 @@ export async function activate(context: vscode.ExtensionContext) {
 	} catch (error) {
 		console.error('[TARX DEBUG] ERROR registering Project Tree Provider:', error);
 	}
-
-	// Initialize Claude Sessions provider for browsing Claude.ai conversations
-	const claudeSessionsProvider = registerClaudeSessionsProvider(context);
-	console.log('[TARX] Claude Sessions provider registered');
 
 	// ===============================================================
 	// WEBVIEW SIDEBAR PROVIDER - Custom React left nav

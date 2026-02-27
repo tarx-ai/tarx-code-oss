@@ -117,17 +117,15 @@ export async function handleFTUXGreeting(
 	}
 
 	response.markdown('**Welcome to TARX.** Local AI, private memory, your machine.\n\n');
-	response.markdown('If you have an invite code, type it below. Otherwise, skip to start exploring.\n\n');
+	response.markdown('Your AI is running locally -- everything stays on your device.\n\n');
 
 	response.button({
-		command: 'tarx.ftux.enterInvite',
-		title: 'I have an invite code'
+		command: 'workbench.action.chat.open',
+		title: 'Start a conversation'
 	});
 
-	response.button({
-		command: 'tarx.ftux.skip',
-		title: 'Skip  - explore on my own'
-	});
+	// Mark as validated so FTUX doesn't show again
+	await context.globalState.update(INVITE_KEY, true);
 
 	return true; // Handled as FTUX
 }
