@@ -8,7 +8,7 @@ import { resolve } from 'path';
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'fs';
 import { execSync } from 'child_process';
 import { box } from './feedback';
-import { brand, icon, header, cta, footer, section } from './format';
+import { brand, icon } from './format';
 
 interface ServiceStatus {
 	name: string;
@@ -142,7 +142,7 @@ export async function greet(): Promise<void> {
 	const [services, priorities] = await Promise.all([
 		Promise.all([
 			checkService(11435, 'Inference'),
-			checkService(11436, 'Mesh'),
+			checkService(11436, 'Supercomputer'),
 			checkService(11437, 'Embeddings'),
 		]),
 		Promise.resolve(loadPriorities()),
@@ -155,31 +155,49 @@ export async function greet(): Promise<void> {
 	if (firstRun) {
 		markFirstRunComplete();
 
-		console.log();
-		console.log(`  ╔══════════════════════════════════════════════════════╗`);
-		console.log(`  ║                                                      ║`);
-		console.log(`  ║   ${brand.tarx()} — Local AI That Belongs to You              ║`);
-		console.log(`  ║                                                      ║`);
-		console.log(`  ║   ${brand.dim('Free forever. No tokens. No limits. No catch.')}     ║`);
-		console.log(`  ║                                                      ║`);
-		console.log(`  ╚══════════════════════════════════════════════════════╝`);
+		const C1 = '\x1b[38;2;64;182;251m';
+		const C3 = '\x1b[38;2;254;161;33m';
+		const B = '\x1b[1m';
+		const D = '\x1b[2m';
+		const R = '\x1b[0m';
 
-		section('Setting up...');
+		console.log();
+		console.log(`  ${C1}╭──────────────────────────────────────────╮${R}`);
+		console.log(`  ${C1}│${R}                                          ${C1}│${R}`);
+		console.log(`  ${C1}│${R}   ${C3}✻${R} ${B}Welcome to TARX!${R}                     ${C1}│${R}`);
+		console.log(`  ${C1}│${R}                                          ${C1}│${R}`);
+		console.log(`  ${C1}│${R}   ${D}Your local supercomputer.${R}               ${C1}│${R}`);
+		console.log(`  ${C1}│${R}   ${D}Free forever. No limits. No catch.${R}      ${C1}│${R}`);
+		console.log(`  ${C1}│${R}                                          ${C1}│${R}`);
+		console.log(`  ${C1}│${R}   ${D}tarx --help${R} for commands                ${C1}│${R}`);
+		console.log(`  ${C1}│${R}                                          ${C1}│${R}`);
+		console.log(`  ${C1}╰──────────────────────────────────────────╯${R}`);
+		console.log();
+
 		for (const s of services) {
 			if (s.up) {
 				console.log(`  ${icon.success} ${s.name} ready on :${s.port}`);
 			} else {
-				console.log(`  ${icon.dot.down} ${s.name} not running ${brand.dim(`(:${s.port})`)}`);
+				console.log(`  ${D}○${R} ${s.name} not running ${D}(:${s.port})${R}`);
 			}
 		}
-
-		cta('Start working', 'tarx chat "explain this codebase"');
-		footer('local', { version: '1.2.0' });
+		console.log();
 		return;
 	}
 
 	// ── Normal branded greeting ──
-	header('Local AI That Belongs to You');
+	const C1g = '\x1b[38;2;64;182;251m';
+	const C2g = '\x1b[38;2;205;77;136m';
+	const C3g = '\x1b[38;2;254;161;33m';
+	const B2 = '\x1b[1m';
+	const D2 = '\x1b[2m';
+	const R2 = '\x1b[0m';
+
+	console.log();
+	console.log(`  ${C1g}╭──────────────────────────────────────────╮${R2}`);
+	console.log(`  ${C1g}│${R2}  ${C3g}✻${R2} ${B2}Welcome to TARX${R2}                        ${C1g}│${R2}`);
+	console.log(`  ${C1g}│${R2}  ${D2}v1.2.0${R2}                                   ${C1g}│${R2}`);
+	console.log(`  ${C1g}╰──────────────────────────────────────────╯${R2}`);
 
 	// Context line: time + git + cwd
 	const greeting = getTimeGreeting();
@@ -248,7 +266,5 @@ export async function greet(): Promise<void> {
 	else if (daemon === 'idle') suggest = 'wake';
 	else if (needYou === 0) suggest = 'chat';
 
-	cta(`${brand.bold('Suggested:')} tarx ${suggest}`, suggest);
-
-	footer('local', { version: '1.2.0' });
+	console.log(`\n  ${'\x1b[2m'}Next:${'\x1b[0m'} ${C2g}${'\x1b[1m'}tarx ${suggest}${'\x1b[0m'}\n`);
 }

@@ -4,7 +4,12 @@
  */
 
 const SPINNER_FRAMES = ['\u2838', '\u2834', '\u2826', '\u2807', '\u280b', '\u2819', '\u2830', '\u2838'];
-const BRAND = '\x1b[35m'; // purple
+// Brand palette — true color
+const C1 = '\x1b[38;2;64;182;251m';   // #40B6FB primary blue
+const C2 = '\x1b[38;2;205;77;136m';   // #CD4D88 secondary pink
+const C3 = '\x1b[38;2;254;161;33m';   // #FEA121 tertiary amber
+const C4 = '\x1b[38;2;204;128;252m';  // #CC80FC quaternary purple
+const BRAND = C1;
 const DIM = '\x1b[2m';
 const BOLD = '\x1b[1m';
 const RED = '\x1b[31m';
@@ -15,11 +20,11 @@ const RESET = '\x1b[0m';
 
 // ─── ASCII Art ───────────────────────────────────────────
 
-const BANNER = `${BRAND}
-  ╔════════════════════════════════════╗
-  ║   ▀█▀ ▄▀█ █▀█ ▀▄▀   ${DIM}CLI v1.2.0${BRAND}  ║
-  ║    █  █▀█ █▀▄ █ █   ${DIM}local AI${BRAND}     ║
-  ╚════════════════════════════════════╝${RESET}`;
+const BANNER = `
+  ${C1}╭──────────────────────────────────────╮${RESET}
+  ${C1}│${RESET}  ${C3}✻${RESET} ${BOLD}TARX CLI${RESET}  ${DIM}v1.2.0${RESET}               ${C1}│${RESET}
+  ${C1}│${RESET}  ${DIM}Your local supercomputer.${RESET}             ${C1}│${RESET}
+  ${C1}╰──────────────────────────────────────╯${RESET}`;
 
 export function printBanner(): void {
 	console.log(BANNER);
@@ -32,16 +37,16 @@ export function divider(): void {
 export function box(title: string, lines: string[]): void {
 	const maxLen = Math.max(title.length + 2, ...lines.map(l => stripAnsi(l).length + 2));
 	const w = Math.min(maxLen + 4, 60);
-	const top = `  ${DIM}╭${'─'.repeat(w)}╮${RESET}`;
-	const bot = `  ${DIM}╰${'─'.repeat(w)}╯${RESET}`;
-	const titleLine = `  ${DIM}│${RESET} ${BOLD}${title}${RESET}${' '.repeat(Math.max(0, w - stripAnsi(title).length - 2))}${DIM}│${RESET}`;
-	const sep = `  ${DIM}├${'─'.repeat(w)}┤${RESET}`;
+	const top = `  ${C1}╭${'─'.repeat(w)}╮${RESET}`;
+	const bot = `  ${C1}╰${'─'.repeat(w)}╯${RESET}`;
+	const titleLine = `  ${C1}│${RESET} ${C2}${BOLD}${title}${RESET}${' '.repeat(Math.max(0, w - stripAnsi(title).length - 2))}${C1}│${RESET}`;
+	const sep = `  ${C1}├${'─'.repeat(w)}┤${RESET}`;
 	console.log(top);
 	console.log(titleLine);
 	console.log(sep);
 	for (const l of lines) {
 		const pad = Math.max(0, w - stripAnsi(l).length - 2);
-		console.log(`  ${DIM}│${RESET} ${l}${' '.repeat(pad)}${DIM}│${RESET}`);
+		console.log(`  ${C1}│${RESET} ${l}${' '.repeat(pad)}${C1}│${RESET}`);
 	}
 	console.log(bot);
 }
@@ -72,7 +77,7 @@ export function spinner(message: string): SpinnerHandle {
 	const interval = setInterval(() => {
 		const elapsed = ((Date.now() - start) / 1000).toFixed(1);
 		const icon = SPINNER_FRAMES[frame % SPINNER_FRAMES.length];
-		process.stderr.write(`\r\x1b[K  ${BRAND}${icon}${RESET} ${currentMsg} ${DIM}(${elapsed}s)${RESET}`);
+		process.stderr.write(`\r\x1b[K  ${C3}${icon}${RESET} ${currentMsg} ${DIM}(${elapsed}s)${RESET}`);
 		frame++;
 	}, 80);
 
@@ -104,6 +109,52 @@ export async function withSpinner<T>(message: string, fn: () => Promise<T>): Pro
 	}
 }
 
+// ─── Thinking animation (Claude Code style) ─────────────────
+
+const THINK_FRAMES = ['\u280b', '\u2819', '\u2839', '\u2838', '\u283c', '\u2834', '\u2826', '\u2827', '\u2807', '\u280f'];
+
+export function thinkingSpinner(label: string = 'Thinking'): SpinnerHandle {
+	let frame = 0;
+	let currentMsg = label;
+	const start = Date.now();
+
+	const isTTY = process.stderr.isTTY;
+	if (!isTTY) {
+		process.stderr.write(`  ${currentMsg}...\n`);
+		return {
+			stop: (final?: string) => { if (final) process.stderr.write(`  ${final}\n`); },
+			update: (msg: string) => { currentMsg = msg; },
+		};
+	}
+
+	const interval = setInterval(() => {
+		const elapsed = (Date.now() - start) / 1000;
+		const icon = THINK_FRAMES[frame % THINK_FRAMES.length];
+		if (elapsed > 10 && currentMsg === label) {
+			currentMsg = `${label} harder`;
+		}
+		process.stderr.write(`\r\x1b[K  ${C3}${icon}${RESET} ${currentMsg}${DIM}...${RESET} ${DIM}${elapsed.toFixed(1)}s${RESET}`);
+		frame++;
+	}, 80);
+
+	return {
+		stop: (finalMessage?: string) => {
+			clearInterval(interval);
+			const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+			process.stderr.write(`\r\x1b[K  ${GREEN}\u2713${RESET} ${finalMessage || currentMsg} ${DIM}(${elapsed}s)${RESET}\n`);
+		},
+		update: (msg: string) => { currentMsg = msg; },
+	};
+}
+
+export function promptLabel(): void {
+	console.log(`\n  ${DIM}talking to${RESET} ${C1}${BOLD}TARX${RESET}\n`);
+}
+
+export function inputHint(): void {
+	console.log(`  ${C4}TARX is thinking...${RESET}`);
+}
+
 // --- Error recovery suggestions ---
 
 interface RecoverySuggestion {
@@ -129,7 +180,7 @@ const RECOVERY_MAP: Array<{ pattern: RegExp; suggest: RecoverySuggestion }> = [
 	{
 		pattern: /ECONNREFUSED.*11436|mesh.*down/i,
 		suggest: {
-			message: 'Mesh service is not running.',
+			message: 'Supercomputer is not running.',
 			commands: ['tarx start'],
 		},
 	},
@@ -171,7 +222,7 @@ const RECOVERY_MAP: Array<{ pattern: RegExp; suggest: RecoverySuggestion }> = [
 	{
 		pattern: /mesh.*failed|mesh.*timeout|mesh.*refused/i,
 		suggest: {
-			message: 'Mesh network unreachable.',
+			message: 'Supercomputer unreachable.',
 			commands: ['tarx status', 'tarx start'],
 		},
 	},
@@ -194,7 +245,7 @@ export function printRecovery(error: Error | string): void {
 	console.error(`\n  ${RED}\u2717 ${msg}${RESET}`);
 
 	if (recovery) {
-		console.error(`  ${YELLOW}\u25b8 ${recovery.message}${RESET}`);
+		console.error(`  ${C3}\u25b8 ${recovery.message}${RESET}`);
 		console.error(`  ${DIM}Try:${RESET}`);
 		for (const cmd of recovery.commands) {
 			console.error(`    ${BOLD}${cmd}${RESET}`);
@@ -224,6 +275,16 @@ const SUGGEST_MAP: Record<string, string[]> = {
 	'refactor': ['tarx test', 'tarx build'],
 	'document': ['tarx build', 'tarx status'],
 	'plan': ['tarx build', 'tarx dispatch "<task>"'],
+	'ask': ['tarx ask "<another question>"', 'tarx recall "<topic>"'],
+	'learn': ['tarx index', 'tarx ask "<question>"'],
+	'recall': ['tarx ask "<question>"', 'tarx remember "<fact>"'],
+	'context': ['tarx ask "<question>"', 'tarx index'],
+	'watch': ['tarx watch scan', 'tarx index'],
+	'index': ['tarx learn "<file|dir>"', 'tarx ask "<question>"'],
+	'review': ['tarx explain "<error>"', 'tarx build'],
+	'remember': ['tarx recall "<topic>"', 'tarx forget "<id>"'],
+	'forget': ['tarx remember "<fact>"', 'tarx recall "<topic>"'],
+	'explain': ['tarx ask "<question>"', 'tarx review'],
 };
 
 // --- Help screen (renders from command registry) ---
@@ -255,7 +316,7 @@ export function printHelp(): void {
 	}
 	console.log('');
 
-	console.log(`  ${DIM}Services: :11435 inference  :11436 mesh  :11437 embeddings${RESET}`);
+	console.log(`  ${DIM}Services: :11435 inference  :11436 supercomputer  :11437 embeddings${RESET}`);
 	console.log(`  ${DIM}Docs:     https://tarx.com/docs${RESET}\n`);
 }
 
@@ -294,5 +355,5 @@ export function suggestNext(command: string): void {
 	const suggestions = SUGGEST_MAP[command];
 	if (!suggestions || suggestions.length === 0) return;
 
-	console.log(`${DIM}  Next: ${suggestions.join('  |  ')}${RESET}`);
+	console.log(`  ${DIM}Next:${RESET} ${C2}${suggestions.join(`${RESET} ${DIM}|${RESET} ${C2}`)}${RESET}`);
 }

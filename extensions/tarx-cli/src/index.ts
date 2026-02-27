@@ -17,7 +17,7 @@ import { generateDailyBrief, generateWeeklyDigest } from './briefing';
 import { postTweet, getUserTimeline, searchTweets, verifyConnection } from './x-api';
 import { callXAI, verifyXAI } from './xai-api';
 import { greet } from './greeting';
-import { withSpinner, printRecovery, suggestNext, printHelp, printCommandHelp } from './feedback';
+import { withSpinner, thinkingSpinner, promptLabel, inputHint, printRecovery, suggestNext, printHelp, printCommandHelp } from './feedback';
 import { stream as runStream } from './stream';
 import { getStatus as getMeshStatus, checkHealth as checkMeshHealth } from './services/mesh';
 import { embedQuery } from './services/embeddings';
@@ -84,7 +84,7 @@ async function main(): Promise<void> {
 
       const ports = [
         { port: 11435, name: 'Inference  ' },
-        { port: 11436, name: 'Mesh       ' },
+        { port: 11436, name: 'Supercomp  ' },
         { port: 11437, name: 'Embeddings ' },
         { port: 11438, name: 'MCP Core   ' },
       ];
@@ -613,16 +613,16 @@ async function main(): Promise<void> {
       const BOLD = '\x1b[1m';
       const RST = '\x1b[0m';
 
-      console.log(`\n  ${BOLD}Mesh Network${RST}\n`);
+      console.log(`\n  ${BOLD}Supercomputer${RST}\n`);
 
       const health = await checkMeshHealth();
       if (!health.healthy) {
-        console.log(`  ${RED}●${RST} Mesh offline — ${health.error || 'unreachable'}`);
+        console.log(`  ${RED}●${RST} Supercomputer offline — ${health.error || 'unreachable'}`);
         console.log(`  ${DIM}Expected on :11436. Run tarx-mesh binary.${RST}\n`);
         break;
       }
 
-      console.log(`  ${GREEN}●${RST} Mesh online :11436`);
+      console.log(`  ${GREEN}●${RST} Supercomputer online :11436`);
       if (health.peerId) console.log(`  ${DIM}Peer ID:${RST} ${health.peerId}`);
       console.log(`  ${DIM}Peers:${RST}   ${health.peers || 0}`);
 
@@ -635,6 +635,77 @@ async function main(): Promise<void> {
       }
       console.log('');
       suggestNext('mesh');
+      break;
+    }
+
+    // ─── Local AI + RAG commands ───
+    case 'ask': {
+      const { ask } = await import('./commands/ask');
+      await ask(args);
+      suggestNext('ask');
+      break;
+    }
+
+    case 'learn': {
+      const { learn } = await import('./commands/learn');
+      await learn(args);
+      suggestNext('learn');
+      break;
+    }
+
+    case 'recall': {
+      const { recall } = await import('./commands/recall');
+      await recall(args);
+      suggestNext('recall');
+      break;
+    }
+
+    case 'context': {
+      const { context } = await import('./commands/context');
+      await context();
+      suggestNext('context');
+      break;
+    }
+
+    case 'watch': {
+      const { watch } = await import('./commands/watch');
+      await watch(args);
+      suggestNext('watch');
+      break;
+    }
+
+    case 'index': {
+      const { indexStats } = await import('./commands/indexStats');
+      await indexStats();
+      suggestNext('index');
+      break;
+    }
+
+    case 'review': {
+      const { review } = await import('./commands/review');
+      await review();
+      suggestNext('review');
+      break;
+    }
+
+    case 'remember': {
+      const { remember } = await import('./commands/remember');
+      await remember(args);
+      suggestNext('remember');
+      break;
+    }
+
+    case 'forget': {
+      const { forget } = await import('./commands/forget');
+      await forget(args);
+      suggestNext('forget');
+      break;
+    }
+
+    case 'explain': {
+      const { explain } = await import('./commands/explain');
+      await explain(args);
+      suggestNext('explain');
       break;
     }
 

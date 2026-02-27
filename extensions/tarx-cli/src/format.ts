@@ -23,12 +23,18 @@ const GREEN_BRIGHT = '\x1b[92m';
 const YELLOW_BRIGHT = '\x1b[93m';
 const BLUE_BRIGHT = '\x1b[94m';
 
+// Brand palette — true color
+const C1 = '\x1b[38;2;64;182;251m';   // #40B6FB primary blue
+const C2 = '\x1b[38;2;205;77;136m';   // #CD4D88 secondary pink
+const C3 = '\x1b[38;2;254;161;33m';   // #FEA121 tertiary amber
+const C4 = '\x1b[38;2;204;128;252m';  // #CC80FC quaternary purple
+
 // ═══════════════════════════════════════════
 // BRAND HELPERS
 // ═══════════════════════════════════════════
 
 export const brand = {
-	blue: (s: string) => `${BLUE_BRIGHT}${s}${RST}`,
+	blue: (s: string) => `${C1}${s}${RST}`,
 	green: (s: string) => `${GREEN_BRIGHT}${s}${RST}`,
 	yellow: (s: string) => `${YELLOW_BRIGHT}${s}${RST}`,
 	red: (s: string) => `${RED_BRIGHT}${s}${RST}`,
@@ -36,8 +42,8 @@ export const brand = {
 	bold: (s: string) => `${BOLD}${s}${RST}`,
 	cmd: (s: string) => `${CYAN}${s}${RST}`,
 	italic: (s: string) => `${ITALIC}${s}${RST}`,
-	tarx: () => `${BOLD}${BLUE_BRIGHT}TARX${RST}`,
-	line: (width?: number) => `${DIM}${'─'.repeat(width ?? Math.min(process.stdout.columns || 60, 60))}${RST}`,
+	tarx: () => `${BOLD}${C1}TARX${RST}`,
+	line: (width?: number) => `${C1}${'─'.repeat(width ?? Math.min(process.stdout.columns || 60, 60))}${RST}`,
 };
 
 // ═══════════════════════════════════════════
@@ -48,15 +54,15 @@ export const icon = {
 	success: `${GREEN_BRIGHT}✓${RST}`,
 	error: `${RED_BRIGHT}✗${RST}`,
 	warning: `${YELLOW_BRIGHT}⚠${RST}`,
-	info: `${BLUE_BRIGHT}●${RST}`,
+	info: `${C1}●${RST}`,
 	arrow: `${DIM}→${RST}`,
 	thinking: `${DIM}◌${RST}`,
 	local: `${GREEN_BRIGHT}⬡${RST}`,
-	mesh: `${BLUE_BRIGHT}⬢${RST}`,
+	mesh: `${C1}⬢${RST}`,
 	cloud: `${YELLOW_BRIGHT}☁${RST}`,
 	dot: {
 		up: `${GREEN_BRIGHT}●${RST}`,
-		warn: `${YELLOW_BRIGHT}●${RST}`,
+		warn: `${C3}●${RST}`,
 		down: `${RED_BRIGHT}●${RST}`,
 		idle: `${DIM}○${RST}`,
 	},
@@ -110,12 +116,12 @@ export function warn(msg: string): void {
 /** Call-to-action box */
 export function cta(message: string, command?: string): void {
 	console.log();
-	console.log(`  ${brand.dim('┌─')} ${message}`);
+	console.log(`  ${C1}┌─${RST} ${message}`);
 	if (command) {
-		console.log(`  ${brand.dim('│')}`);
-		console.log(`  ${brand.dim('│')}  ${brand.cmd('$ ' + command)}`);
+		console.log(`  ${C1}│${RST}`);
+		console.log(`  ${C1}│${RST}  ${brand.cmd('$ ' + command)}`);
 	}
-	console.log(`  ${brand.dim('└─')}`);
+	console.log(`  ${C1}└─${RST}`);
 }
 
 /** Compute source footer */
@@ -125,7 +131,7 @@ export function footer(source: 'local' | 'mesh' | 'cloud', extra?: { tokens?: nu
 		: source === 'mesh' ? icon.mesh
 			: icon.cloud;
 	const label = source === 'local' ? 'Local'
-		: source === 'mesh' ? 'Mesh'
+		: source === 'mesh' ? 'Supercomputer'
 			: 'Cloud';
 
 	const parts: string[] = [`${si} ${brand.dim(label)}`];
