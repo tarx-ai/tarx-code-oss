@@ -114,8 +114,6 @@ import {
 	registerConversationalCommands
 } from './chat/conversationalFlows.js';
 import { ChatOnboardingManager } from './onboarding/chat-onboarding.js';
-import { TarxBackgroundService } from './backgroundService';
-import { TarxThinkingTab } from './thinkingTab';
 // TARX Model Router - Feb 2026
 import {
 	routeMessage,
@@ -329,8 +327,6 @@ let proactiveSystem: ProactiveSystem | undefined;
 let creditBridge: CreditBridge | undefined;
 let grokDispatchProcess: ChildProcess | undefined;
 let contextProtocol: ContextProtocol | undefined;
-let backgroundService: TarxBackgroundService | undefined;
-
 // Auth objects - module level for guard access
 let authManager: AuthManager | undefined;
 let isAuthenticatedSession: boolean = false;
@@ -2457,44 +2453,6 @@ export async function activate(context: vscode.ExtensionContext) {
 		claudeCodeStatusBar.show();
 		context.subscriptions.push(claudeCodeStatusBar);
 	}
-
-	// ========================================
-	// 3b. TARX Thinking Tab — Living system conversation
-	// ========================================
-	backgroundService = new TarxBackgroundService();
-	context.subscriptions.push({ dispose: () => backgroundService?.stop() });
-
-	// Register serializer BEFORE creating panel (VS Code needs it for restart restore)
-	context.subscriptions.push(
-		vscode.window.registerWebviewPanelSerializer(TarxThinkingTab.viewType, {
-			async deserializeWebviewPanel(panel: vscode.WebviewPanel, _state: unknown) {
-				if (backgroundService) {
-					const tab = TarxThinkingTab.revive(panel, backgroundService);
-					context.subscriptions.push(tab);
-					// Don't call backgroundService.start() here — the main code path does it
-				}
-			}
-		})
-	);
-
-	// Open Thinking Tab on fresh launch — create tab BEFORE starting service
-	// so the event listener is attached before session-brief fires
-	const thinkingTab = TarxThinkingTab.create(backgroundService);
-	context.subscriptions.push(thinkingTab);
-	console.log('[TARX-BG] backgroundService.start() called');
-	backgroundService.start();
-
-	// Command to focus the Thinking Tab
-	safeRegisterCommand(context, 'tarx.openThinking', () => {
-		if (backgroundService) {
-			if (TarxThinkingTab.isOpen()) {
-				TarxThinkingTab.focus();
-			} else {
-				const tab = TarxThinkingTab.create(backgroundService);
-				context.subscriptions.push(tab);
-			}
-		}
-	});
 
 	// ========================================
 	// 4. Register Commands
@@ -5548,7 +5506,6 @@ export function deactivate() {
 	}
 
 	statusBar?.dispose();
-	backgroundService?.stop();
 	languageModelProvider?.dispose();
 	projectIndexer?.dispose();
 	fileWatcher?.dispose();

@@ -105,11 +105,6 @@
     ],
     "commands": [
       {
-        "command": "tarx.openThinking",
-        "title": "TARX: Open Thinking Tab",
-        "icon": "$(pulse)"
-      },
-      {
         "command": "tarx.openChat",
         "title": "TARX: Open Chat",
         "icon": "$(comment-discussion)"
