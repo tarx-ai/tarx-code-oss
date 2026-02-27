@@ -92,16 +92,27 @@ export async function activate(context: vscode.ExtensionContext) {
     // 3. Get port from config
     const port = config.get('port', 11435);
 
-    // 3b. Singleton guard — skip spawn if already running
-    try {
-      const res = await fetch(`http://localhost:${port}/health`);
-      if (res.ok) {
-        outputChannel.appendLine(`TARX LOCAL: Server already running on port ${port}`);
-        updateStatusBar('connected', port);
-        return;
+    // 3b. Singleton guard — skip spawn if already running (or sidecar is starting)
+    let alreadyRunning = false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch(`http://localhost:${port}/health`, {
+          signal: AbortSignal.timeout(2000)
+        });
+        if (res.ok) {
+          outputChannel.appendLine(`TARX LOCAL: Server already running on port ${port} (detected on attempt ${attempt + 1})`);
+          updateStatusBar('connected', port);
+          alreadyRunning = true;
+          break;
+        }
+      } catch { /* not running yet */ }
+      if (attempt < 2) {
+        outputChannel.appendLine(`TARX LOCAL: No server on :${port} yet, waiting 2s (sidecar may be starting)...`);
+        await new Promise(r => setTimeout(r, 2000));
       }
-    } catch { /* not running, proceed to start */ }
+    }
 
+    if (!alreadyRunning) {
     // 4. Build args
     const args = [
       '--host', '127.0.0.1',
@@ -156,6 +167,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // 6. Wait for health
     await waitForHealth(`http://localhost:${port}/health`, 30000);
+    } // end if (!alreadyRunning)
 
     // 7. Start embedding server if enabled (with delay to avoid GPU contention)
     const embeddingConfig = vscode.workspace.getConfiguration('tarx.local.embeddingServer');

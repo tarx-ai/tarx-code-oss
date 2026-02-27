@@ -114,6 +114,29 @@ program
     }
   });
 
+program
+  .command('start')
+  .description('Start the local AI engine')
+  .action(async () => {
+    const { ensureInferenceRunning } = await import('./services/engine');
+    console.log('Starting inference engine...');
+    const result = await ensureInferenceRunning();
+    if (result.error) {
+      console.error(`Error: ${result.error}`);
+      process.exit(1);
+    }
+    console.log(result.started ? 'Inference engine started on :11435' : 'Inference engine already running on :11435');
+  });
+
+program
+  .command('stop')
+  .description('Stop the local AI engine')
+  .action(async () => {
+    const { stopInference } = await import('./services/engine');
+    await stopInference();
+    console.log('Inference engine stopped');
+  });
+
 function printHealth(health: any): void {
   const check = (ok: boolean) => ok ? '✓' : '✗';
   console.log(`Inference:  ${check(health.inference.healthy)} ${health.inference.port}`);

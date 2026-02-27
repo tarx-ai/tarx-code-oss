@@ -1407,6 +1407,31 @@ export class CodeApplication extends Disposable {
 		// We also show an error to the user in case this fails.
 		this.resolveShellEnvironment(this.environmentMainService.args, process.env, true);
 
+		// TARX: Auto-start inference server (3s delay - first to claim port 11435)
+		setTimeout(() => {
+			instantiationService.invokeFunction(accessor => {
+				const logService = accessor.get(ILogService);
+				logService.info('[TARX] Inference server auto-start triggered (3s delay complete)');
+
+				try {
+					const inferenceSidecar = accessor.get(ITarxSidecarService);
+					inferenceSidecar.startInference().then(result => {
+						if (result.success) {
+							logService.info(`[TARX] Inference ready (attempt: ${result.attempt}, ${result.elapsedMs}ms)`);
+						} else {
+							logService.error(`[TARX] Inference failed: ${result.error}`);
+						}
+					}).catch(e => {
+						const errorMsg = e instanceof Error ? e.message : String(e);
+						logService.error(`[TARX] Inference error: ${errorMsg}`);
+					});
+				} catch (e) {
+					const errorMsg = e instanceof Error ? e.message : String(e);
+					logService.error(`[TARX] Inference init failed: ${errorMsg}`);
+				}
+			});
+		}, 3000);
+
 		// TARX: Auto-start embedding server (5s delay to let inference server claim port 11435 first)
 		setTimeout(() => {
 			instantiationService.invokeFunction(accessor => {
@@ -1419,17 +1444,17 @@ export class CodeApplication extends Disposable {
 
 					embeddingSidecar.startEmbeddings().then(result => {
 						if (result.success) {
-							logService.info(`[TARX] ✓ Embedding server started successfully (PID: ${result.pid}, ${result.elapsedMs}ms)`);
+							logService.info(`[TARX] [OK] Embedding server started successfully (PID: ${result.pid}, ${result.elapsedMs}ms)`);
 						} else {
-							logService.error(`[TARX] ✗ Embedding server failed to start: ${result.error}`);
+							logService.error(`[TARX] [FAIL] Embedding server failed to start: ${result.error}`);
 						}
 					}).catch(e => {
 						const errorMsg = e instanceof Error ? e.message : String(e);
-						logService.error(`[TARX] ✗ Embedding sidecar promise rejected: ${errorMsg}`, e);
+						logService.error(`[TARX] [FAIL] Embedding sidecar promise rejected: ${errorMsg}`, e);
 					});
 				} catch (e) {
 					const errorMsg = e instanceof Error ? e.message : String(e);
-					logService.error(`[TARX] ✗ Embedding service initialization failed: ${errorMsg}`, e);
+					logService.error(`[TARX] [FAIL] Embedding service initialization failed: ${errorMsg}`, e);
 				}
 			});
 		}, 5000);

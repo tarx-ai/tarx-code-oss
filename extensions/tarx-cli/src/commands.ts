@@ -55,6 +55,23 @@ export const COMMANDS: CommandDef[] = [
 		examples: ['tarx priorities', 'tarx priorities add "Ship v1" --urgency now', 'tarx priorities done p-001'] },
 	{ name: 'mesh',       desc: 'Mesh network status + peer info',               section: 'core' },
 	{ name: 'update',     desc: 'Check for CLI updates',                         section: 'core' },
+	{ name: 'ask',        args: '<question>',  desc: 'Ask a question (local RAG + AI)',            section: 'core',
+		examples: ['tarx ask "what is TARX?"', 'tarx ask "how does the embedding pipeline work?"'] },
+	{ name: 'recall',     args: '<topic>',     desc: 'Search memories + knowledge',                section: 'core',
+		examples: ['tarx recall "embedding"', 'tarx recall "auth flow"'] },
+	{ name: 'context',    desc: 'Dashboard: everything TARX knows',                                section: 'core' },
+	{ name: 'learn',      args: '<file|dir>',  desc: 'Teach TARX about files (embed to RAG)',      section: 'core',
+		flags: ['--depth <n>  Max directory depth (default 3)'],
+		examples: ['tarx learn README.md', 'tarx learn src/ --depth 2'] },
+	{ name: 'watch',      args: '<add|rm|ls|scan>', desc: 'Manage watched directories',            section: 'core',
+		usage: 'tarx watch <add|rm|ls|scan> [args]',
+		flags: ['add <dir> [--depth N] [--label NAME]', 'rm <dir|id>', 'ls  List all watches', 'scan [id]  Force rescan'],
+		examples: ['tarx watch add ~/projects/myapp', 'tarx watch ls', 'tarx watch scan'] },
+	{ name: 'index',      desc: 'RAG health dashboard',                                            section: 'core' },
+	{ name: 'remember',   args: '<fact>',      desc: 'Store a fact in TARX memory',                section: 'core',
+		examples: ['tarx remember "always use bun for this project"'] },
+	{ name: 'forget',     args: '<id|query>',  desc: 'Remove a memory',                            section: 'core',
+		examples: ['tarx forget "bun"', 'tarx forget a1b2c3d4'] },
 
 	// ── Build ──
 	{ name: 'build',      args: '[task]',    desc: 'Compile project, fix errors',        section: 'build' },
@@ -63,6 +80,9 @@ export const COMMANDS: CommandDef[] = [
 	{ name: 'test',       args: '[scope]',   desc: 'Run or write tests',                 section: 'build' },
 	{ name: 'document',   args: '[scope]',   desc: 'Generate documentation',             section: 'build' },
 	{ name: 'plan',       args: '[task]',    desc: 'Create implementation plan',          section: 'build' },
+	{ name: 'review',    desc: 'AI code review (git diff + RAG)',                                   section: 'build' },
+	{ name: 'explain',   args: '<error|file>', desc: 'Explain error or file with AI + RAG',        section: 'build',
+		examples: ['tarx explain ECONNREFUSED', 'tarx explain src/server.ts'] },
 
 	// ── Social ──
 	{ name: 'tweet',      args: '<msg>',       desc: 'Post a tweet',                     section: 'social' },
@@ -75,6 +95,8 @@ export const COMMANDS: CommandDef[] = [
 		examples: ['tarx xai "explain quantum computing"', 'tarx xai --model grok-3 "hello"'] },
 
 	// ── System ──
+	{ name: 'start',      desc: 'Start the local AI engine',                               section: 'system' },
+	{ name: 'stop',       desc: 'Stop the local AI engine',                                section: 'system' },
 	{ name: 'dispatch',   args: '<prompt>',  desc: 'Send prompt to Claude Code',          section: 'system' },
 	{ name: 'heal',       args: '[error]',   desc: 'Self-healing / health check cycle',   section: 'system' },
 	{ name: 'doctor',     desc: 'Diagnose service issues',                                section: 'system' },

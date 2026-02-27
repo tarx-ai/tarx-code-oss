@@ -17,7 +17,15 @@ export async function startRepl(): Promise<void> {
 
   const health = await checkHealth();
   if (!health.inference.healthy) {
-    console.log('\x1b[33mWarning: Inference server not responding\x1b[0m');
+    const { ensureInferenceRunning } = await import('./services/engine');
+    console.log('Starting inference engine...');
+    const result = await ensureInferenceRunning();
+    if (result.error) {
+      console.log(`\x1b[31mError: ${result.error}\x1b[0m`);
+      console.log('\x1b[33mChat will not work without the inference engine.\x1b[0m');
+    } else if (result.started) {
+      console.log('\x1b[32mInference engine ready.\x1b[0m');
+    }
   }
 
   const rl = readline.createInterface({
