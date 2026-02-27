@@ -90,10 +90,7 @@ export const App: React.FC<AppProps> = ({ mode, logoUri, eyesUri }) => {
 	const [extensionReady, setExtensionReady] = useState(false);
 
 	// HierarchyNav additional state
-	const [claudeSessions, setClaudeSessions] = useState<Array<{ id: string; title: string; spaceName?: string }>>([]);
 	const [contextFiles, setContextFiles] = useState<Array<{ id: string; filename: string; path: string }>>([]);
-	const [agents, setAgents] = useState<Array<{ id: string; name: string; description?: string; enabled?: boolean; toolCount?: number }>>([]);
-	const [skills, setSkills] = useState<Array<{ id: string; name: string; description?: string; category?: string; installed?: boolean; utilityScore?: number }>>([]);
 
 	// RAG search state
 	const [ragResults, setRagResults] = useState<Array<{ id: string; filename: string; path: string; snippet: string; score: number }>>([]);
@@ -222,11 +219,6 @@ export const App: React.FC<AppProps> = ({ mode, logoUri, eyesUri }) => {
 	// ═══════════════════════════════════════════════════════════════
 	// HIERARCHY NAV HANDLERS
 	// ═══════════════════════════════════════════════════════════════
-	const handleRefreshClaudeSessions = useCallback(() => {
-		console.log('[TARX WEBVIEW] Refreshing Claude sessions');
-		postMessage({ command: 'refreshClaudeSessions' });
-	}, []);
-
 	const handleOpenContextFile = useCallback((fileId: string) => {
 		postMessage({ command: 'openContextFile', fileId });
 	}, []);
@@ -237,32 +229,6 @@ export const App: React.FC<AppProps> = ({ mode, logoUri, eyesUri }) => {
 
 	const handleBrowseFiles = useCallback(() => {
 		postMessage({ command: 'browseFiles' });
-	}, []);
-
-	const handleToggleAgent = useCallback((agentId: string) => {
-		postMessage({ command: 'toggleAgent', agentId });
-	}, []);
-
-	const handleConfigureAgent = useCallback((agentId: string) => {
-		postMessage({ command: 'configureAgent', agentId });
-	}, []);
-
-	const handleOpenAgentsMarketplace = useCallback(() => {
-		postMessage({ command: 'openAgentsMarketplace' });
-	}, []);
-
-	const handleOpenSkillsMarketplace = useCallback(() => {
-		postMessage({ command: 'openSkillsMarketplace' });
-	}, []);
-
-	// Skills handler
-	const handleInstallSkill = useCallback((skillId: string) => {
-		console.log('[TARX WEBVIEW] Install skill:', skillId);
-		postMessage({ command: 'installSkill', skillId });
-		// Optimistically update UI
-		setSkills(prev => prev.map(s =>
-			s.id === skillId ? { ...s, installed: !s.installed } : s
-		));
 	}, []);
 
 	// RAG search handler
@@ -413,11 +379,6 @@ export const App: React.FC<AppProps> = ({ mode, logoUri, eyesUri }) => {
 				// ═══════════════════════════════════════════════════════════════
 				// HIERARCHY NAV MESSAGES
 				// ═══════════════════════════════════════════════════════════════
-
-				case 'claudeSessionsLoaded':
-					console.log('[TARX WEBVIEW] claudeSessionsLoaded:', message.sessions?.length ?? 0);
-					setClaudeSessions(message.sessions || []);
-					break;
 
 				case 'contextFilesLoaded':
 					console.log('[TARX WEBVIEW] contextFilesLoaded:', message.files?.length ?? 0);

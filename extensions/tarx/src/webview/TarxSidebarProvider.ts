@@ -98,15 +98,8 @@ export type WebviewMessage =
 	| { command: 'rejectTask'; taskId: string; reason?: string }
 	| { command: 'getBlockedTasks' }
 	// HierarchyNav commands
-	| { command: 'refreshClaudeSessions' }
 	| { command: 'openContextFile'; fileId: string }
-	| { command: 'toggleAgent'; agentId: string }
-	| { command: 'openMcpConfig' }
-	| { command: 'getClaudeSessions' }
 	| { command: 'getContextFiles' }
-	| { command: 'getAgents' }
-	| { command: 'getSkills' }
-	| { command: 'installSkill'; skillId: string }
 	| { command: 'ragSearch'; query: string }
 	| { command: 'setPIN'; pin: string; mode: 'create' | 'verify' }
 	| { command: 'verifyPIN'; pin: string };
@@ -545,12 +538,6 @@ export class TarxSidebarProvider implements vscode.WebviewViewProvider {
 			// HIERARCHY NAV COMMANDS
 			// ════════════════════════════════════════════════════════════════
 
-			case 'refreshClaudeSessions':
-				console.log('[TarxSidebarProvider] Refreshing Claude sessions');
-				await vscode.commands.executeCommand('tarx.refreshClaudeSessions');
-				await this._loadClaudeSessions();
-				break;
-
 			case 'openContextFile':
 				try {
 					console.log('[TarxSidebarProvider] Opening context file:', message.fileId);
@@ -562,33 +549,10 @@ export class TarxSidebarProvider implements vscode.WebviewViewProvider {
 				}
 				break;
 
-			case 'toggleAgent':
-				await vscode.commands.executeCommand('tarx.toggleMcpServer', message.agentId);
-				await this._loadAgents();
-				break;
-
-			case 'openMcpConfig':
-				await vscode.commands.executeCommand('tarx.openMcpConfig');
-				break;
-
-			case 'getClaudeSessions':
-				await this._loadClaudeSessions();
-				break;
-
 			case 'getContextFiles':
 				await this._loadContextFiles();
 				break;
 
-			case 'getAgents':
-				await this._loadAgents();
-				break;
-
-			case 'getSkills':
-				await this._loadSkills();
-				break;
-
-			case 'installSkill':
-				await this._installSkill((message as { command: 'installSkill'; skillId: string }).skillId);
 				break;
 
 			case 'ragSearch':
@@ -624,23 +588,6 @@ export class TarxSidebarProvider implements vscode.WebviewViewProvider {
 		}
 	}
 
-	/**
-	 * Load Claude sessions for HierarchyNav
-	 */
-	private async _loadClaudeSessions(): Promise<void> {
-		try {
-			const sessions = await vscode.commands.executeCommand<Array<{
-				id: string;
-				title: string;
-				spaceName?: string;
-			}>>('tarx.getClaudeSessions') || [];
-			console.log('[TarxSidebarProvider] Loaded', sessions.length, 'Claude sessions');
-			this._postMessage({ command: 'claudeSessionsLoaded', sessions });
-		} catch (e) {
-			console.error('[TarxSidebarProvider] Failed to load Claude sessions:', e);
-			this._postMessage({ command: 'claudeSessionsLoaded', sessions: [] });
-		}
-	}
 
 	/**
 	 * Load context files for HierarchyNav
@@ -660,101 +607,6 @@ export class TarxSidebarProvider implements vscode.WebviewViewProvider {
 		}
 	}
 
-	/**
-	 * Load agents (MCP servers) for HierarchyNav
-	 */
-	private async _loadAgents(): Promise<void> {
-		try {
-			const agents = await vscode.commands.executeCommand<Array<{
-				id: string;
-				name: string;
-				description?: string;
-				enabled?: boolean;
-			}>>('tarx.getMcpServers') || [];
-			console.log('[TarxSidebarProvider] Loaded', agents.length, 'agents');
-			this._postMessage({ command: 'agentsLoaded', agents });
-		} catch (e) {
-			console.error('[TarxSidebarProvider] Failed to load agents:', e);
-			this._postMessage({ command: 'agentsLoaded', agents: [] });
-		}
-	}
-
-	/**
-	 * Load skills from database for Skills Marketplace
-	 */
-	private async _loadSkills(): Promise<void> {
-		try {
-			// Load skills from SQLite
-			const os = require('os');
-			const path = require('path');
-			const { execSync } = require('child_process');
-
-			const dbPath = path.join(os.homedir(), 'Library', 'Application Support', 'tarx', 'memory.db');
-			const query = `SELECT id, name, category, prompt_template as description, utility_score as utilityScore, COALESCE(installed, 0) as installed FROM skills ORDER BY utility_score DESC LIMIT 20`;
-
-			const result = execSync(`sqlite3 "${dbPath}" -json`, {
-				encoding: 'utf8',
-				input: query
-			});
-
-			const skills = JSON.parse(result || '[]').map((s: any) => ({
-				...s,
-				installed: s.installed === 1
-			}));
-
-			console.log('[TarxSidebarProvider] Loaded', skills.length, 'skills');
-			this._postMessage({ command: 'skillsLoaded', skills });
-		} catch (e) {
-			console.error('[TarxSidebarProvider] Failed to load skills:', e);
-			// Return mock skills as fallback
-			const mockSkills = [
-				{ id: 'skill-commit', name: 'Git Commit', category: 'git', description: 'Create conventional commit messages', installed: false },
-				{ id: 'skill-refactor', name: 'Refactor Code', category: 'code', description: 'Analyze and suggest refactoring improvements', installed: false },
-				{ id: 'skill-explain', name: 'Explain Code', category: 'code', description: 'Explain what selected code does', installed: true },
-				{ id: 'skill-test', name: 'Generate Tests', category: 'testing', description: 'Generate unit tests for code', installed: false },
-				{ id: 'skill-review', name: 'Code Review', category: 'code', description: 'Review code for issues and improvements', installed: false },
-			];
-			this._postMessage({ command: 'skillsLoaded', skills: mockSkills });
-		}
-	}
-
-	/**
-	 * Install a skill (toggle installed state)
-	 */
-	private async _installSkill(skillId: string): Promise<void> {
-		try {
-			console.log('[TarxSidebarProvider] Installing skill:', skillId);
-
-			// Toggle installed state in database
-			const os = require('os');
-			const path = require('path');
-			const { execSync } = require('child_process');
-
-			const dbPath = path.join(os.homedir(), 'Library', 'Application Support', 'tarx', 'memory.db');
-
-			// Add installed column if not exists and toggle
-			const query = `
-				ALTER TABLE skills ADD COLUMN installed INTEGER DEFAULT 0;
-				UPDATE skills SET installed = CASE WHEN installed = 1 THEN 0 ELSE 1 END WHERE id = '${skillId}';
-			`;
-
-			try {
-				execSync(`sqlite3 "${dbPath}"`, { encoding: 'utf8', input: query });
-			} catch {
-				// Column might already exist, just do the update
-				const updateQuery = `UPDATE skills SET installed = CASE WHEN installed = 1 THEN 0 ELSE 1 END WHERE id = '${skillId}';`;
-				execSync(`sqlite3 "${dbPath}"`, { encoding: 'utf8', input: updateQuery });
-			}
-
-			console.log('[TarxSidebarProvider] Skill toggled:', skillId);
-			this._postMessage({ command: 'skillInstalled', skillId });
-
-			// Reload skills to reflect change
-			await this._loadSkills();
-		} catch (e) {
-			console.error('[TarxSidebarProvider] Failed to install skill:', e);
-		}
-	}
 
 	/**
 	 * Fetch daemon status and inject as conversational message into chat
@@ -857,9 +709,7 @@ export class TarxSidebarProvider implements vscode.WebviewViewProvider {
 			this._loadUploadedFiles(),
 			this._checkConnectionStatus(),
 			// HierarchyNav data
-			this._loadClaudeSessions(),
-			this._loadContextFiles(),
-			this._loadAgents()
+			this._loadContextFiles()
 		]);
 		console.log('[TARX SIDEBAR] _sendInitialData all promises resolved (including HierarchyNav data)');
 	}
