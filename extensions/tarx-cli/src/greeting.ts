@@ -5,9 +5,10 @@
 
 import { homedir } from 'os';
 import { resolve } from 'path';
-import { existsSync, readFileSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'fs';
 import { execSync } from 'child_process';
-import { printBanner, box, divider } from './feedback';
+import { box } from './feedback';
+import { brand, icon, header, cta, footer, section } from './format';
 
 interface ServiceStatus {
 	name: string;
@@ -60,7 +61,7 @@ function loadPriorities(): PrioritySummary {
 	return result;
 }
 
-function getRecentThoughts(n: number = 5): string[] {
+function getRecentThoughts(n: number = 3): string[] {
 	const thinkLog = resolve(homedir(), '.tarx/thinking.log');
 	if (!existsSync(thinkLog)) return [];
 
@@ -69,42 +70,15 @@ function getRecentThoughts(n: number = 5): string[] {
 		if (!raw) return [];
 		const lines = raw.split('\n');
 		return lines.slice(-n).map(l => {
-			// Strip timestamp prefix for display, truncate
 			const stripped = l.replace(/^\[\d{4}-[^\]]+\]\s*/, '');
-			return stripped.length > 72 ? stripped.slice(0, 69) + '...' : stripped;
+			return stripped.length > 68 ? stripped.slice(0, 65) + '...' : stripped;
 		});
 	} catch {
 		return [];
 	}
 }
 
-function getRecentOrchActions(n: number = 3): string[] {
-	const logPath = resolve(homedir(), 'Library/Application Support/tarx/orchestration-log.jsonl');
-	if (!existsSync(logPath)) return [];
-
-	try {
-		const raw = readFileSync(logPath, 'utf-8').trim();
-		if (!raw) return [];
-		const lines = raw.split('\n').slice(-n);
-		const results: string[] = [];
-		for (const line of lines) {
-			try {
-				const entry = JSON.parse(line);
-				const type = entry.type || 'unknown';
-				const status = entry.status || '';
-				const ts = entry.ts ? new Date(entry.ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '';
-				const detail = entry.action || entry.task || entry.taskId || entry.prompt?.substring(0, 40) || '';
-				results.push(`${ts} ${type}${detail ? ': ' + detail : ''}${status ? ' [' + status + ']' : ''}`);
-			} catch { /* skip */ }
-		}
-		return results;
-	} catch {
-		return [];
-	}
-}
-
 function getDaemonStatus(): string {
-	// Check if daemon was recently active (last orch entry < 10 min old)
 	const logPath = resolve(homedir(), 'Library/Application Support/tarx/orchestration-log.jsonl');
 	if (!existsSync(logPath)) return 'idle';
 	try {
@@ -141,7 +115,7 @@ function getGitContext(): { branch: string; dirty: number } | null {
 			if (status) {
 				dirty = status.split('\n').length;
 			}
-		} catch { /* not a git error, just no changes */ }
+		} catch { /* ignore */ }
 		return { branch, dirty };
 	} catch {
 		return null;
@@ -149,21 +123,22 @@ function getGitContext(): { branch: string; dirty: number } | null {
 }
 
 function isFirstRun(): boolean {
-	const tarxDir = resolve(homedir(), '.tarx');
-	return !existsSync(tarxDir);
+	const marker = resolve(homedir(), '.tarx/first_run_complete');
+	return !existsSync(marker);
 }
 
-function ensureTarxDir(): void {
+function markFirstRunComplete(): void {
 	const tarxDir = resolve(homedir(), '.tarx');
 	if (!existsSync(tarxDir)) {
 		mkdirSync(tarxDir, { recursive: true });
 	}
+	writeFileSync(resolve(tarxDir, 'first_run_complete'), new Date().toISOString());
 }
 
 export async function greet(): Promise<void> {
 	const firstRun = isFirstRun();
 
-	// Parallel: services + priorities + memory
+	// Parallel: services + priorities
 	const [services, priorities] = await Promise.all([
 		Promise.all([
 			checkService(11435, 'Inference'),
@@ -174,65 +149,72 @@ export async function greet(): Promise<void> {
 	]);
 
 	const upCount = services.filter(s => s.up).length;
-	const totalServices = services.length;
-	const allUp = upCount === totalServices;
+	const allUp = upCount === services.length;
 
-	const G = '\x1b[32m';
-	const R = '\x1b[31m';
-	const Y = '\x1b[33m';
-	const D = '\x1b[2m';
-	const B = '\x1b[1m';
-	const P = '\x1b[35m';
-	const RST = '\x1b[0m';
+	// ── First-run welcome ──
+	if (firstRun) {
+		markFirstRunComplete();
 
-	// ASCII banner
-	printBanner();
+		console.log();
+		console.log(`  ╔══════════════════════════════════════════════════════╗`);
+		console.log(`  ║                                                      ║`);
+		console.log(`  ║   ${brand.tarx()} — Local AI That Belongs to You              ║`);
+		console.log(`  ║                                                      ║`);
+		console.log(`  ║   ${brand.dim('Free forever. No tokens. No limits. No catch.')}     ║`);
+		console.log(`  ║                                                      ║`);
+		console.log(`  ╚══════════════════════════════════════════════════════╝`);
 
-	// Time greeting + git context
+		section('Setting up...');
+		for (const s of services) {
+			if (s.up) {
+				console.log(`  ${icon.success} ${s.name} ready on :${s.port}`);
+			} else {
+				console.log(`  ${icon.dot.down} ${s.name} not running ${brand.dim(`(:${s.port})`)}`);
+			}
+		}
+
+		cta('Start working', 'tarx chat "explain this codebase"');
+		footer('local', { version: '1.2.0' });
+		return;
+	}
+
+	// ── Normal branded greeting ──
+	header('Local AI That Belongs to You');
+
+	// Context line: time + git + cwd
 	const greeting = getTimeGreeting();
 	const git = getGitContext();
-	let contextLine = `  ${B}${greeting}.${RST}`;
+	let contextLine = `  ${brand.bold(greeting + '.')}`;
 	if (git) {
-		const dirtyLabel = git.dirty > 0 ? `${Y}${git.dirty} file${git.dirty === 1 ? '' : 's'} changed${RST}` : `${G}clean${RST}`;
-		contextLine += `  ${D}${git.branch}${RST} · ${dirtyLabel}`;
+		const dirtyLabel = git.dirty > 0
+			? brand.yellow(`${git.dirty} changed`)
+			: brand.green('clean');
+		contextLine += `  ${brand.dim(git.branch)} · ${dirtyLabel}`;
 	}
 	const cwd = process.cwd();
 	const home = homedir();
 	const displayCwd = cwd.startsWith(home) ? '~' + cwd.slice(home.length) : cwd;
-	contextLine += `  ${D}${displayCwd}${RST}`;
+	contextLine += `  ${brand.dim(displayCwd)}`;
 	console.log(contextLine);
 
-	// First-run welcome
-	if (firstRun) {
-		ensureTarxDir();
-		console.log('');
-		console.log(`  ${P}Welcome to TARX${RST} — your local AI development agent.`);
-		console.log(`  ${D}Get started:${RST}`);
-		console.log(`    ${B}tarx status${RST}    Check service health`);
-		console.log(`    ${B}tarx chat${RST}      Talk to your local LLM`);
-		console.log(`    ${B}tarx --help${RST}    See all commands`);
-		divider();
-		console.log('');
-
-		console.log(`  ${B}Suggested:${RST} tarx status    ${D}|  chat · brief · --help${RST}`);
-		console.log('');
-		return;
-	}
-
-	// Service status — compact single line
+	// Services — compact inline
 	const svcParts: string[] = [];
 	for (const s of services) {
-		const icon = s.up ? `${G}●${RST}` : `${R}●${RST}`;
-		svcParts.push(`${icon} ${s.name}`);
+		const si = s.up ? icon.dot.up : icon.dot.down;
+		svcParts.push(`${si} ${s.name}`);
 	}
 	const daemon = getDaemonStatus();
-	const daemonIcon = daemon === 'active' ? `${G}●${RST}` : daemon === 'recent' ? `${Y}●${RST}` : `${D}○${RST}`;
+	const daemonIcon = daemon === 'active' ? icon.dot.up : daemon === 'recent' ? icon.dot.warn : icon.dot.idle;
 	svcParts.push(`${daemonIcon} Daemon`);
-	console.log(`  ${D}Services:${RST} ${svcParts.join('  ')}`);
+	console.log(`  ${brand.dim('Services:')} ${svcParts.join('  ')}`);
 
-	// Priorities
+	// Priorities (boxed)
 	const needYou = priorities.active + priorities.blocked;
 	if (needYou > 0) {
+		const Y = '\x1b[33m';
+		const R = '\x1b[31m';
+		const D = '\x1b[2m';
+		const RST = '\x1b[0m';
 		const priLines: string[] = [];
 		if (priorities.topUrgent.length > 0) {
 			for (const t of priorities.topUrgent.slice(0, 3)) {
@@ -246,28 +228,19 @@ export async function greet(): Promise<void> {
 		box('Priorities', priLines);
 	}
 
-	// Memory context — recent thoughts (last 5) + orch actions (last 3)
-	const thoughts = getRecentThoughts(5);
-	const orchActions = getRecentOrchActions(3);
-
-	if (thoughts.length > 0 || orchActions.length > 0) {
+	// Recent thoughts (compact)
+	const thoughts = getRecentThoughts(3);
+	if (thoughts.length > 0) {
+		const D = '\x1b[2m';
+		const RST = '\x1b[0m';
 		const memLines: string[] = [];
-		if (orchActions.length > 0) {
-			memLines.push(`${D}─ Recent actions ─${RST}`);
-			for (const a of orchActions) {
-				memLines.push(`  ${D}${a}${RST}`);
-			}
-		}
-		if (thoughts.length > 0) {
-			memLines.push(`${D}─ Last thoughts ─${RST}`);
-			for (const t of thoughts) {
-				memLines.push(`  ${D}${t}${RST}`);
-			}
+		for (const t of thoughts) {
+			memLines.push(`  ${D}${t}${RST}`);
 		}
 		box('Memory', memLines);
 	}
 
-	// Adaptive suggestion based on state
+	// Adaptive suggestion
 	let suggest = 'brief';
 	if (!allUp) suggest = 'doctor';
 	else if (priorities.topUrgent.length > 0) suggest = 'priorities';
@@ -275,6 +248,7 @@ export async function greet(): Promise<void> {
 	else if (daemon === 'idle') suggest = 'wake';
 	else if (needYou === 0) suggest = 'chat';
 
-	console.log(`\n  ${B}Suggested:${RST} tarx ${suggest}    ${D}|  status · brief · search · build · chat · mesh${RST}`);
-	console.log('');
+	cta(`${brand.bold('Suggested:')} tarx ${suggest}`, suggest);
+
+	footer('local', { version: '1.2.0' });
 }

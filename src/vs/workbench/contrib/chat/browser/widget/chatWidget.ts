@@ -903,7 +903,7 @@ export class ChatWidget extends Disposable implements IChatWidget {
 
 	private getPromptFileSuggestions(): IChatSuggestedPrompts[] {
 
-		// TARX suggestion chips — work openers, not weather
+		// TARX suggestion chips - work openers, not weather
 		if (!this.chatEntitlementService.sentiment.installed) {
 			return [
 				{
@@ -913,7 +913,7 @@ export class ChatWidget extends Disposable implements IChatWidget {
 					prompt: localize('chatWidget.suggestedPrompts.whatBuildingPrompt', "@tarx What are you working on right now?"),
 				},
 				{
-					icon: Codicon.zap,
+					icon: Codicon.sparkle,
 					label: localize('chatWidget.suggestedPrompts.showCapabilities', "Show me what you can do"),
 					description: localize('chatWidget.suggestedPrompts.showCapabilitiesDesc', "See TARX in action on your project"),
 					prompt: localize('chatWidget.suggestedPrompts.showCapabilitiesPrompt', "@tarx Show me what TARX can do with my current project"),
@@ -1103,7 +1103,7 @@ export class ChatWidget extends Disposable implements IChatWidget {
 	private async generateTarxSuggestions(lastItem: IChatResponseViewModel): Promise<void> {
 		this.clearTarxSuggestions();
 
-		// Increment generation counter — if another call starts while we're awaiting,
+		// Increment generation counter - if another call starts while we're awaiting,
 		// the stale call will detect the mismatch and bail out (Bug #3 fix)
 		const generation = ++this._tarxSuggestionGeneration;
 
@@ -1119,7 +1119,7 @@ export class ChatWidget extends Disposable implements IChatWidget {
 			lastItem.response.toString()
 		);
 
-		// Check if a newer generation has started — if so, this result is stale
+		// Check if a newer generation has started - if so, this result is stale
 		if (generation !== this._tarxSuggestionGeneration) {
 			return;
 		}
@@ -1129,12 +1129,12 @@ export class ChatWidget extends Disposable implements IChatWidget {
 		}
 
 		// TARX: Render chips inline inside the last response item (above footer toolbar)
-		const lastResponseEl = this.listContainer.querySelector('.chat-most-recent-response');
+		const lastResponseEl = this.listContainer.querySelector('.chat-most-recent-response'); // eslint-disable-line no-restricted-syntax
 		if (!lastResponseEl) {
 			return;
 		}
 
-		const footerToolbar = lastResponseEl.querySelector('.chat-footer-toolbar');
+		const footerToolbar = lastResponseEl.querySelector('.chat-footer-toolbar'); // eslint-disable-line no-restricted-syntax
 		const inlineContainer = document.createElement('div');
 		inlineContainer.className = 'tarx-inline-suggestions';
 
@@ -1162,7 +1162,7 @@ export class ChatWidget extends Disposable implements IChatWidget {
 		this.tarxSuggestionsDisposable?.dispose();
 		this.tarxSuggestionsDisposable = undefined;
 		// Remove any inline suggestion containers from list items
-		this.listContainer.querySelectorAll('.tarx-inline-suggestions').forEach(el => el.remove());
+		this.listContainer.querySelectorAll('.tarx-inline-suggestions').forEach(el => el.remove()); // eslint-disable-line no-restricted-syntax
 	}
 
 	private renderChatSuggestNextWidget(): void {

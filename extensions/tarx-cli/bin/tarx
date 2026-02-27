@@ -12,10 +12,11 @@ const dispatchCommands = [
   'update', 'search', 'mesh',
   'build', 'refactor', 'fix', 'test', 'document', 'plan',
   'tweet', 'timeline', 'xsearch', 'xstatus', 'xai', 'weekly',
+  'vs',
 ];
 const arg = process.argv[2];
 
-if (!arg || dispatchCommands.includes(arg) || arg === '--help' || arg === '-h') {
+if (!arg || dispatchCommands.includes(arg) || arg === '--help' || arg === '-h' || arg === '--compare') {
   // No arg = greeting, dispatch command = dispatch layer
   require('../dist/index.js');
 } else {

@@ -68,7 +68,7 @@ gettingStartedContentRegistry.registerProvider('vs/workbench/contrib/welcomeGett
 // Register empty media for accessibility walkthrough
 gettingStartedContentRegistry.registerProvider('vs/workbench/contrib/welcomeGettingStarted/common/media/empty', () => '');
 
-const setupIcon = registerIcon('getting-started-setup', Codicon.zap, localize('getting-started-setup-icon', "Icon used for the setup category of welcome page"));
+const setupIcon = registerIcon('getting-started-setup', Codicon.sparkle, localize('getting-started-setup-icon', "Icon used for the setup category of welcome page"));
 const beginnerIcon = registerIcon('getting-started-beginner', Codicon.lightbulb, localize('getting-started-beginner-icon', "Icon used for the beginner category of welcome page"));
 
 export type BuiltinGettingStartedStep = {

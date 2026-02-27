@@ -1,5 +1,15 @@
 # Session Log
 
+## [2026-02-26-2359] document-e2e-probe
+**Attempted:** Document the `--e2e-probe` flag and E2E test loop
+**Shipped:**
+  - `extensions/tarx-cli/src/index.ts` — Added `--e2e-probe` runtime guard to CC use-case commands (build/refactor/fix/test/document/plan) with inline doc reference
+  - `extensions/tarx-cli/src/heartbeat.ts` — Added block-level documentation for E2E test loop (4 phases: CC routing, conversational intents, RAG, MCP audit) + JSDoc on `runCCUseCaseTests`
+**Broken:** Nothing — tsc clean
+**Next:** Commit pending CLI changes (this + previous session's audit work)
+**Commits:** pending
+---
+
 ## 2026-02-20-1300 conversational-first-ux
 **Attempted:** Implement conversational-first UX — all user flows route through @tarx chat participant
 **Shipped:**
@@ -42,4 +52,45 @@
 **Broken:** Nothing — infrastructure only
 **Next:** Create V1_SHIP_PLAN.md with current priorities. Verify all CC sessions pick up the new protocol.
 **Commits:** 409a40e
+---
+
+## [2026-02-26-0430] cli-audit-update-v1
+**Attempted:** Audit TARX CLI, fix 3 bugs, add ASCII art, add Claude Code use cases
+**Shipped:**
+  - `feedback.ts` — ASCII banner, box drawing, new recovery/suggest maps
+  - `greeting.ts` — Rich greeting with printBanner + box (services, priorities, memory)
+  - `mesh.ts` — BUG FIX: getStatus() endpoint /mesh/status → /health
+  - `index.ts` — BUG FIX: `update` command rejects HTML, fetches JSON. BUG FIX: `search` uses better-sqlite3 + cosine similarity on knowledge_embeddings. `mesh` command shows formatted status. `build/refactor/fix/test/document/plan` dispatch to Claude Code. Reorganized help into sections.
+  - `bin/tarx` — Bare invocation routes to greeting, added new dispatch commands
+  - `package.json` — Added better-sqlite3 dep
+**Broken:** Nothing — all 3 bugs fixed, tsc clean, all commands tested
+**Next:** Install CLI globally (npm link or copy dist/), verify `tarx.com/api/cli/latest` domain routing
+**Commits:** pending
+---
+
+## [2026-02-26-1800] e2e-test-loop-v1
+**Attempted:** Add E2E test loop to daemonTick() — CC use cases, conversational intents, RAG, MCP audit
+**Shipped:**
+  - `heartbeat.ts` — Step 14: processE2ETestLoop() — 4 test phases (cc_use_cases, conversational_intents, rag_search, mcp_audit)
+  - CC use case dry-run: validates build/refactor/fix/test/document/plan route via --e2e-probe flag
+  - Conversational intent parity: 13 intent patterns pulled from conversationalFlows.ts, tested in-process
+  - RAG search pipeline: embedding server health + DB exists + search command exec
+  - MCP audit: port health for all 3 services + thinking log writability
+  - Structured JSON thinking output for RAG/MCP consumption
+  - Seeded recurring `e2e-test: all` priority (p-049)
+  - `index.ts` — Added --e2e-probe handler for CC use case commands
+**Broken:** Nothing — 23/24 passed (embedding sidecar idle is expected)
+**Next:** Add auto-reseed of e2e-test priority on wake, expand RAG test to wait for sidecar
+**Commits:** pending
+---
+
+## [2026-02-26-1830] cli-memory-hardened-v1
+**Attempted:** Harden CLI memory reload, persistent prompt, proactive greeting, perpetual testing
+**Shipped:**
+  - `greeting.ts` — Deep memory reload: getRecentThoughts(5), getRecentOrchActions(3), getDaemonStatus(), adaptive suggest (doctor/priorities/wake/brief based on state). Memory box shows daemon ●/○, orch actions with timestamps, last thinking entries.
+  - `~/.claude/settings.json` — SessionStart hook: tails thinking.log (20), orch-log (10), lists active priorities, prints TARX Driver context prompt. Runs on every session start + resume.
+  - Seeded `p-052: e2e-test: UI hammering` — perpetual UI testing priority for daemon
+**Broken:** Nothing — tsc clean, greeting renders, hook validates
+**Next:** Auto-reseed e2e-test priorities on daemon tick, expand RAG search in greeting
+**Commits:** pending
 ---

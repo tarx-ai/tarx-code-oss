@@ -60,7 +60,7 @@ export async function checkHealth(): Promise<{ healthy: boolean; peerId?: string
  */
 export async function getStatus(): Promise<MeshStatus | null> {
   return new Promise((resolve) => {
-    const url = new URL('/mesh/status', MESH_URL);
+    const url = new URL('/health', MESH_URL);
 
     const req = http.request(url, { method: 'GET', timeout: 5000 }, (res) => {
       let data = '';

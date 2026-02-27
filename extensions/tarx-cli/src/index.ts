@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// Suppress dotenv v17 auto-inject logging (must run before require('dotenv'))
+process.env.DOTENV_CONFIG_QUIET = 'true';
 /**
  * TARX CLI — Dispatch layer entry point.
  * Commands: dispatch, status, log, heal, notify, taxonomy, strategy
@@ -6,7 +8,7 @@
 
 import { config } from 'dotenv';
 import { resolve } from 'path';
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import { homedir } from 'os';
 import { existsSync, appendFileSync, mkdirSync } from 'fs';
 import { dispatch } from './dispatch';
@@ -15,12 +17,14 @@ import { generateDailyBrief, generateWeeklyDigest } from './briefing';
 import { postTweet, getUserTimeline, searchTweets, verifyConnection } from './x-api';
 import { callXAI, verifyXAI } from './xai-api';
 import { greet } from './greeting';
-import { withSpinner, printRecovery, suggestNext } from './feedback';
+import { withSpinner, printRecovery, suggestNext, printHelp, printCommandHelp } from './feedback';
 import { stream as runStream } from './stream';
+import { getStatus as getMeshStatus, checkHealth as checkMeshHealth } from './services/mesh';
+import { embedQuery } from './services/embeddings';
 
 // Load .env from repo root
 const envPath = resolve(__dirname, '../../../.env');
-config({ path: envPath });
+config({ path: envPath, quiet: true });
 
 const TARX_ROOT = resolve(homedir(), 'Desktop/tarx-code-oss');
 const LOG_FILE = resolve(homedir(), '.tarx/dispatch.log');
@@ -41,9 +45,23 @@ function loadService(name: string): any {
 const [,, command, ...args] = process.argv;
 
 async function main(): Promise<void> {
-  // Sentient greeting: show on bare invocation or before any command
+  // Sentient greeting: show on bare invocation
   if (!command) {
     await greet();
+    return;
+  }
+
+  // Help flags — handled before switch so --help never falls to "unknown command"
+  if (command === '--help' || command === '-h' || command === 'help') {
+    printHelp();
+    return;
+  }
+
+  // Per-command help: tarx <cmd> --help / -h
+  if (args.includes('--help') || args.includes('-h')) {
+    if (!printCommandHelp(command)) {
+      printHelp();
+    }
     return;
   }
 
@@ -422,42 +440,266 @@ async function main(): Promise<void> {
       break;
     }
 
-    default: {
-      console.log(`TARX CLI v1.2.0 — Dispatch Layer
+    // ─── BUG FIX: update — fetch JSON from API, not HTML ───
+    case 'update': {
+      const BRAND = '\x1b[35m';
+      const RST = '\x1b[0m';
+      const GREEN = '\x1b[32m';
+      const DIM = '\x1b[2m';
 
-Usage: tarx <command> [args]
+      console.log(`\n  ${BRAND}⠸${RST} Checking for updates...`);
 
-Commands:
-  dispatch <prompt>    Send prompt to Claude Code, stream output
-  status               Health check all services
-  log [n]              Tail dispatch log (default: last 50 lines)
-  heal [error]         Run self-healing cycle or fix specific error
-  notify <message>     Send notification via all channels
-  brief [--weekly] [--sms]  Daily briefing (add --sms to send via SMS)
-  weekly                    Weekly digest + SMS (alias for brief --weekly --sms)
-  priorities                List priorities from ~/.tarx/priorities.jsonl
-  priorities add "title"    Add priority [--urgency now|today|this_week] [--owner john|tarx]
-  priorities done <id>      Mark priority done (e.g. tarx priorities done p-001)
-  taxonomy             Print error taxonomy tree
-  strategy [name]      Print strategy definition(s)
-  wake                 Trigger one heartbeat tick (immediate)
-  think [n] [--follow] Tail thinking log (TARX consciousness stream)
-  tweet <message>      Post a tweet via X API v2
-  timeline <@user> [n] Read user's recent tweets (default 10)
-  xsearch <query>      Search recent tweets (last 7 days)
-  xstatus              Verify X API + xAI credentials
-  xai <prompt>         Call xAI (Grok) chat completions [--model grok-3]
+      // Try nextjs-ai-t1 API (known good endpoint)
+      const endpoints = [
+        'https://nextjs-ai-t1-tarx.vercel.app/api/cli/latest',
+        'http://localhost:11435/health', // fallback: just show current
+      ];
 
-Environment:
-  .env at ${envPath}
-  Log at ${LOG_FILE}
-  Services at ${SERVICES_DIR}
-`);
-      if (command) {
-        console.error(`Unknown command: ${command}`);
-        console.log('\n  Run \x1b[1mtarx\x1b[0m with no args for a live status greeting.\n');
+      let latestVersion: string | null = null;
+      for (const ep of endpoints) {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 5000);
+          const res = await fetch(ep, { signal: controller.signal });
+          clearTimeout(timeout);
+          if (res.ok) {
+            const text = await res.text();
+            // Guard: reject HTML responses
+            if (text.trim().startsWith('<') || text.trim().startsWith('<!')) {
+              continue; // skip HTML, try next endpoint
+            }
+            const json = JSON.parse(text);
+            latestVersion = json.version || json.tag || null;
+            if (latestVersion) break;
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      const currentVersion = '1.2.0';
+      if (latestVersion) {
+        if (latestVersion === currentVersion) {
+          console.log(`  ${GREEN}✓${RST} Up to date — v${currentVersion}`);
+        } else {
+          console.log(`  Current: v${currentVersion}`);
+          console.log(`  Latest:  v${latestVersion}`);
+          console.log(`\n  ${DIM}Run: curl -fsSL tarx.com/install | sh${RST}`);
+        }
+      } else {
+        console.log(`  Current: v${currentVersion}`);
+        console.log(`  ${DIM}Could not reach update server. You're on v${currentVersion}.${RST}`);
+      }
+      console.log('');
+      suggestNext('update');
+      break;
+    }
+
+    // ─── BUG FIX: search — query knowledge DB, format results ───
+    case 'search': {
+      const query = args.join(' ');
+      if (!query) {
+        console.error('Usage: tarx search <query>');
+        console.error('  Searches your local knowledge base (RAG embeddings)');
         process.exit(1);
       }
+
+      const BRAND = '\x1b[35m';
+      const DIM = '\x1b[2m';
+      const BOLD = '\x1b[1m';
+      const RST = '\x1b[0m';
+
+      // Step 1: Generate query embedding
+      let queryVec: number[];
+      try {
+        queryVec = await withSpinner(`Embedding query: "${query}"`, () => embedQuery(query));
+      } catch (e: any) {
+        console.error(`  Embedding failed: ${e.message}`);
+        console.error(`  ${DIM}Is the embedding server running on :11437?${RST}`);
+        process.exit(1);
+      }
+
+      // Step 2: Query knowledge_embeddings in SQLite
+      const dbPath = resolve(homedir(), 'Library/Application Support/tarx/memory.db');
+      if (!existsSync(dbPath)) {
+        console.log('  No knowledge database found. Upload or scan files first.');
+        console.log(`  ${DIM}Expected: ${dbPath}${RST}`);
+        break;
+      }
+
+      try {
+        const Database = require('better-sqlite3');
+        const db = new Database(dbPath, { readonly: true });
+
+        const rows = db.prepare(`
+          SELECT ke.content, ke.source_id, ke.title, ke.embedding, f.filename
+          FROM knowledge_embeddings ke
+          LEFT JOIN files f ON ke.source_id = f.id
+          WHERE ke.embedding IS NOT NULL
+          LIMIT 500
+        `).all() as Array<{ content: string; source_id: string; title: string; embedding: Buffer; filename: string }>;
+
+        if (rows.length === 0) {
+          console.log('  No knowledge indexed yet. Upload or scan files first.');
+          db.close();
+          break;
+        }
+
+        // Cosine similarity against query vector
+        const results: Array<{ text: string; score: number; file: string }> = [];
+        for (const row of rows) {
+          try {
+            if (!row.embedding || row.embedding.length < 16) continue;
+            const emb = new Float32Array(row.embedding.buffer, row.embedding.byteOffset, row.embedding.byteLength / 4);
+
+            if (emb.length !== queryVec.length) continue;
+
+            let dot = 0, normA = 0, normB = 0;
+            for (let i = 0; i < emb.length; i++) {
+              dot += queryVec[i] * emb[i];
+              normA += queryVec[i] * queryVec[i];
+              normB += emb[i] * emb[i];
+            }
+            const score = dot / (Math.sqrt(normA) * Math.sqrt(normB) + 1e-8);
+
+            results.push({
+              text: (row.content || '').slice(0, 120),
+              score,
+              file: row.filename || row.title || `source:${row.source_id}`,
+            });
+          } catch {
+            continue;
+          }
+        }
+
+        db.close();
+
+        // Sort by score, show top 5
+        results.sort((a, b) => b.score - a.score);
+        const top = results.slice(0, 5);
+
+        if (top.length === 0 || top[0].score < 0.3) {
+          console.log(`\n  No relevant results for "${query}"`);
+          console.log(`  ${DIM}${results.length} chunks searched, best score: ${results[0]?.score.toFixed(3) || 'N/A'}${RST}`);
+        } else {
+          console.log(`\n  ${BOLD}Results for "${query}"${RST}  ${DIM}(${results.length} chunks searched)${RST}\n`);
+          for (let i = 0; i < top.length; i++) {
+            const r = top[i];
+            if (r.score < 0.3) break;
+            const bar = '\u2588'.repeat(Math.round(r.score * 10));
+            console.log(`  ${BRAND}${i + 1}.${RST} ${r.file} ${DIM}(${r.score.toFixed(3)})${RST} ${DIM}${bar}${RST}`);
+            console.log(`     ${r.text.replace(/\n/g, ' ').trim()}`);
+            console.log('');
+          }
+        }
+      } catch (e: any) {
+        if (e.code === 'MODULE_NOT_FOUND') {
+          console.log(`  ${DIM}Search requires better-sqlite3. Install:${RST}`);
+          console.log(`  ${BOLD}cd extensions/tarx-cli && npm install better-sqlite3${RST}`);
+        } else {
+          console.error(`  Search error: ${e.message}`);
+        }
+      }
+      suggestNext('search');
+      break;
+    }
+
+    // ─── BUG FIX: mesh — use correct /health endpoint ───
+    case 'mesh': {
+      const BRAND = '\x1b[35m';
+      const GREEN = '\x1b[32m';
+      const RED = '\x1b[31m';
+      const DIM = '\x1b[2m';
+      const BOLD = '\x1b[1m';
+      const RST = '\x1b[0m';
+
+      console.log(`\n  ${BOLD}Mesh Network${RST}\n`);
+
+      const health = await checkMeshHealth();
+      if (!health.healthy) {
+        console.log(`  ${RED}●${RST} Mesh offline — ${health.error || 'unreachable'}`);
+        console.log(`  ${DIM}Expected on :11436. Run tarx-mesh binary.${RST}\n`);
+        break;
+      }
+
+      console.log(`  ${GREEN}●${RST} Mesh online :11436`);
+      if (health.peerId) console.log(`  ${DIM}Peer ID:${RST} ${health.peerId}`);
+      console.log(`  ${DIM}Peers:${RST}   ${health.peers || 0}`);
+
+      // Try to get full status (now uses /health too)
+      const status = await getMeshStatus();
+      if (status) {
+        if (status.listening && status.listening.length > 0) {
+          console.log(`  ${DIM}Listening:${RST} ${status.listening.join(', ')}`);
+        }
+      }
+      console.log('');
+      suggestNext('mesh');
+      break;
+    }
+
+    // ─── Claude Code use cases: build/refactor/fix/test/document/plan ───
+    case 'build':
+    case 'refactor':
+    case 'fix':
+    case 'test':
+    case 'document':
+    case 'plan': {
+      // --e2e-probe: heartbeat daemon verifies routing without dispatching
+      if (args.includes('--e2e-probe')) {
+        console.log(`${command}: routed OK`);
+        break;
+      }
+      const taskArg = args.join(' ');
+      const prompts: Record<string, string> = {
+        build: taskArg || 'Build the project. Run yarn compile, fix any errors.',
+        refactor: taskArg ? `Refactor: ${taskArg}` : 'Identify code that needs refactoring and improve it.',
+        fix: taskArg ? `Fix this bug: ${taskArg}` : 'Run tests, find failures, fix them.',
+        test: taskArg ? `Write tests for: ${taskArg}` : 'Run the test suite and report results.',
+        document: taskArg ? `Document: ${taskArg}` : 'Generate documentation for recent changes.',
+        plan: taskArg ? `Plan: ${taskArg}` : 'Analyze the codebase and create an implementation plan.',
+      };
+
+      const prompt = prompts[command];
+      console.log(`\n  \x1b[35m⠸\x1b[0m tarx ${command}: ${prompt.slice(0, 60)}${prompt.length > 60 ? '...' : ''}\n`);
+
+      const result = await withSpinner(`Running ${command}`, () => dispatch(prompt));
+      console.log(`\n--- ${command} ${result.success ? 'OK' : 'FAILED'} (${result.duration_ms}ms) ---`);
+      suggestNext(command);
+      process.exit(result.success ? 0 : 1);
+    }
+
+    case 'vs':
+    case '--compare': {
+      const { header: fmtHeader, compareTable, footer: fmtFooter, brand: fmtBrand } = require('./format');
+      fmtHeader('Why Local?');
+      console.log();
+      console.log(`  ${fmtBrand.bold('TARX CLI vs Cloud AI Coding Tools')}`);
+      console.log();
+
+      compareTable(
+        ['', 'TARX', 'Cloud AI'],
+        [
+          ['Price', fmtBrand.green('Free'), '$20/mo'],
+          ['Your code leaves your machine', fmtBrand.green('No'), fmtBrand.red('Yes')],
+          ['Works offline', fmtBrand.green('Yes'), fmtBrand.red('No')],
+          ['Rate limits', fmtBrand.green('None'), fmtBrand.yellow('Yes')],
+          ['Telemetry', fmtBrand.green('None'), fmtBrand.yellow('Yes')],
+          ['Custom model fine-tuning', fmtBrand.green('Yes'), fmtBrand.red('No')],
+          ['Mesh compute boost', fmtBrand.green('Yes'), fmtBrand.red('No')],
+        ]
+      );
+
+      console.log();
+      console.log(`  ${fmtBrand.bold('Your code. Your machine. Your AI.')}`);
+      fmtFooter('local', { version: '1.2.0' });
+      break;
+    }
+
+    default: {
+      console.error(`\n  Unknown command: ${command}`);
+      console.log('  Run \x1b[1mtarx --help\x1b[0m for usage.\n');
+      process.exit(1);
     }
   }
 }
