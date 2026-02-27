@@ -325,6 +325,11 @@ const excludedExtensions = [
 	'vscode-test-resolver',
 	'ms-vscode.node-debug',
 	'ms-vscode.node-debug2',
+	'tarx-cli',
+	'tarx-core',
+	'tarx-ops',
+	'tarx-shared',
+	'tarx-ui-mcp-server',
 ];
 
 const marketplaceWebExtensionsExclude = new Set([

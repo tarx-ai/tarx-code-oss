@@ -1,6 +1,6 @@
 {
 	"version": "1.96.0",
-	"nameShort": "TARX Workbench",
+	"nameShort": "TARX",
 	"nameLong": "TARX Workbench",
 	"applicationName": "tarx-workbench",
 	"dataFolderName": ".tarx-code",

@@ -8,6 +8,7 @@
   },
   "private": true,
   "description": "Unified TARX MCP server: inference, memory, sessions, files/RAG, sidebar",
+  "activationEvents": [],
   "main": "dist/server.js",
   "bin": {
     "tarx-core": "./dist/server.js"

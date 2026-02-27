@@ -1,11 +1,12 @@
 {
-  "name": "@tarx/shared-db",
+  "name": "tarx-shared-db",
   "version": "1.0.0",
   "engines": {
     "node": ">=18.0.0",
     "vscode": "^1.85.0"
   },
   "description": "Shared SQLite database module for all TARX MCP servers",
+  "activationEvents": [],
   "main": "dist/db.js",
   "types": "dist/db.d.ts",
   "scripts": {

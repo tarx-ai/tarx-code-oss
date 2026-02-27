@@ -1,7 +1,8 @@
 {
-  "name": "@tarx/cli",
+  "name": "tarx-cli",
   "version": "1.1.0",
   "description": "TARX CLI - Local AI command-line interface",
+  "activationEvents": [],
   "main": "dist/cli.js",
   "bin": {
     "tarx": "./bin/tarx"

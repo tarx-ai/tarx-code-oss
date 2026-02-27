@@ -8,6 +8,7 @@
   "type": "module",
   "private": true,
   "description": "MCP server for TARX UI end-to-end testing — 168 tools, screenshot/OCR, 2500 test cases",
+  "activationEvents": [],
   "main": "dist/server.js",
   "bin": {
     "tarx-ui-mcp": "./dist/server.js"
