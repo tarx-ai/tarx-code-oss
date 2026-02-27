@@ -1,6 +1,6 @@
 /**
  * TARX CLI — Feedback engine.
- * Spinners, progress, error recovery, auto-suggest.
+ * Spinners, progress, error recovery, auto-suggest, ASCII art.
  */
 
 const SPINNER_FRAMES = ['\u2838', '\u2834', '\u2826', '\u2807', '\u280b', '\u2819', '\u2830', '\u2838'];
@@ -10,7 +10,45 @@ const BOLD = '\x1b[1m';
 const RED = '\x1b[31m';
 const GREEN = '\x1b[32m';
 const YELLOW = '\x1b[33m';
+const CYAN = '\x1b[36m';
 const RESET = '\x1b[0m';
+
+// ─── ASCII Art ───────────────────────────────────────────
+
+const BANNER = `${BRAND}
+  ╔════════════════════════════════════╗
+  ║   ▀█▀ ▄▀█ █▀█ ▀▄▀   ${DIM}CLI v1.2.0${BRAND}  ║
+  ║    █  █▀█ █▀▄ █ █   ${DIM}local AI${BRAND}     ║
+  ╚════════════════════════════════════╝${RESET}`;
+
+export function printBanner(): void {
+	console.log(BANNER);
+}
+
+export function divider(): void {
+	console.log(`  ${DIM}${'─'.repeat(40)}${RESET}`);
+}
+
+export function box(title: string, lines: string[]): void {
+	const maxLen = Math.max(title.length + 2, ...lines.map(l => stripAnsi(l).length + 2));
+	const w = Math.min(maxLen + 4, 60);
+	const top = `  ${DIM}╭${'─'.repeat(w)}╮${RESET}`;
+	const bot = `  ${DIM}╰${'─'.repeat(w)}╯${RESET}`;
+	const titleLine = `  ${DIM}│${RESET} ${BOLD}${title}${RESET}${' '.repeat(Math.max(0, w - stripAnsi(title).length - 2))}${DIM}│${RESET}`;
+	const sep = `  ${DIM}├${'─'.repeat(w)}┤${RESET}`;
+	console.log(top);
+	console.log(titleLine);
+	console.log(sep);
+	for (const l of lines) {
+		const pad = Math.max(0, w - stripAnsi(l).length - 2);
+		console.log(`  ${DIM}│${RESET} ${l}${' '.repeat(pad)}${DIM}│${RESET}`);
+	}
+	console.log(bot);
+}
+
+function stripAnsi(s: string): string {
+	return s.replace(/\x1b\[[0-9;]*m/g, '');
+}
 
 interface SpinnerHandle {
 	stop: (finalMessage?: string) => void;
@@ -116,6 +154,27 @@ const RECOVERY_MAP: Array<{ pattern: RegExp; suggest: RecoverySuggestion }> = [
 			commands: ['tarx xstatus', 'Edit .env with X API keys'],
 		},
 	},
+	{
+		pattern: /update.*html|version.*<!DOCTYPE/i,
+		suggest: {
+			message: 'Update endpoint returned HTML instead of JSON.',
+			commands: ['tarx doctor', 'Check API endpoint configuration'],
+		},
+	},
+	{
+		pattern: /no results|no knowledge|empty search/i,
+		suggest: {
+			message: 'No knowledge indexed yet. Upload or scan files first.',
+			commands: ['tarx scan ~/Desktop/tarx-code-oss', 'tarx status'],
+		},
+	},
+	{
+		pattern: /mesh.*failed|mesh.*timeout|mesh.*refused/i,
+		suggest: {
+			message: 'Mesh network unreachable.',
+			commands: ['tarx status', 'tarx start'],
+		},
+	},
 ];
 
 export function suggestRecovery(error: Error | string): RecoverySuggestion | null {
@@ -156,7 +215,80 @@ const SUGGEST_MAP: Record<string, string[]> = {
 	'dispatch': ['tarx status', 'tarx log'],
 	'start': ['tarx status', 'tarx chat "hello"'],
 	'doctor': ['tarx start', 'tarx heal'],
+	'update': ['tarx status', 'tarx version'],
+	'search': ['tarx search "<another query>"', 'tarx brief'],
+	'mesh': ['tarx status', 'tarx mesh'],
+	'build': ['tarx test', 'tarx status'],
+	'test': ['tarx build', 'tarx fix "<error>"'],
+	'fix': ['tarx test', 'tarx build'],
+	'refactor': ['tarx test', 'tarx build'],
+	'document': ['tarx build', 'tarx status'],
+	'plan': ['tarx build', 'tarx dispatch "<task>"'],
 };
+
+// --- Help screen (renders from command registry) ---
+
+import {
+	SECTION_ORDER, SECTION_TITLES, GLOBAL_OPTIONS,
+	getCommand, getSection, formatSignature,
+} from './commands.js';
+
+const COL_WIDTH = 28;
+
+export function printHelp(): void {
+	printBanner();
+	console.log(`\n  ${BOLD}Usage:${RESET} tarx [command] [args] [options]\n`);
+	console.log(`  ${DIM}Run ${RESET}${BOLD}tarx${RESET}${DIM} with no arguments for a live status greeting.${RESET}\n`);
+
+	for (const section of SECTION_ORDER) {
+		const cmds = getSection(section);
+		console.log(`  ${DIM}── ${SECTION_TITLES[section]} ──${RESET}`);
+		for (const cmd of cmds) {
+			console.log(`    ${BOLD}${formatSignature(cmd).padEnd(COL_WIDTH)}${RESET} ${cmd.desc}`);
+		}
+		console.log('');
+	}
+
+	console.log(`  ${DIM}── Options ──${RESET}`);
+	for (const opt of GLOBAL_OPTIONS) {
+		console.log(`    ${BOLD}${opt.flag.padEnd(COL_WIDTH)}${RESET} ${opt.desc}`);
+	}
+	console.log('');
+
+	console.log(`  ${DIM}Services: :11435 inference  :11436 mesh  :11437 embeddings${RESET}`);
+	console.log(`  ${DIM}Docs:     https://tarx.com/docs${RESET}\n`);
+}
+
+/**
+ * Print detailed help for a single command.
+ * Returns true if the command was found, false otherwise.
+ */
+export function printCommandHelp(name: string): boolean {
+	const cmd = getCommand(name);
+	if (!cmd) return false;
+
+	const usage = cmd.usage || `tarx ${formatSignature(cmd)}`;
+	console.log(`\n  ${BOLD}${cmd.name}${RESET} — ${cmd.desc}`);
+	console.log(`  ${DIM}Usage:${RESET} ${usage}\n`);
+
+	if (cmd.flags && cmd.flags.length > 0) {
+		console.log(`  ${DIM}Flags:${RESET}`);
+		for (const f of cmd.flags) {
+			console.log(`    ${f}`);
+		}
+		console.log('');
+	}
+
+	if (cmd.examples && cmd.examples.length > 0) {
+		console.log(`  ${DIM}Examples:${RESET}`);
+		for (const ex of cmd.examples) {
+			console.log(`    ${BOLD}${ex}${RESET}`);
+		}
+		console.log('');
+	}
+
+	return true;
+}
 
 export function suggestNext(command: string): void {
 	const suggestions = SUGGEST_MAP[command];

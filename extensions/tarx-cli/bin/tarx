@@ -1,15 +1,22 @@
 #!/usr/bin/env node
 
+// Suppress dotenv v17 auto-inject logging before any require()
+process.env.DOTENV_CONFIG_QUIET = 'true';
+
 // Route: if first arg matches a dispatch-layer command, use index.ts
 // Otherwise fall through to the original commander-based CLI
 const dispatchCommands = [
   'dispatch', 'heal', 'notify', 'taxonomy', 'strategy',
   'wake', 'think', 'status', 'log',
   'brief', 'priorities', 'stream',
+  'update', 'search', 'mesh',
+  'build', 'refactor', 'fix', 'test', 'document', 'plan',
+  'tweet', 'timeline', 'xsearch', 'xstatus', 'xai', 'weekly',
 ];
 const arg = process.argv[2];
 
-if (arg && dispatchCommands.includes(arg)) {
+if (!arg || dispatchCommands.includes(arg) || arg === '--help' || arg === '-h') {
+  // No arg = greeting, dispatch command = dispatch layer
   require('../dist/index.js');
 } else {
   // Original CLI (chat, doctor, health, one-shot, REPL)
