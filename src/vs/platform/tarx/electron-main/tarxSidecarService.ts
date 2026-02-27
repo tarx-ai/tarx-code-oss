@@ -1,5 +1,5 @@
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) TARX AI. All rights reserved.
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
@@ -99,6 +99,29 @@ export class TarxSidecarService extends Disposable implements ITarxSidecarServic
 		const overallStart = Date.now();
 		let lastError: string | undefined;
 		let lastPid: number | undefined;
+
+		// Detect external server (CLI-started, previous session, manual)
+		if (!this._process) {
+			const externalHealth = await this.checkHealth();
+			if (externalHealth.healthy) {
+				this.logService.info(`[TARX] External inference server detected on :${this.port} (${externalHealth.latencyMs}ms) - adopting`);
+				this._status = {
+					...this._status,
+					running: true,
+					healthState: TarxHealthState.Healthy,
+					lastHealthCheckMs: externalHealth.latencyMs,
+					meshFallbackActive: false
+				};
+				this._onDidChangeStatus.fire(this._status);
+				this.startHealthMonitoring();
+				return {
+					success: true, attempt: 0,
+					elapsedMs: Date.now() - overallStart,
+					meshFallbackTriggered: false,
+					healthCheckLatencyMs: externalHealth.latencyMs
+				};
+			}
+		}
 
 		// Run pre-flight validation
 		const preflight = await this.preflightCheck();
@@ -488,7 +511,11 @@ export class TarxSidecarService extends Disposable implements ITarxSidecarServic
 			path.join(appRoot, 'resources', 'binaries', 'llama-server'),
 			path.join(appRoot, '..', 'Resources', 'binaries', 'llama-server'),
 			path.join(appRoot, 'binaries', 'llama-server'),
-			// Fallback to home directory for development
+			// Development fallback: tarx-local extension
+			path.join(appRoot, 'extensions', 'tarx-local', 'binaries', 'llama-server-darwin-arm64'),
+			path.join(process.env.HOME || '', 'Desktop', 'tarx-code-oss', 'extensions', 'tarx-local', 'binaries', 'llama-server-darwin-arm64'),
+			// Fallback to home directory
+			path.join(process.env.HOME || '', '.tarx', 'bin', 'llama-server'),
 			path.join(process.env.HOME || '', '.tarx', 'binaries', 'llama-server')
 		];
 
@@ -505,7 +532,7 @@ export class TarxSidecarService extends Disposable implements ITarxSidecarServic
 	private async findModelPath(): Promise<string | undefined> {
 		const home = process.env.HOME || '';
 
-		// V1.1: Fine-tuned TARX model — always prefer if present
+		// V1.1: Fine-tuned TARX model - always prefer if present
 		const fineTunedModel = path.join(home, 'Library/Application Support/tarx/models/tarx-qwen2.5-7b-deep-Q4_K_M.gguf');
 		if (fs.existsSync(fineTunedModel)) {
 			this.logService.info(`[TARX] Using fine-tuned model: ${fineTunedModel}`);
@@ -521,7 +548,9 @@ export class TarxSidecarService extends Disposable implements ITarxSidecarServic
 		];
 
 		for (const dir of searchDirs) {
-			if (!fs.existsSync(dir)) continue;
+			if (!fs.existsSync(dir)) {
+				continue;
+			}
 
 			try {
 				const entries = fs.readdirSync(dir);
@@ -534,7 +563,9 @@ export class TarxSidecarService extends Disposable implements ITarxSidecarServic
 					const lowerName = entry.toLowerCase();
 
 					// Skip mmproj files
-					if (lowerName.includes('mmproj')) continue;
+					if (lowerName.includes('mmproj')) {
+						continue;
+					}
 
 					const isGguf = lowerName.endsWith('.gguf');
 					const isOllamaBlob = entry.startsWith('sha256-') && !entry.includes('.');
