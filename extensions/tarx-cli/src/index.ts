@@ -767,6 +767,19 @@ async function main(): Promise<void> {
       break;
     }
 
+    case 'install': {
+      const { install: installCmd } = await import('./commands/install');
+      await installCmd(args);
+      break;
+    }
+
+    case 'model': {
+      const { model: modelCmd } = await import('./commands/model');
+      await modelCmd(args);
+      suggestNext('model');
+      break;
+    }
+
     case 'daemon': {
       const sub = args[0];
       const { isDaemonRunning, getDaemonStatus, stopDaemon, restartDaemon } = await import('./daemon-client');

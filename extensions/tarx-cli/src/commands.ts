@@ -95,6 +95,10 @@ export const COMMANDS: CommandDef[] = [
 		examples: ['tarx xai "explain quantum computing"', 'tarx xai --model grok-3 "hello"'] },
 
 	// ── System ──
+	{ name: 'install',    args: '<workbench|daemon>', desc: 'Install TARX components',      section: 'system',
+		examples: ['tarx install workbench', 'tarx install daemon'] },
+	{ name: 'model',      args: '<status|download|list>', desc: 'Manage local AI models',   section: 'system',
+		examples: ['tarx model status', 'tarx model download', 'tarx model list'] },
 	{ name: 'daemon',     args: '<start|stop|status|restart|install|uninstall>',
 	                      desc: 'Manage the always-on AI engine',                           section: 'system' },
 	{ name: 'start',      desc: 'Start AI engine (alias: daemon start)',                    section: 'system' },
