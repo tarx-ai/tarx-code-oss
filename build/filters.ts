@@ -20,6 +20,8 @@ export const all = Object.freeze<string[]>([
 	'build/**/*',
 	'extensions/**/*',
 	'scripts/**/*',
+	'!scripts/release.sh',
+	'!scripts/rag-populate.mjs',
 	'src/**/*',
 	'test/**/*',
 	'!cli/**/*',
