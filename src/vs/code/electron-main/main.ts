@@ -17,7 +17,7 @@ try {
 		tracesSampleRate: 0.1,
 		ignoreErrors: [
 			'EPIPE', 'Channel closed', 'Canceled',
-			'HostProvider not setup',                              // NODE-A: Copilot auth race — not used by TARX
+			'HostProvider not setup',                              // NODE-A: Copilot auth race - not used by TARX
 			'permission denied, mkdir \'/mock\'',                  // NODE-B: test artifact
 			'spawn docker ENOENT',                                 // NODE-S: Docker not installed
 			'EADDRINUSE',                                          // Port conflict (handled gracefully)
@@ -46,7 +46,7 @@ try {
 		},
 	});
 } catch {
-	// Sentry init failed — continue without error tracking
+	// Sentry init failed - continue without error tracking
 }
 
 import { app, dialog } from 'electron';
@@ -122,6 +122,7 @@ import { ITarxSidecarService, ITarxEmbeddingSidecarService, ITarxMeshSidecarServ
 import { TarxSidecarService } from '../../platform/tarx/electron-main/tarxSidecarService.js';
 import { TarxEmbeddingSidecarService } from '../../platform/tarx/electron-main/tarxEmbeddingSidecarService.js';
 import { TarxMeshSidecarService } from '../../platform/tarx/electron-main/tarxMeshSidecarService.js';
+import { ITarxTrayService, TarxTrayService } from '../../platform/tarx/electron-main/tarxTray.js';
 
 /**
  * The main VS Code entry point.
@@ -301,6 +302,9 @@ class CodeMain {
 
 		// TARX Mesh Sidecar Service (mesh network on port 11436)
 		services.set(ITarxMeshSidecarService, new SyncDescriptor(TarxMeshSidecarService));
+
+		// TARX System Tray (menu bar icon + health status)
+		services.set(ITarxTrayService, new SyncDescriptor(TarxTrayService));
 
 		// Protocol (instantiated early and not using sync descriptor for security reasons)
 		services.set(IProtocolMainService, new ProtocolMainService(environmentMainService, userDataProfilesMainService, logService));

@@ -91,9 +91,9 @@ export class TarxTrayService extends Disposable implements ITarxTrayService {
 
 		this.mainWindow = mainWindow;
 
-		// Create tray with initial icon
-		const iconPath = this.getIconPath('unknown');
-		this.tray = new Tray(nativeImage.createFromPath(iconPath));
+		// Create tray with initial icon (programmatic fallback if no PNG)
+		const trayImage = this.getTrayImage('unknown');
+		this.tray = new Tray(trayImage);
 
 		// Set tooltip
 		this.tray.setToolTip('TARX Workbench');
@@ -127,8 +127,8 @@ export class TarxTrayService extends Disposable implements ITarxTrayService {
 		this.currentStatus = status;
 
 		// Update icon based on status
-		const iconPath = this.getIconPath(status.status);
-		this.tray?.setImage(nativeImage.createFromPath(iconPath));
+		const trayImage = this.getTrayImage(status.status);
+		this.tray?.setImage(trayImage);
 
 		// Update tooltip
 		const tooltipLines = ['TARX Workbench'];
@@ -227,6 +227,44 @@ export class TarxTrayService extends Disposable implements ITarxTrayService {
 		};
 	}
 
+	private getTrayImage(status: TarxTrayStatus): Electron.NativeImage {
+		const iconPath = this.getIconPath(status);
+		if (fs.existsSync(iconPath)) {
+			return nativeImage.createFromPath(iconPath);
+		}
+
+		// Programmatic fallback when no PNG exists
+		return this.createFallbackIcon(status);
+	}
+
+	private createFallbackIcon(status: TarxTrayStatus): Electron.NativeImage {
+		// Create a 32x32 (retina) circle indicator via raw RGBA buffer
+		// macOS template images: black pixels on transparent — system auto-inverts for dark mode
+		const size = 32;
+		const buf = Buffer.alloc(size * size * 4, 0); // RGBA, fully transparent
+
+		const cx = size / 2, cy = size / 2, r = 10;
+		// Alpha value encodes status: offline is dimmer
+		const alpha = status === 'offline' ? 100 : 255;
+
+		for (let y = 0; y < size; y++) {
+			for (let x = 0; x < size; x++) {
+				const dx = x - cx, dy = y - cy;
+				if (dx * dx + dy * dy <= r * r) {
+					const i = (y * size + x) * 4;
+					buf[i] = 0;        // R (black for template)
+					buf[i + 1] = 0;    // G
+					buf[i + 2] = 0;    // B
+					buf[i + 3] = alpha; // A
+				}
+			}
+		}
+
+		const img = nativeImage.createFromBuffer(buf, { width: size, height: size, scaleFactor: 2.0 });
+		img.setTemplateImage(true); // macOS auto dark/light mode
+		return img;
+	}
+
 	private getIconPath(status: TarxTrayStatus): string {
 		const appRoot = this.environmentMainService.appRoot;
 
@@ -236,19 +274,18 @@ export class TarxTrayService extends Disposable implements ITarxTrayService {
 			: `tray-${status}.png`;
 
 		const possiblePaths = [
+			join(appRoot, 'resources', 'tarx', iconName),
 			join(appRoot, 'resources', 'icons', iconName),
-			join(appRoot, '..', 'Resources', 'icons', iconName),
-			join(appRoot, 'extensions', 'tarx', 'media', iconName)
+			join(appRoot, '..', 'Resources', 'tarx', iconName),
 		];
 
-		// Find existing icon or use default
+		// Find existing icon or return first path (caller checks existence)
 		for (const iconPath of possiblePaths) {
 			if (fs.existsSync(iconPath)) {
 				return iconPath;
 			}
 		}
 
-		// Fallback to default icon path
 		return possiblePaths[0];
 	}
 

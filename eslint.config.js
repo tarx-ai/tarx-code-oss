@@ -1441,6 +1441,7 @@ export default tseslint.config(
 					'when': 'hasNode',
 					'allow': [
 						'@parcel/watcher',
+						'@sentry/node',
 						'@vscode/sqlite3',
 						'@vscode/vscode-languagedetection',
 						'@vscode/ripgrep',

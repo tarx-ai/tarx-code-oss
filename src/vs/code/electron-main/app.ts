@@ -126,6 +126,7 @@ import { NativeWebContentExtractorService } from '../../platform/webContentExtra
 import ErrorTelemetry from '../../platform/telemetry/electron-main/errorTelemetry.js';
 import { ITarxSidecarService, ITarxEmbeddingSidecarService, ITarxMeshSidecarService } from '../../platform/tarx/common/tarx.js';
 import { TarxSidecarChannel, TARX_SIDECAR_CHANNEL_NAME, TarxEmbeddingChannel, TARX_EMBEDDING_CHANNEL_NAME, TarxMeshChannel, TARX_MESH_CHANNEL_NAME } from '../../platform/tarx/common/tarxIpc.js';
+import { ITarxTrayService } from '../../platform/tarx/electron-main/tarxTray.js';
 
 /**
  * The main VS Code application. There will only ever be one instance,
@@ -1485,6 +1486,46 @@ export class CodeApplication extends Disposable {
 				}
 			});
 		}, 7000);
+
+		// TARX: System tray icon (10s delay - after all services started)
+		if (isMacintosh) {
+			setTimeout(() => {
+				instantiationService.invokeFunction(accessor => {
+					const logService = accessor.get(ILogService);
+					try {
+						const tarxTray = accessor.get(ITarxTrayService);
+						const windowsMainService = accessor.get(IWindowsMainService);
+
+						// Get the main window's BrowserWindow
+						const lastWindow = windowsMainService.getLastActiveWindow();
+						if (lastWindow?.win) {
+							tarxTray.create(lastWindow.win);
+
+							// Wire events
+							tarxTray.onDidRequestShowWindow(() => {
+								const win = windowsMainService.getLastActiveWindow();
+								if (win) {
+									win.win?.show();
+									win.win?.focus();
+								} else {
+									windowsMainService.openEmptyWindow({ context: OpenContext.DOCK });
+								}
+							});
+
+							tarxTray.onDidRequestQuit(() => {
+								this.lifecycleMainService.quit();
+							});
+
+							logService.info('[TARX] System tray created');
+						} else {
+							logService.warn('[TARX] No main window found for tray creation');
+						}
+					} catch (e) {
+						logService.error(`[TARX] Tray init failed: ${e}`);
+					}
+				});
+			}, 10000);
+		}
 
 		// Crash reporter
 		this.updateCrashReporterEnablement();
