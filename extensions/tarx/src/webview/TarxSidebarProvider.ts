@@ -324,7 +324,7 @@ export class TarxSidebarProvider implements vscode.WebviewViewProvider {
 				try {
 					console.log('[TARX EVENT] startConversation fired with prompt:', message.prompt?.substring(0, 50));
 					// Open chat with a pre-filled prompt so user doesn't get empty chat
-					const query = message.prompt || 'Hello! What would you like to work on?';
+					const query = message.prompt || 'Your workspace is ready. What are we building?';
 					await vscode.commands.executeCommand('workbench.action.chat.open', { query: `@tarx ${query}` });
 					console.log('[TARX EVENT] ✓ Conversation started with prompt');
 					this._postMessage({ command: 'eventFired', event: 'startConversation', data: { hasPrompt: !!message.prompt } });

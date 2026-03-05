@@ -213,7 +213,7 @@ export const App: React.FC<AppProps> = ({ mode, logoUri, eyesUri }) => {
 		setShowDashboard(false);
 		setState({ ...getState(), hasSeenWelcome: true });
 		// Open chat with a welcome greeting instead of empty
-		postMessage({ command: 'startConversation', prompt: 'Hello! I\'m ready to help you with your code. What would you like to work on today?' });
+		postMessage({ command: 'startConversation', prompt: 'Your workspace is ready. What are we building?' });
 	}, []);
 
 	// ═══════════════════════════════════════════════════════════════

@@ -436,7 +436,7 @@ export async function handleProjectIntent(
 					response.markdown(`**Project "${name}" created.**\n\n`);
 					response.markdown(`- Workspace: \`${rootPath}\`\n`);
 					response.markdown(`- Space ID: \`${space.id}\`\n\n`);
-					response.markdown('What would you like to work on first?\n\n');
+					response.markdown('Your workspace is ready. What are we building?\n\n');
 
 					response.button({
 						command: 'tarx.chat.send',

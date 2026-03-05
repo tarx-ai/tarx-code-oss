@@ -63,20 +63,20 @@
         ],
         "sampleRequest": [
           {
-            "text": "What are you working on?",
-            "description": "Start a conversation about your current task"
+            "text": "Summarize what I was working on",
+            "description": "Recall your last session context"
           },
           {
-            "text": "Help me think through a problem",
-            "description": "Brainstorm and analyze approaches"
+            "text": "What files have changed recently?",
+            "description": "See recent workspace activity"
           },
           {
-            "text": "Review the code I have open",
-            "description": "Get feedback on your current file"
+            "text": "Start a new project",
+            "description": "Scaffold a new project from scratch"
           },
           {
-            "text": "What can you do?",
-            "description": "Learn about TARX capabilities"
+            "text": "Search my workspace",
+            "description": "Find files, code, or context"
           }
         ],
         "commands": [
@@ -625,8 +625,8 @@
     "chatViewsWelcome": [
       {
         "icon": "$(tarx-icon)",
-        "title": "What are we working on?",
-        "content": "TARX is ready to assist with your code.\n\n**Local. Private. Proactive.**\n\n[Start New Chat](command:workbench.action.chat.open)",
+        "title": "Your workspace is ready. What are we building?",
+        "content": "Everything runs locally. No cloud. No surveillance.\n\n**Local. Private. Proactive.**\n\n[Start New Chat](command:workbench.action.chat.open)",
         "when": "true"
       }
     ],

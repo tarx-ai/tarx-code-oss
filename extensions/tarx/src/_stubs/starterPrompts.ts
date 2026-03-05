@@ -69,19 +69,29 @@ const STARTER_PROMPTS: Record<Interest, StarterPrompt[]> = {
 	],
 	other: [
 		{
-			label: 'Explain this code',
-			prompt: 'Explain what this code does and suggest improvements.',
-			icon: 'codicon-comment-discussion'
+			label: 'Summarize what I was working on',
+			prompt: 'Summarize what I was working on in my last session.',
+			icon: 'codicon-history'
 		},
 		{
-			label: 'Write a function',
-			prompt: 'Write a utility function that I can describe to you.',
-			icon: 'codicon-symbol-method'
+			label: 'What files have changed recently?',
+			prompt: 'What files have changed recently in this workspace?',
+			icon: 'codicon-diff'
 		},
 		{
-			label: 'Find a bug',
-			prompt: 'Help me find and fix a bug in my code.',
-			icon: 'codicon-bug'
+			label: 'Start a new project',
+			prompt: 'Help me start a new project from scratch.',
+			icon: 'codicon-rocket'
+		},
+		{
+			label: 'Search my workspace',
+			prompt: 'Search my workspace for relevant files and context.',
+			icon: 'codicon-search'
+		},
+		{
+			label: 'What should I focus on today?',
+			prompt: 'Based on my workspace state, what should I focus on today?',
+			icon: 'codicon-target'
 		}
 	]
 };
