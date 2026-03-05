@@ -9,6 +9,9 @@
  * Usage: node daemon.js [--foreground]
  */
 
+// Set process title early so macOS shows "TARX" in notifications, not "tarxd"
+process.title = 'TARX';
+
 import { spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -235,7 +238,7 @@ async function main() {
 	log('Checking models...');
 	const models = await downloadModelsIfNeeded(
 		(p) => {
-			process.stderr.write(`\r[tarxd] ${p.file}: ${p.percent}% (${p.speed})   `);
+			process.stderr.write(`\r[TARX] ${p.file}: ${p.percent}% (${p.speed})   `);
 		},
 		log
 	);

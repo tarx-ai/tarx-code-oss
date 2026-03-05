@@ -22,7 +22,9 @@ export interface ITarxTrayStatus {
 	embeddings: boolean;
 	mesh: boolean;
 	meshPeers: number;
+	memoryChunks: number;
 	status: TarxTrayStatus;
+	downloadProgress: number | null; // null = no download, 0-100 = in progress
 }
 
 export interface ITarxTrayService {
@@ -59,10 +61,10 @@ export class TarxTrayService extends Disposable implements ITarxTrayService {
 		embeddings: false,
 		mesh: false,
 		meshPeers: 0,
-		status: 'unknown'
+		memoryChunks: 0,
+		status: 'unknown',
+		downloadProgress: null,
 	};
-	private recentProjects: Array<{ name: string; path: string }> = [];
-
 	private readonly _onDidRequestShowWindow = this._register(new Emitter<void>());
 	readonly onDidRequestShowWindow: Event<void> = this._onDidRequestShowWindow.event;
 
@@ -96,7 +98,7 @@ export class TarxTrayService extends Disposable implements ITarxTrayService {
 		this.tray = new Tray(trayImage);
 
 		// Set tooltip
-		this.tray.setToolTip('TARX Workbench');
+		this.tray.setToolTip('TARX');
 
 		// Build initial context menu
 		this.updateContextMenu();
@@ -131,19 +133,14 @@ export class TarxTrayService extends Disposable implements ITarxTrayService {
 		this.tray?.setImage(trayImage);
 
 		// Update tooltip
-		const tooltipLines = ['TARX Workbench'];
-		if (status.inference) {
-			tooltipLines.push('[OK] Inference ready');
-		} else {
-			tooltipLines.push('[X] Inference offline');
-		}
-		if (status.embeddings) {
-			tooltipLines.push('[OK] Embeddings ready');
-		} else {
-			tooltipLines.push('[X] Embeddings offline');
-		}
+		const tooltipLines = ['TARX'];
+		tooltipLines.push(`Inference: ${status.inference ? 'online' : 'offline'}`);
+		tooltipLines.push(`Memory: ${status.embeddings ? 'online' : 'offline'}`);
 		if (status.mesh) {
-			tooltipLines.push(`[OK] Mesh: ${status.meshPeers} peers`);
+			tooltipLines.push(`SuperComputer: ${status.meshPeers} peers`);
+		}
+		if (status.downloadProgress !== null && status.downloadProgress < 100) {
+			tooltipLines.push(`Download: ${status.downloadProgress}%`);
 		}
 
 		this.tray?.setToolTip(tooltipLines.join('\n'));
@@ -152,9 +149,8 @@ export class TarxTrayService extends Disposable implements ITarxTrayService {
 		this.updateContextMenu();
 	}
 
-	setRecentProjects(projects: Array<{ name: string; path: string }>): void {
-		this.recentProjects = projects.slice(0, 5); // Keep only 5 most recent
-		this.updateContextMenu();
+	setRecentProjects(_projects: Array<{ name: string; path: string }>): void {
+		// Reserved for future use
 	}
 
 	private updateContextMenu(): void {
@@ -162,39 +158,100 @@ export class TarxTrayService extends Disposable implements ITarxTrayService {
 			return;
 		}
 
+		const statusDot = this.currentStatus.status === 'healthy' ? '\u25CF'
+			: this.currentStatus.status === 'degraded' ? '\u25CB'
+			: '\u2717';
+
+		const statusLabel = this.currentStatus.status === 'healthy' ? 'Online'
+			: this.currentStatus.status === 'degraded' ? 'Loading'
+			: this.currentStatus.status === 'offline' ? 'Offline'
+			: 'Checking...';
+
 		const menuTemplate: MenuItemConstructorOptions[] = [
+			// Header
 			{
-				label: 'Quick Chat',
-				accelerator: 'CmdOrCtrl+Shift+T',
-				click: () => this._onDidRequestQuickChat.fire()
+				label: `\u269B TARX        ${statusDot} ${statusLabel}`,
+				enabled: false,
 			},
-			{ type: 'separator' },
-			this.buildStatusMenuItem(),
-			{ type: 'separator' }
+			{
+				label: 'Your personal SuperComputer',
+				enabled: false,
+			},
 		];
 
-		// Add recent projects if available
-		if (this.recentProjects.length > 0) {
-			menuTemplate.push({
-				label: 'Recent Projects',
-				submenu: this.recentProjects.map(project => ({
-					label: project.name,
-					click: () => this.openProject(project.path)
-				}))
-			});
-			menuTemplate.push({ type: 'separator' });
+		// Download progress (dynamic — shown only during download)
+		if (this.currentStatus.downloadProgress !== null && this.currentStatus.downloadProgress < 100) {
+			const pct = this.currentStatus.downloadProgress;
+			const filled = Math.round(pct / 10);
+			const bar = '\u2588'.repeat(filled) + '\u2591'.repeat(10 - filled);
+			menuTemplate.push(
+				{ type: 'separator' },
+				{
+					label: `SuperComputer: ${pct}% ${bar}`,
+					enabled: false,
+				}
+			);
 		}
+
+		menuTemplate.push({ type: 'separator' });
+
+		// Open Chat
+		menuTemplate.push({
+			label: 'Open Chat',
+			accelerator: 'CmdOrCtrl+Shift+T',
+			click: () => this._onDidRequestQuickChat.fire()
+		});
+
+		menuTemplate.push({ type: 'separator' });
+
+		// Install items
+		const cliInstalled = this.isCliInstalled();
+		const workbenchInstalled = this.isWorkbenchInstalled();
 
 		menuTemplate.push(
 			{
-				label: 'Open TARX Workbench',
-				click: () => this._onDidRequestShowWindow.fire()
+				label: cliInstalled ? 'Install CLI               \u2713' : 'Install CLI',
+				enabled: !cliInstalled,
+				click: () => this.installCli()
 			},
 			{
-				label: 'Settings...',
-				click: () => this._onDidRequestSettings.fire()
+				label: workbenchInstalled ? 'Install Workbench         \u2713' : 'Install Workbench',
+				enabled: !workbenchInstalled,
+				click: () => this._onDidRequestShowWindow.fire()
 			},
 			{ type: 'separator' },
+			{
+				label: 'Voice                     coming soon',
+				enabled: false,
+			},
+			{
+				label: 'TARX Art                  coming soon',
+				enabled: false,
+			}
+		);
+
+		menuTemplate.push({ type: 'separator' });
+
+		// Status section
+		const meshLabel = this.currentStatus.mesh
+			? `SuperComputer: ${this.currentStatus.meshPeers} peer${this.currentStatus.meshPeers !== 1 ? 's' : ''} connected`
+			: 'SuperComputer: offline';
+		const memoryLabel = this.currentStatus.memoryChunks > 0
+			? `Memory: ${this.currentStatus.memoryChunks.toLocaleString()} chunks indexed`
+			: 'Memory: no chunks indexed';
+
+		menuTemplate.push(
+			{ label: meshLabel, enabled: false },
+			{ label: memoryLabel, enabled: false }
+		);
+
+		menuTemplate.push({ type: 'separator' });
+
+		menuTemplate.push(
+			{
+				label: 'Preferences...',
+				click: () => this._onDidRequestSettings.fire()
+			},
 			{
 				label: 'Quit TARX',
 				click: () => this._onDidRequestQuit.fire()
@@ -205,26 +262,31 @@ export class TarxTrayService extends Disposable implements ITarxTrayService {
 		this.tray.setContextMenu(contextMenu);
 	}
 
-	private buildStatusMenuItem(): MenuItemConstructorOptions {
-		const statusLabels: Record<TarxTrayStatus, string> = {
-			healthy: 'All Systems Healthy',
-			degraded: 'Degraded Performance',
-			offline: 'Offline',
-			unknown: 'Checking...'
-		};
+	private isCliInstalled(): boolean {
+		const tarxBin = join(process.env.HOME || '', '.tarx', 'bin', 'tarx');
+		const usrLocalBin = '/usr/local/bin/tarx';
+		return fs.existsSync(tarxBin) || fs.existsSync(usrLocalBin);
+	}
 
-		const details: string[] = [];
-		details.push(`Inference: ${this.currentStatus.inference ? 'localhost:11435' : 'offline'}`);
-		details.push(`Embeddings: ${this.currentStatus.embeddings ? 'localhost:11437' : 'offline'}`);
-		if (this.currentStatus.mesh) {
-			details.push(`Mesh: ${this.currentStatus.meshPeers} peers`);
-		}
+	private isWorkbenchInstalled(): boolean {
+		const paths = [
+			'/Applications/TARX Workbench.app',
+			join(process.env.HOME || '', 'Applications', 'TARX Workbench.app'),
+		];
+		return paths.some(p => fs.existsSync(p));
+	}
 
-		return {
-			label: statusLabels[this.currentStatus.status],
-			enabled: false,
-			sublabel: details.join(' | ')
-		};
+	private installCli(): void {
+		this.logService.info('[TARX Tray] Starting CLI install');
+		const { exec } = require('child_process');
+		exec('curl -fsSL tarx.com/install | sh', (err: Error | null) => {
+			if (err) {
+				this.logService.error(`[TARX Tray] CLI install failed: ${err.message}`);
+			} else {
+				this.logService.info('[TARX Tray] CLI install complete');
+				this.updateContextMenu(); // Refresh to show checkmark
+			}
+		});
 	}
 
 	private getTrayImage(status: TarxTrayStatus): Electron.NativeImage {
@@ -303,12 +365,6 @@ export class TarxTrayService extends Disposable implements ITarxTrayService {
 		}
 	}
 
-	private openProject(projectPath: string): void {
-		// This would integrate with the window service to open a project
-		this.logService.info(`[TARX Tray] Opening project: ${projectPath}`);
-		// Emit event or call window service
-	}
-
 	private startHealthMonitoring(): void {
 		this.stopHealthMonitoring();
 
@@ -330,10 +386,11 @@ export class TarxTrayService extends Disposable implements ITarxTrayService {
 	}
 
 	private async checkServices(): Promise<ITarxTrayStatus> {
-		const [inference, embeddings, mesh] = await Promise.all([
+		const [inference, embeddings, mesh, meshStatus] = await Promise.all([
 			this.checkPort(11435),
 			this.checkPort(11437),
-			this.checkPort(11436)
+			this.checkPort(11436),
+			this.fetchJson<{ peer_count?: number }>(11436, '/mesh/status'),
 		]);
 
 		let status: TarxTrayStatus = 'unknown';
@@ -349,9 +406,36 @@ export class TarxTrayService extends Disposable implements ITarxTrayService {
 			inference,
 			embeddings,
 			mesh,
-			meshPeers: 0, // Would need to query mesh for actual peer count
-			status
+			meshPeers: meshStatus?.peer_count ?? 0,
+			memoryChunks: this.currentStatus.memoryChunks, // Preserved; updated externally
+			status,
+			downloadProgress: this.currentStatus.downloadProgress, // Preserved; updated externally
 		};
+	}
+
+	private fetchJson<T>(port: number, path: string): Promise<T | null> {
+		return new Promise((resolve) => {
+			const req = http.request({
+				hostname: '127.0.0.1',
+				port,
+				path,
+				method: 'GET',
+				timeout: 3000,
+			}, (res) => {
+				let data = '';
+				res.on('data', (chunk) => { data += chunk; });
+				res.on('end', () => {
+					try {
+						resolve(JSON.parse(data));
+					} catch {
+						resolve(null);
+					}
+				});
+			});
+			req.on('error', () => resolve(null));
+			req.on('timeout', () => { req.destroy(); resolve(null); });
+			req.end();
+		});
 	}
 
 	private checkPort(port: number): Promise<boolean> {
