@@ -1,96 +1,87 @@
-# TARX CODE
+# TARX Workbench
 
-**Private, local-first AI coding assistant. Access supercomputer when needed.**
+Local-first AI workspace. Runs entirely on your machine.
+VS Code fork (code-oss) with TARX inference, memory, and mesh built in.
 
-## What is TARX CODE?
+## What this is
 
-VS Code fork with built-in AI assistant powered by local llama-server.
-- Private - Your code never leaves your machine
-- Fast - Local inference, no API calls
-- Smart - @tarx participant for code help
+TARX Workbench is a forked VS Code (code-oss) distribution that ships with:
+- Local LLM inference via llama-server (port 11435)
+- RAG memory via nomic-embed-v1.5 (port 11437)
+- Mesh compute via libp2p (port 11436, standalone binary)
+- 251 MCP tools across 3 servers
 
-## Quick Start
+It is NOT a VS Code extension. It IS a standalone desktop app.
+
+## Repos
+
+| Repo | Purpose | Status |
+|------|---------|--------|
+| tarx-code-oss (this) | TARX Workbench app | Active |
+| tarx-mesh | Mesh binary (standalone) | Active |
+| tarx-figma | tarx.com website | Active |
+| tarx-docs | docs.tarx.com | Active |
+| tarx-quantum | quantum.tarx.com | Active |
+| tarx-palantir-connector | Palantir AIP integration | Active |
+
+## Install
+
 ```bash
-# Install dependencies
-npm install
-
-# Run development mode
-./scripts/code.sh
-
-# Use @tarx in Chat panel
-Open Chat -> Type: @tarx hello
+curl -fsSL tarx.com/install | sh
 ```
 
-## Features
+2.9MB daemon. Model downloads in background (~5 min).
 
-### Core TARX Extension
-- **@tarx Chat Participant** - Ask questions, explain code, refactor
-- **Vague Request Detection** - Asks for clarification instead of guessing
-- **Problem Spotting** - Detects security issues, bugs, anti-patterns
-- **Voice Normalization** - Handles transcription errors
-- **Conversation History** - Persists across sessions
+## Ports
 
-### TARX Sidebar
-- **Quick Chat Input** - Send messages directly from sidebar
-- **Voice Button** - One-click voice input
-- **Quick Actions** - Explain, Fix, Test buttons
-- **History Section** - Time-grouped conversation history
+| Port | Service | Binary |
+|------|---------|--------|
+| 11435 | llama-server (inference) | bundled |
+| 11436 | tarx-mesh (libp2p) | ~/Desktop/tarx-mesh/ |
+| 11437 | llama-server (embeddings) | bundled |
 
-### Local LLM (tarx-local)
-- Runs llama-server with local model
-- No internet required
-- Complete privacy
+## MCP Servers
 
-### SuperComputer Mesh (tarx-supercomputer)
-- P2P mesh network for distributed compute
-- Share resources with other users
-- Automatic peer discovery
+| Server | Tools | Location |
+|--------|-------|----------|
+| tarx-core | 29 | extensions/tarx-core/ |
+| tarx-ops | 53 | extensions/tarx-ops/ |
+| tarx-ui | 172 | extensions/tarx-ui-mcp-server/ |
+
+## Model
+
+Fine-tuned Qwen 2.5 7B — `tarx-qwen2.5-7b-deep-Q4_K_M.gguf`
+HuggingFace: tarx-ai/tarx-qwen2.5-7b-deep
+Identity: responds as TARX (system prompt override in systemPrompt.ts)
+
+## Architecture decisions
+
+- llama-server NOT Ollama (migration complete, never revert)
+- Daemon-first: 2.9MB tarball, lazy-load 253MB IDE
+- Workbench = product name. TARX = AI identity.
+- Mesh is standalone repo/binary (NOT inside this repo)
 
 ## Build
+
 ```bash
-# Compile
-npm run compile
+# If you edited webview code (sidebar, chat panel):
+cd extensions/tarx && node esbuild.webview.js --production
+node build/lib/tarx-webview-inline.js
 
-# Run tests
-node cli/out/cli/tarx-dev.js test
+# TypeScript check (everything):
+yarn compile
 
-# Package for macOS
-npm run gulp vscode-darwin-arm64
-
-# Package for Windows
-npm run gulp vscode-win32-x64
-
-# Package for Linux
-npm run gulp vscode-linux-x64
+# Full release build:
+./scripts/release.sh
 ```
 
-## Install Extensions in VS Code
-```bash
-code --install-extension dist/tarx-0.1.0.vsix
-code --install-extension dist/tarx-local-1.0.0.vsix
-code --install-extension dist/tarx-supercomputer-1.0.0.vsix
-```
+## Key files
 
-## Requirements
-
-- Node.js 18+
-- llama-server running on localhost:11435
-- macOS, Windows, or Linux
-
-## Architecture
-
-```
-tarx-code-oss/
-├── extensions/
-│   ├── tarx/                    # Core extension
-│   ├── tarx-local/              # Local LLM
-│   └── tarx-supercomputer/      # Mesh network
-├── src/vs/workbench/browser/parts/
-│   └── tarxsidebar/             # TARX sidebar UI
-├── cli/                         # tarx-dev CLI
-└── dist/                        # .vsix packages
-```
-
-## v1.0.0-beta.1 - January 2026
-
-Built by TARX AI - Local. Private. Proactive.
+| File | Purpose |
+|------|---------|
+| extensions/tarx/src/systemPrompt.ts | TARX persona + identity override |
+| extensions/tarx/src/extension.ts | Main extension entry point |
+| extensions/tarx/package.json | Chat participant, commands, views |
+| src/vs/workbench/browser/parts/tarxsidebar/ | Sidebar webview host |
+| extensions/tarx/esbuild.webview.js | Webview bundler config |
+| build/lib/tarx-webview-inline.js | Inlines sidebar.js/css into TS |
