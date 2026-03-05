@@ -16,6 +16,7 @@ import * as os from 'os';
 import * as net from 'net';
 import * as http from 'http';
 import { findBinary, findModel, findEmbeddingModel } from './services/engine';
+import { downloadModelsIfNeeded } from './model-download';
 
 const TARX_DIR = path.join(os.homedir(), '.tarx');
 const LOGS_DIR = path.join(TARX_DIR, 'logs');
@@ -230,13 +231,22 @@ async function main() {
 	}
 	log(`Binary: ${binary}`);
 
-	// Find models
-	const inferenceModel = findModel();
+	// Download models if needed (first run auto-fetches from HuggingFace)
+	log('Checking models...');
+	const models = await downloadModelsIfNeeded(
+		(p) => {
+			process.stderr.write(`\r[tarxd] ${p.file}: ${p.percent}% (${p.speed})   `);
+		},
+		log
+	);
+
+	// Resolve model paths (download result or local discovery fallback)
+	const inferenceModel = models.inference || findModel();
 	if (!inferenceModel) {
 		log('WARNING: No inference model found — inference service will not start');
 	}
 
-	const embeddingModel = findEmbeddingModel();
+	const embeddingModel = models.embeddings || findEmbeddingModel();
 	if (!embeddingModel) {
 		log('WARNING: No embedding model found — embedding service will not start');
 	}
