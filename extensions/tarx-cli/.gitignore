@@ -1,0 +1,6 @@
+# SEA build artifacts (large binaries — stored in Vercel Blob, not git)
+tarxd
+tarxd-*
+sea-prep.blob
+tarxd-bundle.cjs
+*.xz
