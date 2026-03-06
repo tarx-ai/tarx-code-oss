@@ -75,6 +75,8 @@ import { registerContextFilesProvider, ContextFilesProvider } from './contextFil
 import { registerClaudeWorkerCommands } from './claude-worker';
 import { registerSidebarFullUX } from './sidebar-full-ux';
 import { initTarxLogger, flushTarxLogs } from './tarxLogger';
+import { startCognitiveSync, stopCognitiveSync } from './providers/cognitiveSync';
+import { startHeartbeat, stopHeartbeat } from './services/telemetryReporter';
 // TARX Bridge Integration - Feb 2026
 import {
 	registerClaudeBridgeCommands,
@@ -147,6 +149,7 @@ import {
 } from './stripeService';
 import { CreditBridge } from './creditBridge';
 import { registerChatInputIntegration, ChatInputIntegration } from './chatInputIntegration';
+import { CognitiveEngine } from './services/cognitiveEngine';
 
 // ===============================================================
 // CRASH-GUARD: All static imports loaded  - module parsing succeeded.
@@ -665,6 +668,24 @@ export async function activate(context: vscode.ExtensionContext) {
 		console.log('[TARX] Test harness started on port 11439');
 	} catch (harnessErr) {
 		console.error('[TARX CRASH-GUARD] Test harness init failed:', harnessErr);
+	}
+
+	// === CRASH-GUARD: Cognitive Engine (port 11438) ===
+	try {
+		const cognitiveEngine = new CognitiveEngine();
+		await cognitiveEngine.start();
+		context.subscriptions.push({ dispose: () => cognitiveEngine.dispose() });
+		console.log('[TARX] Cognitive engine started on port 11438');
+	} catch (cogErr) {
+		console.error('[TARX CRASH-GUARD] Cognitive engine init failed:', cogErr);
+	}
+
+	// === CRASH-GUARD: Telemetry Heartbeat ===
+	try {
+		startHeartbeat();
+		console.log('[TARX] Telemetry heartbeat started');
+	} catch (telErr) {
+		console.error('[TARX CRASH-GUARD] Telemetry heartbeat init failed:', telErr);
 	}
 
 	// === CRASH-GUARD: Database init ===
@@ -5486,6 +5507,9 @@ async function initAutonomicDaemon(context: vscode.ExtensionContext): Promise<vo
 		}, delay);
 	}
 
+	// Start cognitive sync (pushes sessions to cognitive engine on 5min timer)
+	startCognitiveSync(context);
+
 	console.log('[TARX] ========== EXTENSION ACTIVATION COMPLETE ==========');
 }
 
@@ -5519,6 +5543,12 @@ export function deactivate() {
 		contextProtocol.dispose();
 		contextProtocol = undefined;
 	}
+
+	// Stop cognitive sync
+	stopCognitiveSync();
+
+	// Stop telemetry heartbeat
+	stopHeartbeat();
 
 	// Close MCP database connection (performance optimization cleanup)
 	closeMCPDatabase();

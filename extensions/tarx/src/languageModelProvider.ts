@@ -13,6 +13,8 @@ import { fitToContextWindow, type Message } from './contextWindow';
 import type { DatabaseOperations, ConversationTurn } from './database';
 // Thinking Tokens Integration - Feb 2026
 import { mapQwenToThinking, ThinkingAccumulator, type QwenStreamChunk } from './thinkingMapper';
+// Telemetry — report every inference to tarx.com/api/telemetry
+import { reportInference } from './services/telemetryReporter';
 
 interface TarxLanguageModelInfo extends vscode.LanguageModelChatInformation {
 	readonly serverUrl: string;
@@ -249,6 +251,17 @@ export class TarxLanguageModelProvider implements vscode.LanguageModelChatProvid
 			const totalTime = Date.now() - requestStart;
 			const ttft = firstTokenTime ? firstTokenTime - requestStart : null;
 			console.log(`[TARX QA] Response complete: ${totalTime}ms total, ${ttft ?? 'N/A'}ms TTFT, ${totalTokens} tokens`);
+
+			// Telemetry: report inference metrics to tarx.com/api/telemetry
+			const promptTokens = Math.ceil(apiMessages.reduce((a, m) => a + m.content.length, 0) / 4);
+			reportInference({
+				inference_mode: 'local',
+				tokens_in: promptTokens,
+				tokens_out: totalTokens,
+				ttft_ms: ttft ?? 0,
+				duration_ms: totalTime,
+				model: 'tarx-local',
+			});
 
 			// Save conversation turns to DB for history persistence
 			if (this.db && this.activeConversationId && fullResponse.length > 0) {
