@@ -76,7 +76,7 @@ import { registerClaudeWorkerCommands } from './claude-worker';
 import { registerSidebarFullUX } from './sidebar-full-ux';
 import { initTarxLogger, flushTarxLogs } from './tarxLogger';
 import { startCognitiveSync, stopCognitiveSync } from './providers/cognitiveSync';
-import { startHeartbeat, stopHeartbeat } from './services/telemetryReporter';
+import { startHeartbeat, stopHeartbeat, reportInference } from './services/telemetryReporter';
 // TARX Bridge Integration - Feb 2026
 import {
 	registerClaudeBridgeCommands,
@@ -2014,8 +2014,10 @@ export async function activate(context: vscode.ExtensionContext) {
 		let fullThinking = '';
 
 		try {
-			console.log(`[TARX PERF] Inference start: +${Date.now() - chatT0}ms`);
+			const inferenceStart = Date.now();
+			console.log(`[TARX PERF] Inference start: +${inferenceStart - chatT0}ms`);
 			let chatFirstToken = true;
+			let chatTtftMs = 0;
 			// Unique ID for this thinking sequence (used by VS Code's thinking renderer)
 			const thinkingId = `tarx-thinking-${Date.now()}`;
 
@@ -2034,6 +2036,7 @@ export async function activate(context: vscode.ExtensionContext) {
 					break;
 				}
 				if (chatFirstToken) {
+					chatTtftMs = Date.now() - inferenceStart;
 					console.log(`[TARX PERF] First token (TTFT): +${Date.now() - chatT0}ms`);
 					chatFirstToken = false;
 				}
@@ -2052,7 +2055,16 @@ export async function activate(context: vscode.ExtensionContext) {
 					response.markdown(chunk.content);
 				}
 			}
+			const inferenceDuration = Date.now() - inferenceStart;
 			console.log(`[TARX PERF] Inference complete: +${Date.now() - chatT0}ms (${fullResponse.length} chars, thinking=${fullThinking.length} chars)`);
+			reportInference({
+				inference_mode: 'local',
+				tokens_in: Math.ceil(messages.reduce((a, m) => a + m.content.length, 0) / 4),
+				tokens_out: Math.ceil((fullResponse.length + fullThinking.length) / 4),
+				ttft_ms: chatTtftMs,
+				duration_ms: inferenceDuration,
+				model: 'tarx-local',
+			});
 
 			// Diagnostic: if streaming produced no visible content, show a fallback message
 			if (fullResponse.length === 0 && fullThinking.length === 0) {
@@ -3369,12 +3381,15 @@ export async function activate(context: vscode.ExtensionContext) {
 			// 4. Call LLM with STREAMING
 			let assistantContent = '';
 			let firstToken = true;
+			const spInferenceStart = Date.now();
+			let spTtftMs = 0;
 
 			for await (const chunk of tarxClient.chatCompletionStream(messages, {
 				temperature: 0.7,
 				maxTokens: 2048
 			})) {
 				if (firstToken) {
+					spTtftMs = Date.now() - spInferenceStart;
 					console.log(`[TARX PERF] First token (TTFT): +${Date.now() - t0}ms`);
 					firstToken = false;
 				}
@@ -3382,6 +3397,14 @@ export async function activate(context: vscode.ExtensionContext) {
 					assistantContent += chunk.content;
 				}
 			}
+			reportInference({
+				inference_mode: 'local',
+				tokens_in: Math.ceil(messages.reduce((a, m) => a + m.content.length, 0) / 4),
+				tokens_out: Math.ceil(assistantContent.length / 4),
+				ttft_ms: spTtftMs,
+				duration_ms: Date.now() - spInferenceStart,
+				model: 'tarx-local',
+			});
 
 			if (!assistantContent) {
 				assistantContent = 'No response generated.';
