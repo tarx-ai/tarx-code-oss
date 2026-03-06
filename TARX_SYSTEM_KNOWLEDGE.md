@@ -64,8 +64,8 @@ Core TARX functionality: inference, memory, spaces, sessions, files, GTM.
 | GTM Skills | 4 | tarx_list_skills, tarx_install_skill, tarx_uninstall_skill, tarx_get_active_skills |
 | GTM Metrics | 1 | tarx_weekly_report |
 
-### tarx-ops (55 tools)
-Admin, Sentry, orchestration, Claude Code session management, daemon, GTM, Datadog.
+### tarx-ops (52 tools)
+Admin, Sentry, orchestration, Claude Code session management, daemon, GTM.
 
 | Category | Count | Tools |
 |----------|-------|-------|
@@ -78,7 +78,6 @@ Admin, Sentry, orchestration, Claude Code session management, daemon, GTM, Datad
 | Orchestration | 24 | register_session, state, report_activity, activity, list_sessions, pause, read_file, update_file, create_doc, list_docs, doc_history, assign_task, task_update, task_list, milestone_create/update/list, push_context, broadcast, get_updates, mark_delivered, request_feedback, list_feedback_requests, status_report |
 | Daemon | 3 | tarx_daemon_start, stop, status |
 | GTM Invites | 2 | tarx_admin_generate_invite, list_invites |
-| Datadog | 3 | tarx_admin_datadog_status, flush, record_inference |
 
 ### tarx-ui-mcp-server (177 tools)
 Full UI automation, editor control, screenshots, testing.
