@@ -21,6 +21,7 @@ export interface ITarxTrayStatus {
 	inference: boolean;
 	embeddings: boolean;
 	mesh: boolean;
+	cognitive: boolean;
 	meshPeers: number;
 	memoryChunks: number;
 	status: TarxTrayStatus;
@@ -60,6 +61,7 @@ export class TarxTrayService extends Disposable implements ITarxTrayService {
 		inference: false,
 		embeddings: false,
 		mesh: false,
+		cognitive: false,
 		meshPeers: 0,
 		memoryChunks: 0,
 		status: 'unknown',
@@ -386,17 +388,19 @@ export class TarxTrayService extends Disposable implements ITarxTrayService {
 	}
 
 	private async checkServices(): Promise<ITarxTrayStatus> {
-		const [inference, embeddings, mesh, meshStatus] = await Promise.all([
+		const [inference, embeddings, mesh, cognitive, meshStatus] = await Promise.all([
 			this.checkPort(11435),
 			this.checkPort(11437),
 			this.checkPort(11436),
+			this.checkPort(11438),
 			this.fetchJson<{ peer_count?: number }>(11436, '/mesh/status'),
 		]);
 
 		let status: TarxTrayStatus = 'unknown';
-		if (inference && embeddings) {
+		const upCount = [inference, embeddings, mesh, cognitive].filter(Boolean).length;
+		if (upCount >= 3) {
 			status = 'healthy';
-		} else if (inference || embeddings) {
+		} else if (upCount >= 1) {
 			status = 'degraded';
 		} else {
 			status = 'offline';
@@ -406,6 +410,7 @@ export class TarxTrayService extends Disposable implements ITarxTrayService {
 			inference,
 			embeddings,
 			mesh,
+			cognitive,
 			meshPeers: meshStatus?.peer_count ?? 0,
 			memoryChunks: this.currentStatus.memoryChunks, // Preserved; updated externally
 			status,

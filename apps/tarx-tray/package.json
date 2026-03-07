@@ -1,0 +1,16 @@
+{
+  "name": "tarx-tray",
+  "version": "1.0.0",
+  "description": "TARX menu bar tray — daemon health surface",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "build": {
+    "appId": "com.tarx.tray",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "LSUIElement": true
+    }
+  }
+}
