@@ -27,7 +27,7 @@
  */
 
 import { WakefulnessManager } from './wakefulness';
-import { ErrorAnalyzer, SentryError } from './error-analyzer';
+import { ErrorAnalyzer, ObservabilityError } from './error-analyzer';
 import { FixApplicator } from './fix-applicator';
 import { MeshBroadcaster } from './mesh-broadcaster';
 import { DaemonSession } from './daemon-session';
@@ -68,7 +68,7 @@ export class TarxAutonomicDaemon {
   public auditTrail: AuditTrail;
   private running: boolean = false;
   private seenErrorIds: Set<string> = new Set();
-  private sentryFetchFailures: number = 0;
+  private observabilityFetchFailures: number = 0;
 
   // Configuration
   private readonly POLL_INTERVAL_MS = 60_000; // 1 minute
@@ -179,7 +179,7 @@ export class TarxAutonomicDaemon {
 
   private async pollAndHeal(): Promise<void> {
     // 1. Fetch recent Sentry errors
-    const errors = await this.fetchSentryErrors();
+    const errors = await this.fetchObservabilityErrors();
 
     for (const error of errors) {
       // Skip already seen
@@ -382,7 +382,7 @@ export class TarxAutonomicDaemon {
     return errorKeywords.some(kw => message.toLowerCase().includes(kw));
   }
 
-  private async fetchSentryErrors(): Promise<SentryError[]> {
+  private async fetchObservabilityErrors(): Promise<ObservabilityError[]> {
     if (!process.env.SENTRY_AUTH_TOKEN || !process.env.SENTRY_ORG || !process.env.SENTRY_PROJECT) {
       return [];
     }
@@ -397,16 +397,16 @@ export class TarxAutonomicDaemon {
       );
 
       if (!response.ok) {
-        this.sentryFetchFailures++;
-        if (this.sentryFetchFailures <= 3) {
+        this.observabilityFetchFailures++;
+        if (this.observabilityFetchFailures <= 3) {
           console.error('[TARX Autonomic] Sentry fetch failed:', response.status);
-        } else if (this.sentryFetchFailures === 4) {
+        } else if (this.observabilityFetchFailures === 4) {
           console.error('[TARX Autonomic] Sentry fetch failed:', response.status, '— suppressing further logs until success');
         }
         return [];
       }
 
-      this.sentryFetchFailures = 0;
+      this.observabilityFetchFailures = 0;
       const issues = await response.json() as any[];
 
       // Fetch details for each issue
@@ -469,7 +469,7 @@ export async function stopDaemon(): Promise<void> {
 
 // Export all components for external use
 export { WakefulnessManager } from './wakefulness';
-export { ErrorAnalyzer, SentryError } from './error-analyzer';
+export { ErrorAnalyzer, ObservabilityError } from './error-analyzer';
 export { FixApplicator } from './fix-applicator';
 export { MeshBroadcaster } from './mesh-broadcaster';
 export { DaemonSession } from './daemon-session';

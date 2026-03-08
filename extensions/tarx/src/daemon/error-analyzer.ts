@@ -7,7 +7,7 @@
  * - Responds to user messages in TARX persona
  */
 
-export interface SentryError {
+export interface ObservabilityError {
   id: string;
   title: string;
   culprit: string;
@@ -27,7 +27,7 @@ export interface FixProposal {
 }
 
 export interface AnalysisResult {
-  error: SentryError;
+  error: ObservabilityError;
   rootCause: string;
   fix: FixProposal;
   confidence: number;
@@ -36,7 +36,7 @@ export interface AnalysisResult {
 export class ErrorAnalyzer {
   private readonly INFERENCE_URL = 'http://localhost:11435/v1/chat/completions';
 
-  async analyze(error: SentryError): Promise<AnalysisResult> {
+  async analyze(error: ObservabilityError): Promise<AnalysisResult> {
     const prompt = `You are TARX, an autonomous AI that fixes code errors.
 
 Analyze this Sentry error and propose a SPECIFIC code fix:
@@ -151,7 +151,7 @@ Respond as TARX (2-4 sentences max, no markdown):`;
     }
   }
 
-  private parseAnalysis(error: SentryError, response: string): AnalysisResult {
+  private parseAnalysis(error: ObservabilityError, response: string): AnalysisResult {
     const getValue = (prefix: string): string => {
       const regex = new RegExp(`^${prefix}\\s*(.*)$`, 'm');
       const match = response.match(regex);

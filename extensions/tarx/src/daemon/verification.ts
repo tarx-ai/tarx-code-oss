@@ -19,7 +19,7 @@ const execAsync = promisify(exec);
 export interface VerificationResult {
   passed: boolean;
   checks: {
-    sentryClean: boolean;
+    observabilityClean: boolean;
     extensionRestart: boolean;
     staticAnalysis: boolean;
     fileHashMatch: boolean;
@@ -37,7 +37,7 @@ export class Verifier {
     expectedHash: string;
   }): Promise<VerificationResult> {
     const checks = {
-      sentryClean: false,
+      observabilityClean: false,
       extensionRestart: false,
       staticAnalysis: false,
       fileHashMatch: false,
@@ -78,8 +78,8 @@ export class Verifier {
     console.log('[Verifier] Starting 5-minute Sentry verification wait...');
     await this.sleep(this.SENTRY_WAIT_MS);
 
-    checks.sentryClean = await this.checkSentryClean(fix.errorId);
-    details.push(checks.sentryClean
+    checks.observabilityClean = await this.checkObservabilityClean(fix.errorId);
+    details.push(checks.observabilityClean
       ? '✓ Sentry: No new events for 5 minutes'
       : '✗ Sentry: Error still occurring');
 
@@ -134,7 +134,7 @@ export class Verifier {
     }
   }
 
-  private async checkSentryClean(errorId: string): Promise<boolean> {
+  private async checkObservabilityClean(errorId: string): Promise<boolean> {
     try {
       const response = await fetch(
         `https://sentry.io/api/0/issues/${errorId}/events/?statsPeriod=5m`,

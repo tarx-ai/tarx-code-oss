@@ -3,13 +3,13 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *
  *  TARX Speech Provider
- *  Implements VS Code's ISpeechProvider to integrate with tarx-voice:11438 (Moshi)
+ *  Implements VS Code's ISpeechProvider to integrate with tarx-voice:11439 (Moshi)
  *  Enables native voice features throughout the IDE
  *
  *  ARCHITECTURE:
  *  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
  *  │  VS Code Chat   │───▶│  tarx-voice     │───▶│  Moshi Backend  │
- *  │  (Audio Input)  │◀───│  :11438         │◀───│  :8998 (STT)    │
+ *  │  (Audio Input)  │◀───│  :11439         │◀───│  :8998 (STT)    │
  *  └─────────────────┘    └─────────────────┘    └─────────────────┘
  *
  *  Data Flow:
@@ -222,7 +222,7 @@ class MoshiAudioPlayer {
 export class TarxSpeechProvider {
 	private wsUrl: string;
 
-	constructor(wsUrl: string = 'ws://127.0.0.1:11438') {
+	constructor(wsUrl: string = 'ws://127.0.0.1:11439') {
 		this.wsUrl = wsUrl;
 		console.log(`[TARX Speech] Provider initialized with ${wsUrl}`);
 	}
@@ -743,7 +743,7 @@ let syntheticTestCts: vscode.CancellationTokenSource | null = null;
  * Start a synthetic audio test session
  * This creates a real voice session but allows injecting audio programmatically
  */
-export async function startSyntheticVoiceSession(wsUrl: string = 'ws://127.0.0.1:11438'): Promise<{
+export async function startSyntheticVoiceSession(wsUrl: string = 'ws://127.0.0.1:11439'): Promise<{
 	success: boolean;
 	sessionId: string;
 	error?: string;
@@ -873,7 +873,7 @@ export function getActiveTranscriptPanel(): VoiceTranscriptPanel | null {
  */
 export function registerSpeechProvider(context: vscode.ExtensionContext): void {
 	const config = vscode.workspace.getConfiguration('tarx');
-	const voiceUrl = config.get<string>('voiceUrl', 'ws://127.0.0.1:11438');
+	const voiceUrl = config.get<string>('voiceUrl', 'ws://127.0.0.1:11439');
 
 	const speechProvider = new TarxSpeechProvider(voiceUrl);
 
