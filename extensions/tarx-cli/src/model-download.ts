@@ -13,7 +13,7 @@ const MODELS_DIR = path.join(os.homedir(), 'Library/Application Support/tarx/mod
 
 const INFERENCE_MODEL = {
 	file: 'tarx-v3.Q4_K_M.gguf',
-	url: 'https://huggingface.co/tarx-ai/tarx-v3/resolve/main/tarx-v3.Q4_K_M.gguf',
+	url: 'https://huggingface.co/Tarxxxxxx/tarx-v3/resolve/main/tarx-v3.Q4_K_M.gguf',
 	label: 'Inference model (~4.7 GB)',
 	minSize: 500_000_000,
 };

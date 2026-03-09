@@ -19,7 +19,7 @@ const OLLAMA_BLOBS = resolve(homedir(), '.ollama/models/blobs');
 
 const DEFAULT_MODEL = {
   name: 'tarx-v3.Q4_K_M.gguf',
-  url: 'https://huggingface.co/tarx-ai/tarx-v3/resolve/main/tarx-v3.Q4_K_M.gguf',
+  url: 'https://huggingface.co/Tarxxxxxx/tarx-v3/resolve/main/tarx-v3.Q4_K_M.gguf',
   size: '4.7 GB',
 };
 
