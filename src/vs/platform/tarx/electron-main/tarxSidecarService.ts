@@ -533,7 +533,7 @@ export class TarxSidecarService extends Disposable implements ITarxSidecarServic
 		const home = process.env.HOME || '';
 
 		// V1.1: Fine-tuned TARX model - always prefer if present
-		const fineTunedModel = path.join(home, 'Library/Application Support/tarx/models/tarx-qwen2.5-7b-deep-Q4_K_M.gguf');
+		const fineTunedModel = path.join(home, 'Library/Application Support/tarx/models/tarx-v3.Q4_K_M.gguf');
 		if (fs.existsSync(fineTunedModel)) {
 			this.logService.info(`[TARX] Using fine-tuned model: ${fineTunedModel}`);
 			return fineTunedModel;

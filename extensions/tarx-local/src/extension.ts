@@ -16,6 +16,7 @@ let statusBarItem: vscode.StatusBarItem;
 let embeddingStatusItem: vscode.StatusBarItem;
 let meshStatusItem: vscode.StatusBarItem;
 let isMeshEnabled = false;
+let isMeshRestarting = false;
 let meshPeerCount = 0;
 let extensionContext: vscode.ExtensionContext | undefined;
 
@@ -371,7 +372,7 @@ async function findModel(): Promise<string | undefined> {
   const home = os.homedir();
 
   // V1.1: Fine-tuned TARX model — always prefer if present
-  const fineTunedModel = path.join(home, 'Library/Application Support/tarx/models/tarx-qwen2.5-7b-deep-Q4_K_M.gguf');
+  const fineTunedModel = path.join(home, 'Library/Application Support/tarx/models/tarx-v3.Q4_K_M.gguf');
   if (fs.existsSync(fineTunedModel)) {
     return fineTunedModel;
   }
@@ -930,11 +931,18 @@ async function showMeshStatus(port: number) {
 function startMeshHealthMonitor(port: number) {
   if (meshHealthMonitor) {
     clearInterval(meshHealthMonitor);
+    meshHealthMonitor = undefined;
   }
 
+  isMeshRestarting = false;
   outputChannel.appendLine('TARX MESH: Starting health monitor (30s interval)');
 
   meshHealthMonitor = setInterval(async () => {
+    // Guard: skip if a restart is already in progress
+    if (isMeshRestarting) {
+      return;
+    }
+
     try {
       const res = await fetch(`http://localhost:${port}/health`, { signal: AbortSignal.timeout(5000) });
       if (!res.ok) {
@@ -944,9 +952,18 @@ function startMeshHealthMonitor(port: number) {
       await fetchMeshPeerCount(port);
       updateMeshStatusBar('connected', meshPeerCount);
     } catch (err: any) {
+      // Prevent concurrent restart attempts
+      if (isMeshRestarting) {
+        return;
+      }
+      isMeshRestarting = true;
+
       outputChannel.appendLine(`TARX MESH: Health check failed: ${err.message}`);
       outputChannel.appendLine('TARX MESH: Auto-restarting...');
       updateMeshStatusBar('starting');
+
+      // Stop the health monitor — startMeshServer will re-register on success
+      stopMeshHealthMonitor();
 
       // Kill zombie process if exists
       if (meshServer) {
@@ -961,8 +978,17 @@ function startMeshHealthMonitor(port: number) {
 
       // Restart if we have context
       if (extensionContext) {
-        await startMeshServer(extensionContext, port);
+        try {
+          await startMeshServer(extensionContext, port);
+          // Re-register health monitor only on successful restart
+          startMeshHealthMonitor(port);
+        } catch (restartErr: any) {
+          outputChannel.appendLine(`TARX MESH: Restart failed: ${restartErr.message}`);
+          updateMeshStatusBar('error');
+        }
       }
+
+      isMeshRestarting = false;
     }
   }, 30000); // Check every 30 seconds
 }

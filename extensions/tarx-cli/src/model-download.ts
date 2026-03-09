@@ -12,8 +12,8 @@ import * as os from 'os';
 const MODELS_DIR = path.join(os.homedir(), 'Library/Application Support/tarx/models');
 
 const INFERENCE_MODEL = {
-	file: 'tarx-qwen2.5-7b-deep-Q4_K_M.gguf',
-	url: 'https://huggingface.co/tarx-ai/tarx-qwen2.5-7b-deep/resolve/main/tarx-qwen2.5-7b-deep-Q4_K_M.gguf',
+	file: 'tarx-v3.Q4_K_M.gguf',
+	url: 'https://huggingface.co/tarx-ai/tarx-v3/resolve/main/tarx-v3.Q4_K_M.gguf',
 	label: 'Inference model (~4.7 GB)',
 	minSize: 500_000_000,
 };

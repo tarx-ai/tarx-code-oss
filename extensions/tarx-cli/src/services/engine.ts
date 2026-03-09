@@ -43,7 +43,7 @@ export function findModel(): string | null {
 	const home = os.homedir();
 
 	// Fine-tuned TARX model — always prefer
-	const fineTuned = path.join(home, 'Library/Application Support/tarx/models/tarx-qwen2.5-7b-deep-Q4_K_M.gguf');
+	const fineTuned = path.join(home, 'Library/Application Support/tarx/models/tarx-v3.Q4_K_M.gguf');
 	if (fs.existsSync(fineTuned)) return fineTuned;
 
 	// Fallback: scan directories for any valid model

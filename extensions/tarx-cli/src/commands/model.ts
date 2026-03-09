@@ -18,8 +18,8 @@ const MODELS_DIR = resolve(homedir(), 'Library/Application Support/tarx/models')
 const OLLAMA_BLOBS = resolve(homedir(), '.ollama/models/blobs');
 
 const DEFAULT_MODEL = {
-  name: 'tarx-qwen2.5-7b-deep-Q4_K_M.gguf',
-  url: 'https://huggingface.co/tarx-ai/tarx-qwen2.5-7b-deep/resolve/main/tarx-qwen2.5-7b-deep-Q4_K_M.gguf',
+  name: 'tarx-v3.Q4_K_M.gguf',
+  url: 'https://huggingface.co/tarx-ai/tarx-v3/resolve/main/tarx-v3.Q4_K_M.gguf',
   size: '4.7 GB',
 };
 
