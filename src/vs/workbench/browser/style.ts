@@ -6,7 +6,7 @@
 import './media/style.css';
 import { registerThemingParticipant } from '../../platform/theme/common/themeService.js';
 import { WORKBENCH_BACKGROUND, TITLE_BAR_ACTIVE_BACKGROUND } from '../common/theme.js';
-import { isWeb, isIOS } from '../../base/common/platform.js';
+import { isWeb, isIOS, isMacintosh } from '../../base/common/platform.js';
 import { createMetaElement } from '../../base/browser/dom.js';
 import { isSafari, isStandalone } from '../../base/browser/browser.js';
 import { selectionBackground } from '../../platform/theme/common/colorRegistry.js';
@@ -56,8 +56,9 @@ registerThemingParticipant((theme, collector) => {
 		`);
 	}
 
-	// Update body background color to ensure the home indicator area looks similar to the workbench
-	if (isIOS && isStandalone()) {
-		collector.addRule(`body { background-color: ${workbenchBackground}; }`);
+	// Update body background color to prevent bleed-through behind rounded corners (macOS)
+	// and to ensure the home indicator area looks similar to the workbench (iOS)
+	if (isMacintosh || (isIOS && isStandalone())) {
+		collector.addRule(`body { background-color: ${workbenchBackground} !important; }`);
 	}
 });

@@ -9,7 +9,7 @@
  * Centralized logging for the proactive system with:
  * - Log levels (DEBUG, INFO, WARN, ERROR)
  * - Consistent formatting
- * - Optional Sentry integration
+ * - Optional error reporting
  */
 
 export enum LogLevel {
@@ -49,8 +49,8 @@ class TarxLogger {
     if (this.level <= LogLevel.ERROR) {
       console.error(`${this.prefix} ❌ ${message}`, error || '');
 
-      // Report to Sentry if available
-      this.reportToSentry(message, error);
+      // Report to error tracking if available
+      this.reportToErrorTracker(message, error);
     }
   }
 
@@ -78,26 +78,14 @@ class TarxLogger {
       error: (message: string, error?: Error | any) => {
         if (this.level <= LogLevel.ERROR) {
           console.error(`${componentPrefix} ❌ ${message}`, error || '');
-          this.reportToSentry(message, error, component);
+          this.reportToErrorTracker(message, error, component);
         }
       }
     };
   }
 
-  private reportToSentry(message: string, error?: Error | any, component?: string): void {
-    try {
-      // Check if Sentry is available (will be in production builds)
-      const globalSentry = (globalThis as any).Sentry;
-      if (globalSentry?.captureException) {
-        const exception = error instanceof Error ? error : new Error(message);
-        globalSentry.captureException(exception, {
-          tags: component ? { component } : undefined,
-          extra: { originalError: error }
-        });
-      }
-    } catch (e) {
-      // Sentry not available or error reporting failed - continue silently
-    }
+  private reportToErrorTracker(_message: string, _error?: Error | any, _component?: string): void {
+    // TODO: Wire to Datadog for error reporting
   }
 }
 

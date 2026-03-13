@@ -89,7 +89,7 @@ export const TARX_TELEMETRY_SETTING = 'tarx.telemetry';
 /**
  * TARX Analytics Service Implementation
  *
- * Lightweight analytics without Sentry dependency.
+ * Lightweight analytics without external dependency.
  * Events are logged to console and stored in memory.
  * Later can be synced to SQLite or backend.
  */

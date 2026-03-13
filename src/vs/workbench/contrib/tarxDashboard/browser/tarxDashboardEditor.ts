@@ -224,7 +224,7 @@ export class TarxDashboardEditor extends EditorPane {
 			suggestions.push({
 				icon: '\u2728', // ✨
 				title: 'All systems operational',
-				detail: 'Inference, mesh, and embeddings running. Ready for anything.',
+				detail: 'Inference, SuperComputer, and embeddings running. Ready for anything.',
 				cta: 'New Chat',
 				command: 'workbench.action.chat.open',
 			});

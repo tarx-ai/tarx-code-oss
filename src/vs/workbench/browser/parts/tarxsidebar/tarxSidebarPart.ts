@@ -983,7 +983,7 @@ export class TarxSidebarPart extends AbstractPaneCompositePart {
 
 		// Super option with toggle switch - DISABLED FOR V1 (mesh networking not implemented)
 		const superOption = append(this.computeDropdown, $('.tarx-compute-option.super'));
-		superOption.title = 'Coming in V2 - Distributed GPU mesh networking';
+		superOption.title = 'Coming in V2 - Distributed GPU SuperComputer networking';
 		superOption.style.opacity = '0.5';
 		superOption.style.cursor = 'not-allowed';
 		this.superDot = append(superOption, $('span.tarx-compute-dot'));

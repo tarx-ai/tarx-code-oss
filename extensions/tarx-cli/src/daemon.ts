@@ -20,6 +20,7 @@ import * as net from 'net';
 import * as http from 'http';
 import { findBinary, findModel, findEmbeddingModel } from './services/engine';
 import { downloadModelsIfNeeded } from './model-download';
+import { startCognitiveEngine, stopCognitiveEngine } from './services/cognitive';
 
 const TARX_DIR = path.join(os.homedir(), '.tarx');
 const LOGS_DIR = path.join(TARX_DIR, 'logs');
@@ -283,6 +284,10 @@ async function main() {
 		log(`Embeddings: ${ok ? 'UP' : 'FAILED'}`);
 	}
 
+	// Start cognitive engine (port 11438)
+	startCognitiveEngine();
+	log('[cognitive] engine started on :11438');
+
 	// Start Unix socket server
 	startSocketServer();
 
@@ -424,7 +429,8 @@ async function gracefulShutdown(): Promise<void> {
 
 	await Promise.all([
 		inference?.stop(),
-		embeddings?.stop()
+		embeddings?.stop(),
+		stopCognitiveEngine()
 	]);
 
 	socketServer?.close();

@@ -159,31 +159,7 @@ export class AuditTrail {
       if (manifest.timestamp < twoHoursAgo) return false;
       if (manifest.rolledBack) return false;
 
-      // Check Sentry for recurrence
-      const response = await fetch(
-        `https://sentry.io/api/0/issues/${manifest.errorId}/events/?statsPeriod=2h`,
-        {
-          headers: {
-            'Authorization': `Bearer ${process.env.SENTRY_AUTH_TOKEN}`
-          }
-        }
-      );
-
-      if (!response.ok) return false;
-
-      const events = await response.json();
-      if (!Array.isArray(events)) return false;
-
-      // Check if there are events AFTER the fix was applied
-      const recentEvents = events.filter((e: any) =>
-        new Date(e.dateCreated).getTime() > manifest.timestamp
-      );
-
-      if (recentEvents.length > 0) {
-        console.log(`[AuditTrail] Error ${manifest.errorId} reappeared, auto-rolling back`);
-        return this.rollback(fixId);
-      }
-
+      // TODO: Wire to Datadog MCP for error recurrence check
       return false;
     } catch (error) {
       console.error(`[AuditTrail] Auto-rollback check failed:`, error);

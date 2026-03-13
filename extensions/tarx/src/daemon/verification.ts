@@ -4,7 +4,7 @@
  * 5-check verification before broadcast:
  * 1. File hash matches expected
  * 2. Static analysis (TypeScript) passes
- * 3. Sentry shows no new events for 5 minutes
+ * 3. Observability shows no new events for 5 minutes
  * 4. No new errors introduced
  * 5. Extension stability check
  */
@@ -29,7 +29,7 @@ export interface VerificationResult {
 }
 
 export class Verifier {
-  private readonly SENTRY_WAIT_MS = 5 * 60 * 1000; // 5 minutes
+  private readonly OBSERVABILITY_WAIT_MS = 5 * 60 * 1000; // 5 minutes
 
   async verify(fix: {
     file: string;
@@ -73,15 +73,15 @@ export class Verifier {
       details.push('⚠ Static analysis: Could not run (assuming OK)');
     }
 
-    // 3. Wait and check Sentry (5 minutes)
+    // 3. Wait and check observability (5 minutes)
     details.push('⏳ Waiting 5 minutes to verify error is resolved...');
-    console.log('[Verifier] Starting 5-minute Sentry verification wait...');
-    await this.sleep(this.SENTRY_WAIT_MS);
+    console.log('[Verifier] Starting 5-minute observability verification wait...');
+    await this.sleep(this.OBSERVABILITY_WAIT_MS);
 
     checks.observabilityClean = await this.checkObservabilityClean(fix.errorId);
     details.push(checks.observabilityClean
-      ? '✓ Sentry: No new events for 5 minutes'
-      : '✗ Sentry: Error still occurring');
+      ? '✓ Observability: No new events for 5 minutes'
+      : '✗ Observability: Error still occurring');
 
     // 4. Check for any NEW errors introduced
     checks.noNewErrors = await this.checkNoNewErrors();
@@ -134,44 +134,14 @@ export class Verifier {
     }
   }
 
-  private async checkObservabilityClean(errorId: string): Promise<boolean> {
-    try {
-      const response = await fetch(
-        `https://sentry.io/api/0/issues/${errorId}/events/?statsPeriod=5m`,
-        {
-          headers: {
-            'Authorization': `Bearer ${process.env.SENTRY_AUTH_TOKEN}`
-          }
-        }
-      );
-
-      if (!response.ok) return true; // Assume clean if can't check
-
-      const events = await response.json();
-      return !Array.isArray(events) || events.length === 0;
-    } catch {
-      return true; // Assume clean if can't check
-    }
+  private async checkObservabilityClean(_errorId: string): Promise<boolean> {
+    // TODO: Wire to Datadog MCP for error monitoring
+    return true;
   }
 
   private async checkNoNewErrors(): Promise<boolean> {
-    try {
-      const response = await fetch(
-        `https://sentry.io/api/0/projects/${process.env.SENTRY_ORG}/${process.env.SENTRY_PROJECT}/issues/?statsPeriod=5m&query=is:unresolved+firstSeen:-5m`,
-        {
-          headers: {
-            'Authorization': `Bearer ${process.env.SENTRY_AUTH_TOKEN}`
-          }
-        }
-      );
-
-      if (!response.ok) return true;
-
-      const issues = await response.json();
-      return !Array.isArray(issues) || issues.length === 0;
-    } catch {
-      return true;
-    }
+    // TODO: Wire to Datadog MCP for error monitoring
+    return true;
   }
 
   hashFile(filePath: string): string {

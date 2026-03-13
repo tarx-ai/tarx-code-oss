@@ -25,7 +25,7 @@ import { apply as themeTools } from "./theme.js";
 import { apply as testRunnerTools } from "./test-runner.js";
 
 const allModules = [
-	{ name: "legacy", apply: legacyTools, count: 9 },
+	{ name: "legacy", apply: legacyTools, count: 4 },
 	{ name: "editor", apply: editorTools, count: 18 },
 	{ name: "terminal", apply: terminalTools, count: 12 },
 	{ name: "panels", apply: panelTools, count: 14 },

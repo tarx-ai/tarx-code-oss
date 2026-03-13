@@ -1,5 +1,20 @@
 # Session Log
 
+## [2026-02-27-1430] v1.0.0-release
+**Attempted:** Final V1.0.0 release build — delete old release, rebuild, sign, notarize, publish
+**Shipped:**
+  - Deleted existing v1.0.0 GitHub release + tag
+  - `scripts/release.sh 1.0.0` — full pipeline: compile (79s) → gulp arm64 (155s) → sign (dylibs/nodes/exes/frameworks/helpers/main) → DMG (253M) → notarize (Accepted, e1e2f5de) → staple → publish
+  - Gatekeeper: `accepted — source=Notarized Developer ID`
+  - DMG: `TARX-Workbench-1.0.0-arm64.dmg` (253M)
+  - SHA256: `2fd536a8f0fd423cc8c4d23961e029f55c21ad458d4fe22fb601f8efb3b96de8`
+  - Release: https://github.com/tarx-ai/tarx-code-oss/releases/tag/v1.0.0
+  - Committed: entitlements.plist, CLI tests, workspace context, tarx-local gitignore
+**Broken:** `scripts/release.sh` and `scripts/rag-populate.mjs` fail pre-commit hygiene (whitespace/unicode) — left untracked
+**Next:** Fix release.sh/rag-populate.mjs hygiene, push to remote, verify DMG download from GitHub
+**Commits:** 40745af
+---
+
 ## [2026-02-26-2359] document-e2e-probe
 **Attempted:** Document the `--e2e-probe` flag and E2E test loop
 **Shipped:**

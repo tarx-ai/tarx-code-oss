@@ -41,8 +41,8 @@ const INSTALLED_EXTENSIONS: TarxExtension[] = [
 	},
 	{
 		id: 'tarx-mesh',
-		name: 'TARX Mesh',
-		description: 'Distributed compute mesh for sharing GPU resources across devices',
+		name: 'TARX SuperComputer',
+		description: 'Distributed SuperComputer for sharing GPU resources across devices',
 		version: '1.0.0',
 		author: 'TARX AI',
 		installed: true,

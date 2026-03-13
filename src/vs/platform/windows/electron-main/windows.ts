@@ -184,7 +184,8 @@ export function defaultBrowserWindowOptions(accessor: ServicesAccessor, windowSt
 		options.acceptFirstMouse = true; // enabled by default
 		options.transparent = true; // allow CSS border-radius to define visible corners (26px)
 		options.hasShadow = true; // keep native macOS drop shadow
-		options.backgroundColor = '#00000000'; // fully transparent behind CSS-rounded content
+		// Keep theme backgroundColor (from line above) — don't override to transparent.
+		// Body CSS fills the corners behind the 26px border-radius so the desktop never bleeds through.
 
 		if (windowSettings?.clickThroughInactive === false) {
 			options.acceptFirstMouse = false;

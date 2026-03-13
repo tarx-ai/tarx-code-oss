@@ -193,7 +193,7 @@ function FeatureList() {
 		{ icon: '🔒', text: 'Local inference — your code never leaves your machine' },
 		{ icon: '🧠', text: 'Project memory — TARX remembers context across sessions' },
 		{ icon: '🔌', text: '100+ MCP tools for deep system control' },
-		{ icon: '🌐', text: 'P2P mesh networking — collaborate with other TARX nodes' },
+		{ icon: '🌐', text: 'P2P SuperComputer networking — collaborate with other TARX nodes' },
 	];
 
 	return (

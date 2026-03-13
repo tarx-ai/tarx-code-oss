@@ -3,9 +3,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// TARX: Sentry disabled in renderer — @sentry/browser can't resolve as bare specifier in ESM context.
-// Error tracking runs in the main process (@sentry/node) and extension host instead.
-
 import { localize } from '../../nls.js';
 import product from '../../platform/product/common/product.js';
 import { INativeWindowConfiguration, IWindowsConfiguration } from '../../platform/window/common/window.js';

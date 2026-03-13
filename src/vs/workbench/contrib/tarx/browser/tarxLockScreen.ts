@@ -251,7 +251,7 @@ class TarxLockScreenContribution extends Disposable {
 		}
 		this.meshHintEl = document.createElement('div');
 		this.meshHintEl.className = 'screensaver-hint';
-		this.meshHintEl.textContent = 'MESH · CONNECTING';
+		this.meshHintEl.textContent = 'SUPERCOMPUTER · CONNECTING';
 		this.overlay.appendChild(this.meshHintEl);
 
 		this.pollMeshStatus();
@@ -272,13 +272,13 @@ class TarxLockScreenContribution extends Disposable {
 				const peers = data.connected_peers ?? data.peer_count ?? 0;
 				const shortId = data.local_peer_id ? data.local_peer_id.slice(-8).toUpperCase() : '';
 				this.meshHintEl.textContent = peers > 0
-					? `MESH · ${peers} PEER${peers > 1 ? 'S' : ''} · ${shortId}`
-					: `MESH · SOLO · ${shortId}`;
+					? `SUPERCOMPUTER · ${peers} PEER${peers > 1 ? 'S' : ''} · ${shortId}`
+					: `SUPERCOMPUTER · SOLO · ${shortId}`;
 			} else {
-				this.meshHintEl.textContent = 'MESH · OFFLINE';
+				this.meshHintEl.textContent = 'SUPERCOMPUTER · OFFLINE';
 			}
 		} catch {
-			this.meshHintEl.textContent = 'MESH · OFFLINE';
+			this.meshHintEl.textContent = 'SUPERCOMPUTER · OFFLINE';
 		}
 	}
 

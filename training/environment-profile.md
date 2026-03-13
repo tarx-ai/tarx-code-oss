@@ -49,7 +49,7 @@ Generated: 2026-02-12
 | Server | Tools | Purpose |
 |--------|-------|---------|
 | tarx-core | 21 | Core AI: chat, spaces, sessions, memory, files, RAG |
-| tarx-ops | 50 | Operations: Sentry, Claude Code orchestration, daemon |
+| tarx-ops | 43 | Operations: Datadog, Claude Code orchestration, daemon |
 | tarx-ui | 177 | UI automation (dev/QA only) |
 
 **Total:** 248 tools
@@ -97,7 +97,7 @@ Generated: 2026-02-12
 
 - **Default:** Fully local, no external connections
 - **Optional:** Claude API routing for complex queries (requires API key)
-- **Sentry:** Error reporting (can be disabled)
+- **Datadog:** Error reporting and observability
 - **Mesh:** Opt-in P2P for distributed compute
 
 ## Privacy Guarantees

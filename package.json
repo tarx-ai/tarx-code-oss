@@ -73,8 +73,6 @@
     "extensions-ci-pr": "npm run gulp extensions-ci-pr",
     "perf": "node scripts/code-perf.js",
     "update-build-ts-version": "npm install -D typescript@next && npm install -D @typescript/native-preview && (cd build && npm run typecheck)",
-    "sentry:upload": "sentry-cli releases files tarx-code@1.0.0 upload-sourcemaps ./out --org tarx-fo --project workbench",
-    "sentry:release": "sentry-cli releases new tarx-code@1.0.0 --org tarx-fo --project workbench && sentry-cli releases set-commits tarx-code@1.0.0 --auto --org tarx-fo && sentry-cli releases finalize tarx-code@1.0.0 --org tarx-fo --project workbench",
     "tarx-dev": "node cli/out/cli/tarx-dev.js",
     "tarx-dev:compile": "tsc -p cli/tsconfig.json",
     "tarx-dev:watch": "tsc -p cli/tsconfig.json --watch"
@@ -84,7 +82,6 @@
     "@microsoft/1ds-core-js": "^3.2.13",
     "@microsoft/1ds-post-js": "^3.2.13",
     "@parcel/watcher": "^2.5.4",
-    "@sentry/electron": "^7.6.0",
     "@types/semver": "^7.5.8",
     "@vscode/deviceid": "^0.1.1",
     "@vscode/iconv-lite-umd": "0.7.1",

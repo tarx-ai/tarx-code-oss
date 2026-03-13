@@ -307,6 +307,6 @@ if (permissionService.getTier() >= 2) {
 - [ ] IPC channels defined in `src/vs/platform/tarx/common/tarxIpc.ts`
 - [ ] Unit tests in `src/vs/platform/tarx/test/`
 - [ ] Settings schema in `src/vs/platform/configuration/common/`
-- [ ] Error handling with Sentry integration
+- [ ] Error handling with Datadog integration
 - [ ] Memory leak prevention (proper disposal)
 - [ ] Permissions checked before sensitive operations

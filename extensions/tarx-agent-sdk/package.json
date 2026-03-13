@@ -1,0 +1,23 @@
+{
+  "name": "@tarx/agent-sdk",
+  "version": "0.1.0",
+  "description": "TARX Agent SDK — hooks and registry for building agents in TARX Workbench",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/react": "^18.0.0",
+    "react": "^18.0.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "license": "MIT"
+}

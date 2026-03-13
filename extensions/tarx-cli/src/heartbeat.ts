@@ -8,9 +8,8 @@
  *   1. Check ports (11435, 11436, 11437)
  *   2. Check git status (uncommitted changes)
  *   3. Read breaker state
- *   4. Poll Sentry for new issues
- *   5. Write results to ~/.tarx/thinking.log
- *   6. Escalate ONLY on real problems
+ *   4. Write results to ~/.tarx/thinking.log
+ *   5. Escalate ONLY on real problems
  */
 
 import { execSync, spawn } from 'child_process';
@@ -27,7 +26,6 @@ config({ path: resolve(__dirname, '../../../.env') });
 
 const TARX_DIR = resolve(homedir(), '.tarx');
 const THINKING_LOG = resolve(TARX_DIR, 'thinking.log');
-const SENTRY_CURSOR = resolve(TARX_DIR, 'sentry-cursor.json');
 const BREAKER_FILE = resolve(TARX_DIR, 'breaker.json');
 const TARX_ROOT = resolve(homedir(), 'Desktop/tarx-code-oss');
 
@@ -176,100 +174,6 @@ function checkBreaker(): BreakerResult {
 	}
 }
 
-// --- Sentry ---
-
-interface SentryResult {
-	newIssues: number;
-	critical: SentryIssue[];
-	checked: boolean;
-}
-
-interface SentryIssue {
-	id: string;
-	title: string;
-	level: string;
-}
-
-async function checkSentry(): Promise<SentryResult> {
-	const token = process.env.SENTRY_AUTH_TOKEN;
-	if (!token) {
-		return { newIssues: 0, critical: [], checked: false };
-	}
-
-	try {
-		// Read cursor (last seen issue ID)
-		let lastSeenId = '';
-		if (existsSync(SENTRY_CURSOR)) {
-			const cursor = JSON.parse(readFileSync(SENTRY_CURSOR, 'utf-8'));
-			lastSeenId = cursor.lastSeenId || '';
-		}
-
-		const issues = await new Promise<any[]>((resolve, reject) => {
-			const timer = setTimeout(() => reject(new Error('timeout')), 5000);
-			const url = new URL('https://sentry.io/api/0/projects/tarx-fo/workbench/issues/');
-			url.searchParams.set('query', 'is:unresolved');
-			url.searchParams.set('sort', 'date');
-			url.searchParams.set('limit', '25');
-
-			const https = require('https') as typeof import('https');
-			const req = https.get(url.toString(), {
-				headers: { Authorization: `Bearer ${token}` },
-			}, (res) => {
-				if (!res.statusCode || res.statusCode >= 400) {
-					clearTimeout(timer);
-					res.resume();
-					resolve([]);
-					return;
-				}
-				let body = '';
-				res.on('data', (chunk: Buffer) => { body += chunk.toString(); });
-				res.on('end', () => {
-					clearTimeout(timer);
-					try {
-						resolve(JSON.parse(body));
-					} catch {
-						resolve([]);
-					}
-				});
-			});
-			req.on('error', () => { clearTimeout(timer); reject(new Error('network')); });
-			req.on('timeout', () => { clearTimeout(timer); req.destroy(); reject(new Error('timeout')); });
-		});
-
-		// Find issues newer than our cursor
-		let newIssues: any[] = [];
-		if (lastSeenId && issues.length > 0) {
-			const cursorIndex = issues.findIndex((i: any) => i.id === lastSeenId);
-			if (cursorIndex === -1) {
-				// Cursor issue not in results — all are new
-				newIssues = issues;
-			} else {
-				newIssues = issues.slice(0, cursorIndex);
-			}
-		} else if (!lastSeenId && issues.length > 0) {
-			// First run — don't flag everything, just set cursor
-			newIssues = [];
-		}
-
-		// Update cursor
-		if (issues.length > 0) {
-			ensureDir();
-			writeFileSync(SENTRY_CURSOR, JSON.stringify({
-				lastSeenId: issues[0].id,
-				lastChecked: new Date().toISOString(),
-			}));
-		}
-
-		const critical = newIssues
-			.filter((i: any) => i.level === 'fatal' || i.level === 'error')
-			.map((i: any) => ({ id: i.id, title: i.title, level: i.level }));
-
-		return { newIssues: newIssues.length, critical, checked: true };
-	} catch {
-		return { newIssues: 0, critical: [], checked: false };
-	}
-}
-
 // --- Escalation ---
 
 function escalatePortDown(portResult: PortResult): void {
@@ -284,22 +188,6 @@ function escalatePortDown(portResult: PortResult): void {
 		think(`✅ Heal command completed for ${portResult.name}. Verifying...`);
 	} catch (e: any) {
 		think(`🔴 Heal failed for ${portResult.name}: ${e.message?.substring(0, 200)}`);
-	}
-}
-
-function escalateSentry(issue: SentryIssue): void {
-	think(`🔴 Sentry ${issue.level.toUpperCase()}: '${issue.title}'. Dispatching fix.`);
-	try {
-		const prompt = `fix: ${issue.title}`;
-		// Fire and forget — dispatch is async, we just spawn it
-		const child = spawn('node', [resolve(__dirname, 'index.js'), 'dispatch', prompt], {
-			cwd: TARX_ROOT,
-			detached: true,
-			stdio: 'ignore',
-		});
-		child.unref();
-	} catch (e: any) {
-		think(`🔴 Dispatch failed for Sentry issue: ${e.message?.substring(0, 200)}`);
 	}
 }
 
@@ -332,20 +220,12 @@ export async function tick(): Promise<void> {
 	// 3. Breaker
 	const breaker = checkBreaker();
 
-	// 4. Sentry
-	const sentry = await checkSentry();
-
-	// 5. Log the thinking
-	const sentryStr = sentry.checked
-		? `${sentry.newIssues} new`
-		: 'skipped (no token)';
-
-	if (portsDown.length === 0 && sentry.critical.length === 0 && !breaker.hot) {
+	// 4. Log the thinking
+	if (portsDown.length === 0 && !breaker.hot) {
 		// All quiet — rest
 		think(
 			`Ports: ${portsUp}/${portsTotal} up. ` +
 			`Git: ${git.summary}. ` +
-			`Sentry: ${sentryStr}. ` +
 			`Breaker: ${breaker.dispatchesLastHour}/${breaker.limit}. ` +
 			`Resting.`
 		);
@@ -354,75 +234,70 @@ export async function tick(): Promise<void> {
 		think(
 			`Ports: ${portsUp}/${portsTotal} up. ` +
 			`Git: ${git.summary}. ` +
-			`Sentry: ${sentryStr}. ` +
 			`Breaker: ${breaker.dispatchesLastHour}/${breaker.limit}. ` +
 			`Acting.`
 		);
 	}
 
-	// 6. Escalate
+	// 5. Escalate
 	for (const down of portsDown) {
 		escalatePortDown(down);
-	}
-
-	for (const issue of sentry.critical) {
-		escalateSentry(issue);
 	}
 
 	if (breaker.hot) {
 		escalateBreakerHot(breaker);
 	}
 
-	// 7. Daemon: read orchestration log, decide, act
+	// 6. Daemon: read orchestration log, decide, act
 	try {
 		await daemonTick();
 	} catch (e: any) {
 		think(`DAEMON: tick failed: ${e.message?.substring(0, 200)}`);
 	}
 
-	// 8. X polling: if "x-poll" priority is active, fetch mentions
+	// 7. X polling: if "x-poll" priority is active, fetch mentions
 	try {
 		await pollXMentions();
 	} catch (e: any) {
 		think(`X-POLL: failed: ${e.message?.substring(0, 200)}`);
 	}
 
-	// 9. Inference tasks: process "inference-task:" priorities via xAI
+	// 8. Inference tasks: process "inference-task:" priorities via xAI
 	try {
 		await processInferenceTasks();
 	} catch (e: any) {
 		think(`INFERENCE: tick failed: ${e.message?.substring(0, 200)}`);
 	}
 
-	// 10. Grok augmentation: "grok-augment:" priorities → Grok + Qwen consolidation
+	// 9. Grok augmentation: "grok-augment:" priorities → Grok + Qwen consolidation
 	try {
 		await processAugmentTasks();
 	} catch (e: any) {
 		think(`AUGMENT: tick failed: ${e.message?.substring(0, 200)}`);
 	}
 
-	// 11. Inference-augment: "inference-augment:" → xAI + Qwen RAG consolidation
+	// 10. Inference-augment: "inference-augment:" → xAI + Qwen RAG consolidation
 	try {
 		await processInferenceAugmentTasks();
 	} catch (e: any) {
 		think(`INF-AUG: tick failed: ${e.message?.substring(0, 200)}`);
 	}
 
-	// 12. Task exec: "task-exec:" → whitelisted shell commands
+	// 11. Task exec: "task-exec:" → whitelisted shell commands
 	try {
 		await processTaskExec();
 	} catch (e: any) {
 		think(`TASK-EXEC: tick failed: ${e.message?.substring(0, 200)}`);
 	}
 
-	// 13. UI test loop: "ui-test:" → exercise conversational intents, audit output
+	// 12. UI test loop: "ui-test:" → exercise conversational intents, audit output
 	try {
 		await processUITestLoop();
 	} catch (e: any) {
 		think(`UI-TEST: tick failed: ${e.message?.substring(0, 200)}`);
 	}
 
-	// 14. E2E test loop: "e2e-test:" → CC use cases, conversational intents, RAG, MCP audit
+	// 13. E2E test loop: "e2e-test:" → CC use cases, conversational intents, RAG, MCP audit
 	try {
 		await processE2ETestLoop();
 	} catch (e: any) {
@@ -445,7 +320,7 @@ const UI_TEST_SUITE: UITestCase[] = [
 	{
 		name: 'brief',
 		cmd: 'tarx brief',
-		expect: [/need you|active|priorities|blocked|resting/i, /port|service|sentry|breaker/i],
+		expect: [/need you|active|priorities|blocked|resting/i, /port|service|breaker/i],
 		antiExpect: [/undefined|null|NaN|ENOENT/i],
 	},
 	{

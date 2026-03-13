@@ -54,10 +54,15 @@ function initMemorySchema(): void {
     CREATE INDEX IF NOT EXISTS idx_memories_created ON memories(created_at);
   `);
 
-  // Migrate: add structured observation columns (claude-mem inspired)
+  // Migrate: ensure deleted_at exists (older schemas may lack it)
   const columns = database.pragma('table_info(memories)') as Array<{ name: string }>;
   const colNames = new Set(columns.map(c => c.name));
 
+  if (!colNames.has('deleted_at')) {
+    database.exec('ALTER TABLE memories ADD COLUMN deleted_at INTEGER;');
+  }
+
+  // Migrate: add structured observation columns (claude-mem inspired)
   if (!colNames.has('title')) {
     database.exec(`
       ALTER TABLE memories ADD COLUMN title TEXT;

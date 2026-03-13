@@ -410,13 +410,8 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Initialize console log capture FIRST - before any other logging
 	initTarxLogger();
 
-	// TARX: Global error filter  - intercept known noise errors BEFORE Sentry sees them.
-	// These are VS Code internals or benign race conditions that spam Sentry without user impact.
-	//
-	// FIX (Feb 2026): Previous version appended a listener but never removed the originals,
-	// so Sentry's handler (registered at process startup in extensionHostProcess.ts) still
-	// fired for every error. Now we remove all existing handlers, install our filter as the
-	// sole gatekeeper, and forward non-noise errors to the original handlers.
+	// TARX: Global error filter — intercept known noise errors before they propagate.
+	// These are VS Code internals or benign race conditions with no user impact.
 	const noisePatterns = [
 		'HostProvider not setup',                              // NODE-A: 2,792 events - External auth remnant
 		'Channel has been closed',                             // NODE-1,3,7,1B: 166 events - IPC race
@@ -432,7 +427,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		'No messages returned'                                 // MCP/harness expected condition
 	];
 
-	// Capture and REMOVE all existing uncaughtException handlers (including Sentry's)
+	// Capture and REMOVE all existing uncaughtException handlers
 	const origExceptionHandlers = process.listeners('uncaughtException').slice();
 	process.removeAllListeners('uncaughtException');
 
@@ -443,12 +438,12 @@ export async function activate(context: vscode.ExtensionContext) {
 
 		for (const pattern of noisePatterns) {
 			if (msg.includes(pattern) || code === pattern) {
-				// Silently ignore  - noise error, do NOT forward to Sentry or other handlers
+				// Silently ignore — noise error, do NOT forward to other handlers
 				return;
 			}
 		}
 
-		// Non-noise: forward to original handlers (Sentry, VS Code, etc.)
+		// Non-noise: forward to original handlers
 		for (const handler of origExceptionHandlers) {
 			(handler as (err: Error) => void)(err);
 		}
@@ -1000,7 +995,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	// 2. conversations table (TARX native chats)
 	async function loadSidebarHistory() {
 		try {
-			// Guard: wait for commands to be registered (fixes Sentry NODE-A: HostProvider not setup)
+			// Guard: wait for commands to be registered (fixes HostProvider not setup race condition)
 			if (!historyCommandsReady) {
 				console.log('[TARX] loadSidebarHistory: commands not yet registered, skipping');
 				return;
@@ -1143,7 +1138,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	}
 
 	// NOTE: Initial history load deferred until after command registration
-	// (see historyCommandsReady flag below  - fixes Sentry NODE-A race condition)
+	// (see historyCommandsReady flag below  - fixes HostProvider race condition)
 
 	// Refresh history every 30 seconds with error boundary
 	const historyRefreshInterval = setInterval(async () => {
@@ -5004,7 +4999,7 @@ _Add any project notes here_
 	});
 
 	// Mark history commands as ready  - allows loadSidebarHistory() to proceed safely
-	// (Fixes Sentry NODE-A: "HostProvider not setup"  - 2533 errors from race condition)
+	// (Fixes HostProvider not setup race condition)
 	historyCommandsReady = true;
 	console.log('[TARX] History commands registered  - loadSidebarHistory() now safe to call');
 

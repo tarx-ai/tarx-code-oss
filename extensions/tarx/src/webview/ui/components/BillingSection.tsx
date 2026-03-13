@@ -88,10 +88,10 @@ export const BillingSection: React.FC<BillingSectionProps> = ({ billing }) => {
 				)}
 			</div>
 
-			{/* Mesh Credits */}
+			{/* SuperComputer Credits */}
 			<div className="tarx-settings-group">
 				<div className="tarx-settings-group-header">
-					<span className="tarx-settings-group-label">Mesh Compute Credits</span>
+					<span className="tarx-settings-group-label">SuperComputer Credits</span>
 				</div>
 				<div className="tarx-billing-credits">
 					<div className="tarx-billing-bar">
@@ -101,7 +101,7 @@ export const BillingSection: React.FC<BillingSectionProps> = ({ billing }) => {
 						/>
 					</div>
 					<div className="tarx-billing-credits-text">
-						{billing?.meshCreditsUsed ?? 0} / {billing?.meshCreditsIncluded ?? 100} credits
+						{billing?.meshCreditsUsed ?? 0} / {billing?.meshCreditsIncluded ?? 100} SuperComputer credits
 					</div>
 					{(billing?.meshCreditsOverage ?? 0) > 0 && (
 						<div className="tarx-billing-overage">

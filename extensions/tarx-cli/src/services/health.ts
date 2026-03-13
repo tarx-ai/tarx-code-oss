@@ -5,13 +5,15 @@
 const PORTS = {
   inference: 11435,
   embeddings: 11437,
-  mesh: 11436
+  mesh: 11436,
+  cognitive: 11438
 };
 
 interface HealthStatus {
   inference: { port: number; healthy: boolean };
   embeddings: { port: number; healthy: boolean };
   mesh: { port: number; healthy: boolean };
+  cognitive: { port: number; healthy: boolean };
 }
 
 interface FullStatus extends HealthStatus {
@@ -35,16 +37,18 @@ async function checkPort(port: number): Promise<boolean> {
 }
 
 export async function checkHealth(): Promise<HealthStatus> {
-  const [inference, embeddings, mesh] = await Promise.all([
+  const [inference, embeddings, mesh, cognitive] = await Promise.all([
     checkPort(PORTS.inference),
     checkPort(PORTS.embeddings),
-    checkPort(PORTS.mesh)
+    checkPort(PORTS.mesh),
+    checkPort(PORTS.cognitive)
   ]);
 
   return {
     inference: { port: PORTS.inference, healthy: inference },
     embeddings: { port: PORTS.embeddings, healthy: embeddings },
-    mesh: { port: PORTS.mesh, healthy: mesh }
+    mesh: { port: PORTS.mesh, healthy: mesh },
+    cognitive: { port: PORTS.cognitive, healthy: cognitive }
   };
 }
 

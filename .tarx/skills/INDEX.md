@@ -6,7 +6,7 @@
 |-------|------|-------|------|-------|
 | Code Generation | [code-gen.md](code-gen.md) | tarx_chat, tarx_search_knowledge | free | local |
 | Memory & Context | [memory.md](memory.md) | memory_store, memory_search, memory_recall, memory_list | free | local |
-| Debug & Diagnostics | [debug.md](debug.md) | tarx_health, tarx_admin_sentry_* | pro | local |
+| Debug & Diagnostics | [debug.md](debug.md) | tarx_health, Datadog MCP | pro | local |
 | Knowledge Base | [knowledge.md](knowledge.md) | tarx_search_knowledge, tarx_upload_file, tarx_list_files | free | local |
 | Project Management | [projects.md](projects.md) | tarx_list_spaces, tarx_create_space, tarx_project_context | free | local |
 | Code Review | [code-review.md](code-review.md) | tarx_chat, tarx_search_knowledge | free | local |

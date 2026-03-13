@@ -3,7 +3,7 @@
  *
  * Always-on background process that:
  * 1. Keeps machine awake for mesh compute
- * 2. Monitors and auto-heals errors via Sentry
+ * 2. Monitors and auto-heals errors via observability
  * 3. Propagates verified fixes across mesh network
  * 4. Allows user interruption anytime
  * 5. Embodies TARX persona 24/7
@@ -73,7 +73,7 @@ export class TarxAutonomicDaemon {
   // Configuration
   private readonly POLL_INTERVAL_MS = 60_000; // 1 minute
   private readonly CONFIDENCE_THRESHOLD = 0.7;
-  private readonly SENTRY_LOOKBACK_MINUTES = 15;
+  private readonly OBSERVABILITY_LOOKBACK_MINUTES = 15;
   private readonly AUTONOMIC_SPACE_ID = 'dba089be-a2f9-4ad7-8779-002cd87b99d2';
 
   constructor() {
@@ -178,7 +178,7 @@ export class TarxAutonomicDaemon {
   }
 
   private async pollAndHeal(): Promise<void> {
-    // 1. Fetch recent Sentry errors
+    // 1. Fetch recent observability errors
     const errors = await this.fetchObservabilityErrors();
 
     for (const error of errors) {
@@ -383,46 +383,8 @@ export class TarxAutonomicDaemon {
   }
 
   private async fetchObservabilityErrors(): Promise<ObservabilityError[]> {
-    if (!process.env.SENTRY_AUTH_TOKEN || !process.env.SENTRY_ORG || !process.env.SENTRY_PROJECT) {
-      return [];
-    }
-    try {
-      const response = await fetch(
-        `https://sentry.io/api/0/projects/${process.env.SENTRY_ORG}/${process.env.SENTRY_PROJECT}/issues/?statsPeriod=${this.SENTRY_LOOKBACK_MINUTES}m&query=is:unresolved`,
-        {
-          headers: {
-            'Authorization': `Bearer ${process.env.SENTRY_AUTH_TOKEN}`
-          }
-        }
-      );
-
-      if (!response.ok) {
-        this.observabilityFetchFailures++;
-        if (this.observabilityFetchFailures <= 3) {
-          console.error('[TARX Autonomic] Sentry fetch failed:', response.status);
-        } else if (this.observabilityFetchFailures === 4) {
-          console.error('[TARX Autonomic] Sentry fetch failed:', response.status, '— suppressing further logs until success');
-        }
-        return [];
-      }
-
-      this.observabilityFetchFailures = 0;
-      const issues = await response.json() as any[];
-
-      // Fetch details for each issue
-      return issues.slice(0, 10).map((issue: any) => ({
-        id: issue.id,
-        title: issue.title,
-        culprit: issue.culprit,
-        level: issue.level,
-        count: parseInt(issue.count) || 1,
-        firstSeen: issue.firstSeen,
-        lastSeen: issue.lastSeen
-      }));
-    } catch (error) {
-      console.error('[TARX Autonomic] Sentry fetch error:', error);
-      return [];
-    }
+    // TODO: Wire to Datadog MCP for error monitoring
+    return [];
   }
 
   private sleep(ms: number): Promise<void> {

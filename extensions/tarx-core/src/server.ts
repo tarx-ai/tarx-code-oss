@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * TARX Core MCP Server v1.2.0 -- 30 tools
+ * TARX Core MCP Server v1.2.1 -- 29 tools
  *
  * Merged server combining:
  * - tarx-mcp-server (core inference, spaces, sessions, files/RAG, sidebar tools)
  * - tarx-claude-memory (memory tools: store, search, recall, list, forget, stats + session sync)
  *
- * Tool categories (30 total):
- *   Core: 3         | tarx_health, tarx_chat, tarx_stress_test
+ * Tool categories (29 total):
+ *   Core: 2         | tarx_health, tarx_chat
  *   Spaces: 3       | tarx_list_spaces, tarx_create_space, tarx_get_space
  *   Sessions: 4     | tarx_list_sessions, tarx_create_session, tarx_get_chat_history, tarx_send_message
  *   Memory: 5       | tarx_memory_store, tarx_memory_search, tarx_memory_recall, tarx_memory_list, tarx_memory_delete
@@ -26,10 +26,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { execSync } from "child_process";
-import * as fs from "fs";
-import * as path from "path";
-import * as crypto from "crypto";
 import {
   storeConversationTurn,
   getDatabaseStats,
@@ -48,33 +44,20 @@ import {
   searchKnowledgeEmbeddings,
   getKnowledgeEmbeddingCount,
   collectTrainingData,
-  exportTrainingData,
-  rateTrainingResponse,
-  getTrainingDataStats,
   // File organization (Phase 1)
   deleteFile,
-  scanDirectory,
   addWatch,
-  removeWatch,
-  listWatches,
-  rescan,
-  getFilesGrouped,
-  getFileContentById,
   // GTM: Invite codes
   validateInviteCode,
   redeemInviteCode,
   // GTM: User profiles
   getProfile,
   upsertProfile,
-  markOnboarded,
   // GTM: Skills
   listSkills,
-  getSkill,
-  insertSkill,
   installSkill,
   uninstallSkill,
   getActiveSkills,
-  getSkillsCount,
   // GTM: Weekly metrics
   getWeeklyMetrics
 } from "./database.js";
@@ -86,18 +69,13 @@ import { getNetworkResponse, hasApiKey } from "./network-model.js";
 // Memory database layer (merged from tarx-claude-memory)
 import {
   storeMemory,
-  storeObservation,
   searchMemories,
-  searchMemoriesIndex,
   getAllMemories,
   deleteMemory,
   getMemoryStats,
   threadMessage,
   getRecentMessages,
-  createMemorySession,
   threadToSession,
-  getSessionHistory,
-  listMemorySessions
 } from "./memory-database.js";
 
 // ============================================================================
@@ -484,80 +462,6 @@ server.tool(
     }
   }
 );
-
-// Tool: Stress test
-
-server.tool(
-  "tarx_stress_test",
-  "Run multiple chat requests to test TARX stability and performance",
-  {
-    count: z.number().min(1).max(50).describe("Number of requests to run"),
-    prompt: z.string().optional().describe("Prompt to use (default: 'Hello, respond briefly')"),
-    maxTokens: z.number().optional().describe("Max tokens per request (default: 50)")
-  },
-  async ({ count, prompt = "Hello, respond briefly", maxTokens = 50 }) => {
-    const results: Array<{iteration: number; success: boolean; latency_ms: number; error?: string}> = [];
-
-    for (let i = 0; i < count; i++) {
-      const start = Date.now();
-      try {
-        const response = await fetch(`http://localhost:${INFERENCE_PORT}/v1/chat/completions`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "local",
-            messages: [
-              { role: "system", content: TARX_LOCAL_REASONING_PROMPT },
-              { role: "user", content: `${prompt} (test ${i + 1})` }
-            ],
-            max_tokens: maxTokens
-          })
-        });
-
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        await response.json();
-
-        results.push({ iteration: i + 1, success: true, latency_ms: Date.now() - start });
-      } catch (error) {
-        results.push({
-          iteration: i + 1,
-          success: false,
-          latency_ms: Date.now() - start,
-          error: error instanceof Error ? error.message : "Unknown"
-        });
-      }
-    }
-
-    const successful = results.filter(r => r.success);
-    const avgLatency = successful.length > 0
-      ? Math.round(successful.reduce((a, b) => a + b.latency_ms, 0) / successful.length)
-      : 0;
-
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify({
-          summary: {
-            total: count,
-            successful: successful.length,
-            failed: count - successful.length,
-            success_rate: `${Math.round((successful.length / count) * 100)}%`,
-            avg_latency_ms: avgLatency,
-            min_latency_ms: successful.length > 0 ? Math.min(...successful.map(r => r.latency_ms)) : null,
-            max_latency_ms: successful.length > 0 ? Math.max(...successful.map(r => r.latency_ms)) : null
-          },
-          results
-        }, null, 2)
-      }]
-    };
-  }
-);
-
-// Tool: Stream reasoning separately from answer
-
-
-// Tool: Pre-warm model cache with partial prompt
-
 
 // ============================================================================
 // SPACE MANAGEMENT TOOLS (3)

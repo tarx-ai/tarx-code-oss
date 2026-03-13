@@ -192,7 +192,7 @@ function PerfHeader({ metrics }: { metrics: Metrics }) {
       <Stat label="TTFT" value={metrics.ttft} unit="ms" ok={metrics.ttft < 500} />
       <Stat label="VRAM" value={`${metrics.vram.toFixed(1)}/${metrics.vramTotal}`} unit="GB" ok />
       <Stat label="RAG" value={metrics.chunks} unit="chunks" ok={metrics.embeddings} />
-      <Stat label="Mesh" value={metrics.meshPeers === 0 ? "Solo" : String(metrics.meshPeers)} ok={metrics.mesh} />
+      <Stat label="SuperComputer" value={metrics.meshPeers === 0 ? "Solo" : String(metrics.meshPeers)} ok={metrics.mesh} />
       <div style={{ flex: 1 }} />
       <div style={{ padding: "0 10px", fontSize: 10, color: VS.fgMuted, fontFamily: "var(--vscode-editor-font-family, monospace)" }}>
         {metrics.model} · {metrics.gpu}
@@ -468,10 +468,10 @@ export default function TARXDashboard({ onOpenChat }: DashboardProps) {
 
   const [todos, setTodos] = useState<TodoData[]>([
     { id: "1", text: "Rate 40 uncurated training records", source: "Auto-detected from training pipeline", priority: "high", done: false },
-    { id: "2", text: "Fix embedding server ubatch assertion crash", source: "Sentry NODE-E (P1)", priority: "high", done: false },
+    { id: "2", text: "Fix embedding server ubatch assertion crash", source: "Datadog monitor (P1)", priority: "high", done: false },
     { id: "3", text: "Index 3 recently uploaded files for RAG", source: "Auto-detected from file system", priority: null, done: false },
-    { id: "4", text: "Review Sentry 403 noise from Autonomic module", source: "Sentry (35 events this session)", priority: null, done: false },
-    { id: "5", text: "Connect mesh peer for distributed inference", source: "Network config", priority: null, done: false },
+    { id: "4", text: "Review 403 noise from Autonomic module", source: "Datadog (35 events this session)", priority: null, done: false },
+    { id: "5", text: "Connect SuperComputer peer for distributed inference", source: "Network config", priority: null, done: false },
     { id: "6", text: "Commit 225 uncommitted files (V1.1 milestone)", source: "Git status", priority: "high", done: false },
     { id: "7", text: "Write canonical self-knowledge doc for fine-tuning", source: "Training audit recommendation", priority: null, done: false },
   ]);

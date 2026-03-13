@@ -17,18 +17,17 @@ Total: 313 tools (262 in-repo + 51 standalone)
 
 ## Known Issues
 - tarx-observer-mcp-server: DELETED (commit 0a85116). 8 tools retired. All doc references cleaned up (2026-02-20)
-- @sentry/browser: NEVER import in renderer — bare specifiers fail in ESM. Use globalThis.Sentry stubs (2026-02-20)
+- Sentry: REMOVED (Mar 2026). Datadog MCP is observability layer going forward (2026-03-09)
 - Embedding server: llama-server (NOT Ollama) — auto-managed as sidecar by tarxEmbeddingSidecarService.ts (2026-02-20)
 - tarx-cli extension: missing `engines.vscode` in package.json — logs error on every startup but non-blocking (2026-02-20)
 - chatViewsWelcome: 'when' clause deserialization fails for undefined value — cosmetic log error, no user impact (2026-02-20)
 - better-sqlite3 in tarx-core: NODE_MODULE_VERSION 137 vs 141 mismatch — grok-dispatch.js fails to load. Fix: `cd extensions/tarx-core && npm rebuild better-sqlite3` (2026-02-20)
-- Sentry Autonomic: 403 on fetch (every 60s, suppressed after 4th) — auth token expired or rate-limited (2026-02-20)
 
 ## Architecture Decisions
 - Conversational-first UX: @tarx chat participant is primary surface, webviews are last resort (2026-02-20)
 - Upstream-first UI: use VS Code APIs before building custom components (2026-02-20)
 - MCP consolidation complete: 5 servers, zero name collisions (2026-02-20)
-- Sentry: @sentry/node in main+exthost, no-op stubs in renderer (2026-02-20)
+- Observability: Datadog MCP replaces Sentry (removed Mar 2026) (2026-03-09)
 - Persistence: SQLite via tarx-core MCP is database of record (2026-02-20)
 - Agent Hub: conversational-only via @tarx participant, JSON defs in .tarx/agents/*.json, no webview (2026-02-20)
 - Project context: read from .tarx/context.md (preferred) or .tarx/instructions.md (fallback) (2026-02-20)

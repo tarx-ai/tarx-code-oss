@@ -28,6 +28,7 @@ import type {
 	TarxSettings
 } from './types';
 import { HierarchyNav } from './components/HierarchyNav';
+import { TarxTicker } from './components/TarxTicker';
 
 // Custom branded chat icon - same size as codicons (16px)
 const ChatIcon: React.FC = () => (
@@ -620,6 +621,9 @@ export const App: React.FC<AppProps> = ({ mode, logoUri, eyesUri }) => {
 							/>
 						</div>
 					)}
+
+					{/* Cognitive Ticker */}
+					<TarxTicker />
 
 					{/* Footer */}
 					<Footer

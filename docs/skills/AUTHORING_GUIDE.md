@@ -28,4 +28,4 @@ Memory: memory_store, memory_search, memory_recall, memory_list
 Knowledge: tarx_search_knowledge, tarx_upload_file
 Projects: tarx_list_spaces, tarx_create_space, tarx_project_context
 System: tarx_health, tarx_system_brief
-Debug: tarx_admin_sentry_events, tarx_admin_read_console (Pro tier)
+Debug: Datadog MCP, tarx_admin_read_console (Pro tier)

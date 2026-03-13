@@ -23,6 +23,9 @@ export interface HealResult {
 
 export class SelfHealEngine {
   private dispatchFn: DispatchFn;
+  /** Tracks last heal attempt per port to suppress log spam (10-min cooldown) */
+  private lastHealAttempt: Map<number, number> = new Map();
+  private static readonly HEAL_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
 
   constructor(dispatchFn: DispatchFn) {
     this.dispatchFn = dispatchFn;
@@ -118,17 +121,34 @@ export class SelfHealEngine {
 
     for (const { port, name } of ports) {
       try {
-        const response = await fetch(`http://localhost:${port}/health`);
+        const response = await fetch(`http://localhost:${port}/health`, {
+          signal: AbortSignal.timeout(5000),
+        });
         if (response.ok) {
           await notify('info', `  ${name} :${port} — UP`);
+          // Clear cooldown on successful check
+          this.lastHealAttempt.delete(port);
         } else {
           await notify('warning', `  ${name} :${port} — DOWN (HTTP ${response.status})`);
-          // Auto-heal: dispatch a health_fix
           await this.handleError(`ECONNREFUSED localhost:${port} ${name} health check failed`, `Service ${name} on port ${port} returned HTTP ${response.status}`);
         }
       } catch {
-        await notify('info', `  ${name} :${port} — DOWN (unreachable)`);
-        // Don't auto-heal unreachable services — they may be intentionally off
+        // Cooldown: suppress repeated heal attempts for the same port
+        const lastAttempt = this.lastHealAttempt.get(port) ?? 0;
+        const elapsed = Date.now() - lastAttempt;
+
+        if (elapsed < SelfHealEngine.HEAL_COOLDOWN_MS) {
+          // Still in cooldown — log quietly, don't spam
+          await notify('info', `  ${name} :${port} — DOWN (unreachable, next heal in ${Math.ceil((SelfHealEngine.HEAL_COOLDOWN_MS - elapsed) / 60000)}m)`);
+        } else {
+          // Cooldown expired — attempt heal
+          this.lastHealAttempt.set(port, Date.now());
+          await notify('warning', `  ${name} :${port} — DOWN (unreachable, attempting heal)`);
+          await this.handleError(
+            `ECONNREFUSED localhost:${port} ${name} unreachable`,
+            `Service ${name} on port ${port} is unreachable (connection refused)`
+          );
+        }
       }
     }
   }

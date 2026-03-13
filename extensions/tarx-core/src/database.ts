@@ -1910,37 +1910,22 @@ export default {
   generateFileEmbeddings,
   searchKnowledgeEmbeddings,
   getKnowledgeEmbeddingCount,
-  // Training data functions
+  // Training data
   collectTrainingData,
-  exportTrainingData,
-  rateTrainingResponse,
-  getTrainingDataStats,
-  // File organization (Phase 1)
+  // File organization
   deleteFile,
-  scanDirectory,
   addWatch,
-  removeWatch,
-  listWatches,
-  rescan,
-  getFilesGrouped,
-  getFileContentById,
   // GTM: Invite codes
-  generateInviteCodes,
   validateInviteCode,
   redeemInviteCode,
-  listInviteCodes,
   // GTM: User profiles
   getProfile,
   upsertProfile,
-  markOnboarded,
   // GTM: Skills
   listSkills,
-  getSkill,
-  insertSkill,
   installSkill,
   uninstallSkill,
   getActiveSkills,
-  getSkillsCount,
   // GTM: Weekly metrics
   getWeeklyMetrics
 };

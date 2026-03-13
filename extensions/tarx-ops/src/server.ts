@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 /**
- * TARX Ops MCP Server v1.2.0 -- 55 tools
+ * TARX Ops MCP Server v1.2.1 -- 46 tools
  *
  * Merged admin + orchestration server.
  * All tools gated by TARX_CREATOR_KEY via creator_only middleware.
  *
- * Tool categories (55 total):
- *   Sentry: 7          | tarx_admin_sentry_projects, events, issues, search, event_details, issue_events, trace
+ * Tool categories (46 total):
  *   Admin Status: 2    | tarx_admin_status, tarx_admin_performance_metrics
  *   File Locks: 3      | tarx_admin_file_lock, unlock, conflicts
  *   Claude Code: 6     | tarx_admin_start/list/get/send/stop/clear_code_session
@@ -22,7 +21,7 @@
  *   Orch Status: 1     | tarx_orchestrate_status_report
  *   Daemon: 3          | tarx_daemon_start, stop, status
  *   GTM Invites: 2     | tarx_admin_generate_invite, list_invites
- *   Datadog: 3         | tarx_admin_datadog_status, flush, record_inference
+ *   Meta: 1            | tarx_admin_list_active_tools
  *
  * @package tarx-ops-mcp-server
  * @version 1.2.0
@@ -46,11 +45,7 @@ import * as fs from "fs";
 // CONFIGURATION
 // =============================================================================
 
-const SENTRY_TOKEN = process.env.SENTRY_AUTH_TOKEN;
-const SENTRY_ORG = process.env.SENTRY_ORG || "tarx-fo";
-const SENTRY_API_BASE = "https://sentry.io/api/0";
 const CREATOR_KEY = process.env.TARX_CREATOR_KEY;
-const ALL_PROJECTS = ["mesh", "node", "workbench"];
 
 /**
  * Resolve the Claude CLI binary path.
@@ -78,12 +73,6 @@ function findClaudeBinary(): string {
 }
 
 const CLAUDE_BIN = findClaudeBinary();
-
-// IMPORTANT: Do NOT process.exit(1) if SENTRY_TOKEN missing!
-// Just log a warning. Other tools still work without Sentry.
-if (!SENTRY_TOKEN) {
-  console.error("WARNING: SENTRY_AUTH_TOKEN not set. Sentry tools will fail.");
-}
 
 // Initialize daemon with shared db
 Daemon.init(db, now);
@@ -157,13 +146,7 @@ const TOOL_PROFILES: Record<string, string[] | null> = {
   ],
   admin: [
     'tarx_admin_status', 'tarx_admin_performance_metrics',
-    'tarx_admin_sentry_projects', 'tarx_admin_sentry_events',
-    'tarx_admin_sentry_issues', 'tarx_admin_sentry_search',
-    'tarx_admin_sentry_event_details', 'tarx_admin_sentry_issue_events',
-    'tarx_admin_sentry_trace',
     'tarx_admin_read_console', 'tarx_admin_tail_console',
-    'tarx_admin_datadog_status', 'tarx_admin_datadog_flush',
-    'tarx_admin_datadog_record_inference',
     'tarx_admin_list_active_tools',
   ],
   full: null, // register everything — default
@@ -199,162 +182,6 @@ server.tool = function (name: string, ...rest: unknown[]) {
   rest[rest.length - 1] = creator_only(name, handler);
   return (_originalTool as Function).call(server, name, ...rest);
 };
-
-// =============================================================================
-// SENTRY CLIENT
-// =============================================================================
-
-interface SentryProject {
-  id: string;
-  slug: string;
-  name: string;
-  platform: string;
-  dateCreated: string;
-}
-
-interface SentryEvent {
-  eventID: string;
-  title: string;
-  message?: string;
-  level: string;
-  platform: string;
-  dateCreated: string;
-  dateReceived: string;
-  user?: { id?: string; email?: string; username?: string };
-  tags: Array<{ key: string; value: string }>;
-  context?: Record<string, unknown>;
-  entries?: Array<{ type: string; data: unknown }>;
-  project?: string;
-}
-
-interface SentryBreadcrumb {
-  type: string;
-  category: string;
-  message?: string;
-  data?: Record<string, unknown>;
-  level: string;
-  timestamp: string;
-}
-
-interface SentryIssue {
-  id: string;
-  shortId: string;
-  title: string;
-  culprit: string;
-  level: string;
-  status: string;
-  count: string;
-  userCount: number;
-  firstSeen: string;
-  lastSeen: string;
-  project?: { slug: string; name: string };
-}
-
-async function sentryFetch<T>(endpoint: string): Promise<T> {
-  const url = `${SENTRY_API_BASE}${endpoint}`;
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${SENTRY_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Sentry API error ${response.status}: ${text}`);
-  }
-  return response.json() as Promise<T>;
-}
-
-async function listProjects(): Promise<SentryProject[]> {
-  return sentryFetch<SentryProject[]>(`/organizations/${SENTRY_ORG}/projects/`);
-}
-
-async function getProjectEvents(project: string, minutes: number = 60): Promise<SentryEvent[]> {
-  const since = new Date(Date.now() - minutes * 60 * 1000).toISOString();
-  const events = await sentryFetch<SentryEvent[]>(
-    `/projects/${SENTRY_ORG}/${project}/events/?query=timestamp:>${since}&limit=50`
-  );
-  return events.map(e => ({ ...e, project }));
-}
-
-async function getAllProjectsEvents(minutes: number = 60): Promise<SentryEvent[]> {
-  const allEvents: SentryEvent[] = [];
-  for (const project of ALL_PROJECTS) {
-    try {
-      const events = await getProjectEvents(project, minutes);
-      allEvents.push(...events);
-    } catch (e) {
-      console.error(`Failed to fetch events from ${project}:`, e);
-    }
-  }
-  return allEvents.sort((a, b) =>
-    new Date(b.dateCreated).getTime() - new Date(a.dateCreated).getTime()
-  );
-}
-
-async function getProjectIssues(project: string, status: string = "unresolved"): Promise<SentryIssue[]> {
-  const issues = await sentryFetch<SentryIssue[]>(
-    `/projects/${SENTRY_ORG}/${project}/issues/?query=is:${status}&limit=25`
-  );
-  return issues.map(i => ({ ...i, project: { slug: project, name: project } }));
-}
-
-async function getAllProjectsIssues(status: string = "unresolved"): Promise<SentryIssue[]> {
-  const allIssues: SentryIssue[] = [];
-  for (const project of ALL_PROJECTS) {
-    try {
-      const issues = await getProjectIssues(project, status);
-      allIssues.push(...issues);
-    } catch (e) {
-      console.error(`Failed to fetch issues from ${project}:`, e);
-    }
-  }
-  return allIssues.sort((a, b) =>
-    new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime()
-  );
-}
-
-async function getSentryEventDetails(project: string, eventId: string): Promise<SentryEvent> {
-  return sentryFetch<SentryEvent>(
-    `/projects/${SENTRY_ORG}/${project}/events/${eventId}/`
-  );
-}
-
-async function searchProjectEvents(project: string, query: string): Promise<SentryEvent[]> {
-  const events = await sentryFetch<SentryEvent[]>(
-    `/projects/${SENTRY_ORG}/${project}/events/?query=${encodeURIComponent(query)}&limit=25`
-  );
-  return events.map(e => ({ ...e, project }));
-}
-
-async function getSentryIssueEvents(issueId: string): Promise<SentryEvent[]> {
-  return sentryFetch<SentryEvent[]>(`/issues/${issueId}/events/?limit=25`);
-}
-
-function extractBreadcrumbs(event: SentryEvent): SentryBreadcrumb[] {
-  const entry = event.entries?.find((e) => e.type === "breadcrumbs");
-  if (!entry) return [];
-  const data = entry.data as { values?: SentryBreadcrumb[] };
-  return data.values || [];
-}
-
-function extractUserActions(breadcrumbs: SentryBreadcrumb[]): SentryBreadcrumb[] {
-  return breadcrumbs.filter(
-    (b) =>
-      b.category === "ui.click" ||
-      b.category === "ui.input" ||
-      b.category === "navigation" ||
-      b.type === "user"
-  );
-}
-
-function buildSessionTrace(breadcrumbs: SentryBreadcrumb[]): string[] {
-  return breadcrumbs.map((b) => {
-    const time = new Date(b.timestamp).toISOString().split("T")[1].split(".")[0];
-    const msg = b.message || (b.data as Record<string, string>)?.message || b.category;
-    return `[${time}] ${b.category}: ${msg}`;
-  });
-}
 
 // =============================================================================
 // ORCHESTRATION HELPERS
@@ -415,349 +242,10 @@ function generateSessionId(): string {
 const TARX_LOG_FILE = path.join(os.homedir(), "Library/Application Support/tarx/console.log");
 
 // =============================================================================
-// SENTRY TOOLS (7)
-// =============================================================================
-
-// 1. tarx_admin_sentry_projects
-server.tool(
-  "tarx_admin_sentry_projects",
-  "List all Sentry projects in the organization",
-  {},
-  async () => {
-    try {
-      const projects = await listProjects();
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            org: SENTRY_ORG,
-            projects: projects.map(p => ({
-              slug: p.slug,
-              name: p.name,
-              platform: p.platform,
-              dateCreated: p.dateCreated,
-            })),
-            count: projects.length,
-          }, null, 2),
-        }],
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            error: error instanceof Error ? error.message : "Failed to list projects",
-          }),
-        }],
-        isError: true,
-      };
-    }
-  }
-);
-
-// 2. tarx_admin_sentry_events
-server.tool(
-  "tarx_admin_sentry_events",
-  "Get recent Sentry events. Use project='node' for extension errors (spawn ENOENT, Channel closed, Canceled). Use 'all' to query all projects.",
-  {
-    project: z.string().optional().describe("Project: 'node' (extension errors), 'workbench', 'mesh', or 'all'. Default: node"),
-    minutes: z.number().optional().describe("Look back N minutes (default: 60)"),
-  },
-  async ({ project = "node", minutes = 60 }) => {
-    try {
-      let events: SentryEvent[];
-
-      if (project === "all") {
-        events = await getAllProjectsEvents(minutes);
-      } else {
-        events = await getProjectEvents(project, minutes);
-      }
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            events: events.map((e) => ({
-              eventID: e.eventID,
-              title: e.title,
-              level: e.level,
-              dateCreated: e.dateCreated,
-              platform: e.platform,
-              project: e.project,
-              user: e.user,
-            })),
-            count: events.length,
-            lookback_minutes: minutes,
-            org: SENTRY_ORG,
-            project: project,
-          }, null, 2),
-        }],
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            error: error instanceof Error ? error.message : "Failed to fetch events",
-          }),
-        }],
-        isError: true,
-      };
-    }
-  }
-);
-
-// 3. tarx_admin_sentry_issues
-server.tool(
-  "tarx_admin_sentry_issues",
-  "Get current Sentry issues. Use project='all' to query all projects.",
-  {
-    project: z.string().optional().describe("Project slug (mesh, node, workbench) or 'all' for all projects. Default: all"),
-    status: z.enum(["unresolved", "resolved", "ignored"]).optional()
-      .describe("Issue status filter (default: unresolved)"),
-  },
-  async ({ project = "all", status = "unresolved" }) => {
-    try {
-      let issues: SentryIssue[];
-
-      if (project === "all") {
-        issues = await getAllProjectsIssues(status);
-      } else {
-        issues = await getProjectIssues(project, status);
-      }
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            issues: issues.map((i) => ({
-              id: i.id,
-              shortId: i.shortId,
-              title: i.title,
-              culprit: i.culprit,
-              level: i.level,
-              status: i.status,
-              count: i.count,
-              userCount: i.userCount,
-              firstSeen: i.firstSeen,
-              lastSeen: i.lastSeen,
-              project: i.project?.slug || project,
-            })),
-            count: issues.length,
-            filter: status,
-            org: SENTRY_ORG,
-            project: project,
-          }, null, 2),
-        }],
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            error: error instanceof Error ? error.message : "Failed to fetch issues",
-          }),
-        }],
-        isError: true,
-      };
-    }
-  }
-);
-
-// 4. tarx_admin_sentry_search
-server.tool(
-  "tarx_admin_sentry_search",
-  "Search Sentry events with query",
-  {
-    query: z.string().describe("Sentry search query (e.g., 'level:error', 'user.email:test@example.com')"),
-    project: z.string().optional().describe("Project slug (mesh, node, workbench). Default: node"),
-  },
-  async ({ query, project = "node" }) => {
-    try {
-      const events = await searchProjectEvents(project, query);
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            query,
-            project,
-            events: events.map((e) => ({
-              eventID: e.eventID,
-              title: e.title,
-              level: e.level,
-              dateCreated: e.dateCreated,
-              platform: e.platform,
-            })),
-            count: events.length,
-          }, null, 2),
-        }],
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            error: error instanceof Error ? error.message : "Search failed",
-          }),
-        }],
-        isError: true,
-      };
-    }
-  }
-);
-
-// 5. tarx_admin_sentry_event_details
-server.tool(
-  "tarx_admin_sentry_event_details",
-  "Get full event details including breadcrumbs",
-  {
-    eventId: z.string().describe("Sentry event ID"),
-    project: z.string().optional().describe("Project slug (mesh, node, workbench). Default: node"),
-  },
-  async ({ eventId, project = "node" }) => {
-    try {
-      const event = await getSentryEventDetails(project, eventId);
-      const breadcrumbs = extractBreadcrumbs(event);
-      const userActions = extractUserActions(breadcrumbs);
-      const trace = buildSessionTrace(breadcrumbs);
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            eventId,
-            project,
-            title: event.title,
-            level: event.level,
-            message: event.message,
-            dateCreated: event.dateCreated,
-            platform: event.platform,
-            user: event.user,
-            tags: event.tags,
-            context: event.context,
-            breadcrumbCount: breadcrumbs.length,
-            userActionCount: userActions.length,
-            sessionTrace: trace,
-            userActions: userActions.map((a) => ({
-              category: a.category,
-              message: a.message,
-              timestamp: a.timestamp,
-            })),
-          }, null, 2),
-        }],
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            error: error instanceof Error ? error.message : "Failed to fetch event details",
-          }),
-        }],
-        isError: true,
-      };
-    }
-  }
-);
-
-// 6. tarx_admin_sentry_issue_events
-server.tool(
-  "tarx_admin_sentry_issue_events",
-  "Get events for a specific issue",
-  {
-    issueId: z.string().describe("Sentry issue ID"),
-  },
-  async ({ issueId }) => {
-    try {
-      const events = await getSentryIssueEvents(issueId);
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            issueId,
-            events: events.map((e) => ({
-              eventID: e.eventID,
-              title: e.title,
-              level: e.level,
-              dateCreated: e.dateCreated,
-              user: e.user,
-            })),
-            count: events.length,
-          }, null, 2),
-        }],
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            error: error instanceof Error ? error.message : "Failed to fetch issue events",
-          }),
-        }],
-        isError: true,
-      };
-    }
-  }
-);
-
-// 7. tarx_admin_sentry_trace
-server.tool(
-  "tarx_admin_sentry_trace",
-  "Reconstruct user session trace leading to an event",
-  {
-    eventId: z.string().describe("Sentry event ID to trace"),
-    project: z.string().optional().describe("Project slug (mesh, node, workbench). Default: node"),
-  },
-  async ({ eventId, project = "node" }) => {
-    try {
-      const event = await getSentryEventDetails(project, eventId);
-      const breadcrumbs = extractBreadcrumbs(event);
-      const userActions = extractUserActions(breadcrumbs);
-      const trace = buildSessionTrace(breadcrumbs);
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            eventId,
-            project,
-            eventTitle: event.title,
-            eventLevel: event.level,
-            eventTime: event.dateCreated,
-            reconstruction: {
-              startTime: breadcrumbs[0]?.timestamp,
-              endTime: breadcrumbs[breadcrumbs.length - 1]?.timestamp,
-              totalBreadcrumbs: breadcrumbs.length,
-              totalUserActions: userActions.length,
-            },
-            sessionTrace: trace,
-            userActionsSummary: userActions.map(
-              (a) => `${a.category}: ${a.message || "action"}`
-            ),
-          }, null, 2),
-        }],
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            error: error instanceof Error ? error.message : "Failed to build trace",
-          }),
-        }],
-        isError: true,
-      };
-    }
-  }
-);
-
-// =============================================================================
 // ADMIN STATUS + METRICS (2)
 // =============================================================================
 
-// 8. tarx_admin_status (BUG FIX #4: updated to reflect tarx-ops, 44 tools, v1.0.0)
+// 8. tarx_admin_status
 server.tool(
   "tarx_admin_status",
   "Get admin MCP server status and configuration",
@@ -769,21 +257,7 @@ server.tool(
         text: JSON.stringify({
           server: "tarx-ops",
           version: "1.0.0",
-          sentry: {
-            org: SENTRY_ORG,
-            projects: ALL_PROJECTS,
-            configured: !!SENTRY_TOKEN,
-          },
           tools: {
-            sentry: [
-              "tarx_admin_sentry_projects",
-              "tarx_admin_sentry_events",
-              "tarx_admin_sentry_issues",
-              "tarx_admin_sentry_search",
-              "tarx_admin_sentry_event_details",
-              "tarx_admin_sentry_issue_events",
-              "tarx_admin_sentry_trace",
-            ],
             adminStatus: [
               "tarx_admin_status",
               "tarx_admin_performance_metrics",
@@ -851,8 +325,7 @@ server.tool(
               "tarx_orchestrate_status_report",
             ],
           },
-          totalTools: 47,
-          note: "Use project='all' to query all Sentry projects, or specify: mesh, node, workbench",
+          totalTools: 46,
         }, null, 2),
       }],
     };
@@ -1296,7 +769,7 @@ server.tool(
   }
 );
 
-// 16. tarx_admin_send_to_session (BUG FIX #1: session.output -> session.outputLines)
+// 16. tarx_admin_send_to_session
 server.tool(
   "tarx_admin_send_to_session",
   "Send a followup message to a running Claude Code session via stdin.",
@@ -1344,7 +817,6 @@ server.tool(
 
       // Write message to stdin
       session.process.stdin.write(message + '\n');
-      // BUG FIX #1: was session.output.push(...), fixed to session.outputLines.push(...)
       session.outputLines.push({
         timestamp: new Date().toISOString(),
         type: 'stdin' as 'stdout',
@@ -1376,7 +848,7 @@ server.tool(
   }
 );
 
-// 17. tarx_admin_stop_code_session (BUG FIX #2: session.output -> session.outputLines)
+// 17. tarx_admin_stop_code_session
 server.tool(
   "tarx_admin_stop_code_session",
   "Stop a running Claude Code session.",
@@ -1416,7 +888,6 @@ server.tool(
       const signal = force ? 'SIGKILL' : 'SIGTERM';
       session.process.kill(signal);
       session.status = 'completed';
-      // BUG FIX #2: was session.output.push(...), fixed to session.outputLines.push(...)
       session.outputLines.push({
         timestamp: new Date().toISOString(),
         type: 'stderr',
@@ -1448,7 +919,7 @@ server.tool(
   }
 );
 
-// 18. tarx_admin_clear_code_sessions (BUG FIX #3: string/number comparison)
+// 18. tarx_admin_clear_code_sessions
 server.tool(
   "tarx_admin_clear_code_sessions",
   "Clear completed/errored sessions from memory.",
@@ -1461,8 +932,6 @@ server.tool(
       let cleared = 0;
 
       for (const [id, session] of claudeCodeSessions) {
-        // BUG FIX #3: was `session.startedAt < cutoff` (string vs number = always NaN)
-        // Fixed to `Date.parse(session.startedAt) < cutoff`
         if (session.status !== 'running' && Date.parse(session.startedAt) < cutoff) {
           claudeCodeSessions.delete(id);
           cleared++;
@@ -3231,71 +2700,8 @@ server.tool(
 );
 
 // =============================================================================
-// DATADOG TOOLS
 // =============================================================================
-
-// 50. tarx_admin_datadog_status
-server.tool(
-  "tarx_admin_datadog_status",
-  "Get Datadog metrics integration status, buffered metric count, and config",
-  {},
-  async () => {
-    const status = Datadog.getStatus();
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify(status, null, 2),
-      }],
-    };
-  }
-);
-
-// 51. tarx_admin_datadog_flush
-server.tool(
-  "tarx_admin_datadog_flush",
-  "Force an immediate flush of buffered metrics to Datadog",
-  {},
-  async () => {
-    const result = await Datadog.forceFlush();
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify(result, null, 2),
-      }],
-    };
-  }
-);
-
-// 52. tarx_admin_datadog_record_inference
-server.tool(
-  "tarx_admin_datadog_record_inference",
-  "Record an inference call's latency and token metrics to Datadog",
-  {
-    latency_ms: z.number().describe("Inference latency in milliseconds"),
-    route: z.string().describe("Routing decision: 'local' or 'network'"),
-    model: z.string().describe("Model used (e.g. 'qwen-8b', 'claude-sonnet')"),
-    prompt_tokens: z.number().optional().describe("Number of prompt tokens"),
-    completion_tokens: z.number().optional().describe("Number of completion tokens"),
-  },
-  async (params) => {
-    Datadog.recordInference({
-      latencyMs: params.latency_ms,
-      route: params.route,
-      model: params.model,
-      promptTokens: params.prompt_tokens,
-      completionTokens: params.completion_tokens,
-    });
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify({ recorded: true, metric: "tarx.inference.*", tags: { route: params.route, model: params.model } }),
-      }],
-    };
-  }
-);
-
-// =============================================================================
-// 53. tarx_admin_list_active_tools — debug tool for profile verification
+// 50. tarx_admin_list_active_tools — debug tool for profile verification
 // =============================================================================
 
 server.tool(
@@ -3328,8 +2734,7 @@ async function main() {
   Datadog.start();
 
   console.error(`TARX Ops MCP Server v1.2.0 started (profile: ${ACTIVE_PROFILE})`);
-  console.error(`  - ${registeredTools.length} tools registered${ACTIVE_PROFILE !== 'full' ? ` (filtered from 55)` : ''}`);
-  console.error(`  - Sentry: ${SENTRY_TOKEN ? `${SENTRY_ORG} (${ALL_PROJECTS.join(", ")})` : "NOT CONFIGURED"}`);
+  console.error(`  - ${registeredTools.length} tools registered${ACTIVE_PROFILE !== 'full' ? ` (filtered from 48)` : ''}`);
   console.error(`  - Datadog: ${process.env.DD_API_KEY ? `${process.env.DD_SITE || "datadoghq.com"}` : "NOT CONFIGURED (set DD_API_KEY)"}`);
   console.error(`  - Database: ${DB_PATH}`);
   console.error(`  - Creator auth: ${CREATOR_KEY ? "ENABLED" : "DISABLED (set TARX_CREATOR_KEY)"}`);

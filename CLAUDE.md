@@ -115,7 +115,7 @@ Newest session on top. Never delete old entries. This is the audit trail.
 - Git operations
 - File system changes
 - Running tests
-- Debugging with Sentry MCP tools
+- Debugging with Datadog MCP tools
 - Applying fixes
 
 ### TARX Owns (Query via MCP, don't replicate)
@@ -320,12 +320,13 @@ Always verify with `yarn compile` — 0 errors required.
 | 11435 | llama-server     | Local LLM inference (Qwen 8.2B)  |
 | 11436 | Mesh HTTP API    | P2P networking (libp2p)          |
 | 11437 | Embedding server | RAG embeddings (nomic-embed)     |
+| 11438 | Cognitive engine | Brain layer (sessions, state, activity) |
 
-## MCP Tools (313 tools across 6 servers)
+## MCP Tools (305 tools across 6 servers)
 
 Memory: tarx_memory_store, tarx_memory_search, tarx_memory_recall, tarx_memory_list, tarx_memory_delete
 Health: tarx_system_brief (everything in one call), tarx_health, tarx_project_context
-Sentry: tarx_admin_sentry_issues, tarx_admin_sentry_events, tarx_admin_sentry_search, tarx_admin_sentry_event_details, tarx_admin_sentry_trace
+Observability: Datadog MCP (replaces Sentry — removed Feb 2026)
 Console: tarx_admin_read_console, tarx_admin_tail_console
 Orchestration: tarx_admin_file_lock/unlock, tarx_orchestrate_assign_task/task_update
 

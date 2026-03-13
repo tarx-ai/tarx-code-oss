@@ -68,7 +68,7 @@ export const Footer: React.FC<FooterProps> = ({ connectionStatus, version, onOpe
 
 					<div
 						className={`tarx-compute-option super ${supercomputerEnabled ? 'active' : ''}`}
-						title="TARX Supercomputer - Distributed GPU mesh networking"
+						title="TARX SuperComputer - Distributed GPU networking"
 						onClick={toggleSupercomputer}
 					>
 						<span className="tarx-compute-option-label">SUPERCOMPUTER</span>

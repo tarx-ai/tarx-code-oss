@@ -221,9 +221,8 @@
     ]
   },
   "tarx-ops": {
-    "tool_count": 50,
+    "tool_count": 43,
     "categories": {
-      "sentry": 7,
       "admin_status": 2,
       "file_locks": 3,
       "claude_code": 6,
@@ -240,72 +239,6 @@
       "daemon": 3
     },
     "tools": [
-      {
-        "name": "tarx_admin_sentry_projects",
-        "description": "List all Sentry projects in the organization",
-        "params": [],
-        "returns": "Array of projects with slug, name, platform",
-        "example_use": "User asks 'what Sentry projects do we have?' -> call tarx_admin_sentry_projects"
-      },
-      {
-        "name": "tarx_admin_sentry_events",
-        "description": "Get recent Sentry events. Use project='node' for extension errors, 'all' for all projects.",
-        "params": [
-          {"name": "project", "type": "string", "required": false, "description": "Project: 'node', 'workbench', 'mesh', or 'all' (default: node)"},
-          {"name": "minutes", "type": "number", "required": false, "description": "Look back N minutes (default: 60)"}
-        ],
-        "returns": "Array of recent events with titles, levels, timestamps",
-        "example_use": "User asks 'any recent errors?' -> call tarx_admin_sentry_events"
-      },
-      {
-        "name": "tarx_admin_sentry_issues",
-        "description": "Get current Sentry issues. Use project='all' for all projects.",
-        "params": [
-          {"name": "project", "type": "string", "required": false, "description": "Project slug or 'all' (default: all)"},
-          {"name": "status", "type": "enum", "required": false, "values": ["unresolved", "resolved", "ignored"], "description": "Issue status filter (default: unresolved)"}
-        ],
-        "returns": "Array of issues with count, severity, first/last seen",
-        "example_use": "User asks 'what bugs are open?' -> call tarx_admin_sentry_issues"
-      },
-      {
-        "name": "tarx_admin_sentry_search",
-        "description": "Search Sentry events with query",
-        "params": [
-          {"name": "project", "type": "string", "required": true, "description": "Project slug"},
-          {"name": "query", "type": "string", "required": true, "description": "Search query"}
-        ],
-        "returns": "Matching events",
-        "example_use": "User asks 'find errors about X' -> call tarx_admin_sentry_search"
-      },
-      {
-        "name": "tarx_admin_sentry_event_details",
-        "description": "Get full event details including breadcrumbs",
-        "params": [
-          {"name": "project", "type": "string", "required": true, "description": "Project slug"},
-          {"name": "eventId", "type": "string", "required": true, "description": "Event ID"}
-        ],
-        "returns": "Full event with breadcrumbs, user actions, stack trace",
-        "example_use": "User asks 'show me details of event X' -> call tarx_admin_sentry_event_details"
-      },
-      {
-        "name": "tarx_admin_sentry_issue_events",
-        "description": "Get events for a specific issue",
-        "params": [
-          {"name": "issueId", "type": "string", "required": true, "description": "Issue ID"}
-        ],
-        "returns": "Array of events for that issue",
-        "example_use": "User asks 'show me occurrences of issue X' -> call tarx_admin_sentry_issue_events"
-      },
-      {
-        "name": "tarx_admin_sentry_trace",
-        "description": "Reconstruct user session trace leading to an event",
-        "params": [
-          {"name": "project", "type": "string", "required": true, "description": "Project slug"},
-          {"name": "eventId", "type": "string", "required": true, "description": "Event ID"}
-        ],
-        "returns": "Session trace with user actions, breadcrumbs, timeline",
-        "example_use": "User asks 'what led to this crash?' -> call tarx_admin_sentry_trace"
-      },
       {
         "name": "tarx_admin_status",
         "description": "Get admin MCP server status and configuration",

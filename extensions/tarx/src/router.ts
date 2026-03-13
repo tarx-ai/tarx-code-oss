@@ -39,7 +39,7 @@ const ACTION_PATTERNS: { pattern: RegExp; category: string }[] = [
 	{ pattern: /\b(step\s?\d|first|then|next|finally)\b.*\b(create|build|add|write)\b/i, category: 'sequential' },
 
 	// MCP tools / integrations
-	{ pattern: /\b(check|search|query|fetch|list)\b.*\b(sentry|notion|github|slack|drive|jira|linear)\b/i, category: 'mcp-tool' },
+	{ pattern: /\b(check|search|query|fetch|list)\b.*\b(notion|github|slack|drive|jira|linear)\b/i, category: 'mcp-tool' },
 	{ pattern: /\b(send|post|upload|push)\b.*\b(to|into)\b/i, category: 'external-action' },
 
 	// Code generation (with intent to produce)

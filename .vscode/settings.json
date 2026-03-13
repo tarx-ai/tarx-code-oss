@@ -7,7 +7,7 @@
 		"scripts/test-integration.bat": true,
 		"scripts/test-integration.sh": true,
 	},
-	"chat.viewSessions.enabled": true,
+	"chat.viewSessions.enabled": false,
 
 	// --- Editor ---
 	"editor.insertSpaces": false,

@@ -1,7 +1,7 @@
 /**
  * TARX Autonomic Daemon - Error Analyzer
  *
- * Analyzes Sentry errors using local Qwen inference:
+ * Analyzes observability errors using local Qwen inference:
  * - Determines root cause from error title and culprit
  * - Proposes specific file changes (find/replace)
  * - Responds to user messages in TARX persona
@@ -39,7 +39,7 @@ export class ErrorAnalyzer {
   async analyze(error: ObservabilityError): Promise<AnalysisResult> {
     const prompt = `You are TARX, an autonomous AI that fixes code errors.
 
-Analyze this Sentry error and propose a SPECIFIC code fix:
+Analyze this error and propose a SPECIFIC code fix:
 
 ERROR TITLE: ${error.title}
 CULPRIT: ${error.culprit}

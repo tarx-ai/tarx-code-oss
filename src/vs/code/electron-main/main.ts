@@ -5,50 +5,6 @@
 
 import '../../platform/update/common/update.config.contribution.js';
 
-// TARX: Use @sentry/node instead of @sentry/electron/main (avoids black screen crash)
-import * as Sentry from '@sentry/node';
-import { TARX_SENTRY_DSN } from '../../platform/sentry/common/sentry.js';
-
-try {
-	Sentry.init({
-		dsn: TARX_SENTRY_DSN,
-		environment: process.env['NODE_ENV'] === 'production' ? 'production' : 'development',
-		release: 'tarx-code@1.0.0',
-		tracesSampleRate: 0.1,
-		ignoreErrors: [
-			'EPIPE', 'Channel closed', 'Canceled',
-			'HostProvider not setup',                              // NODE-A: Copilot auth race - not used by TARX
-			'permission denied, mkdir \'/mock\'',                  // NODE-B: test artifact
-			'spawn docker ENOENT',                                 // NODE-S: Docker not installed
-			'EADDRINUSE',                                          // Port conflict (handled gracefully)
-			'Pending response rejected',                           // NODE-P: extension shutdown
-		],
-		beforeSend(event) {
-			// Belt-and-suspenders: drop events whose message matches noise substrings
-			const noiseSubstrings = [
-				'HostProvider not setup',
-				'Channel has been closed',
-				'permission denied, mkdir',
-				'EACCES',
-				'address already in use',
-				'Harness error',
-				'No messages returned',
-			];
-			const msg = event.exception?.values?.[0]?.value ?? '';
-			for (const noise of noiseSubstrings) {
-				if (msg.includes(noise)) {
-					return null; // Drop the event
-				}
-			}
-			event.tags = { ...event.tags, app_type: 'tarx-code-oss', process_type: 'main' };
-			if (event.user) { delete event.user.ip_address; delete event.user.email; }
-			return event;
-		},
-	});
-} catch {
-	// Sentry init failed - continue without error tracking
-}
-
 import { app, dialog } from 'electron';
 import { unlinkSync, promises } from 'fs';
 import { URI } from '../../base/common/uri.js';
@@ -138,7 +94,6 @@ class CodeMain {
 		try {
 			this.startup();
 		} catch (error) {
-			try { Sentry.captureException(error); } catch { /* safe */ }
 			console.error(error.message);
 			app.exit(1);
 		}
@@ -149,7 +104,6 @@ class CodeMain {
 		// Set the error handler early enough so that we are not getting the
 		// default electron error dialog popping up
 		setUnexpectedErrorHandler(err => {
-			try { Sentry.captureException(err); } catch { /* safe */ }
 			console.error(err);
 		});
 

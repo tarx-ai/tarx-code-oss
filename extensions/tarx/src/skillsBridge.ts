@@ -81,7 +81,7 @@ export async function querySkillsRegistry(message: string): Promise<SkillsMatch>
  *
  * Examples:
  * - "Create a skill that monitors Shopify orders"
- * - "Build me an agent for checking Sentry errors"
+ * - "Build me an agent for checking Datadog errors"
  * - "Make an automation that runs tests on every commit"
  * - "I need a tool that..."
  */
@@ -188,7 +188,7 @@ export async function handleSkillCreationIntent(intent: SkillCreationIntent): Pr
 	response += `   - Event-based (file changes, etc.)\n\n`;
 
 	response += `2. **Specify actions**: What should it do?\n`;
-	response += `   - Call APIs (GitHub, Sentry, Shopify, etc.)\n`;
+	response += `   - Call APIs (GitHub, Datadog, Shopify, etc.)\n`;
 	response += `   - Run commands\n`;
 	response += `   - Send notifications\n\n`;
 
